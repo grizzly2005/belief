@@ -367,6 +367,12 @@ python -m belief scan --help
 belief/
   Core BELIEF package.
 
+belief/tools_bundled/
+  Optional bundled compatibility assets and local helper resources.
+
+belief/security_rules/
+  Bundled security rule assets and references.
+
 tests/
   Unit and regression tests.
 
@@ -376,29 +382,24 @@ tests_bridges/
 benchmark_cve/
   Benchmark-style vulnerable samples used for validation.
 
-docs/
-  Documentation and project notes.
+belief_http_engine.py
+  Legacy/experimental HTTP engine module kept at repository root.
 
-belief/tools_bundled/
-  Optional bundled compatibility assets and local helper resources.
+belief_knowledge_base.py
+  Legacy/experimental knowledge-base module kept at repository root.
 
-belief/security_rules/
-  Bundled security rule assets and references.
+belief_network_scanner.py
+  Legacy/experimental network-scanner module kept at repository root.
 
-BUNDLED_ASSETS.md
-  Notes about bundled assets, provenance, and licensing.
+README.md
+  Main public project documentation.
 
-BELIEF_ARCHITECTURE.md
-  Architecture notes.
+LICENSE
+  Repository license.
 
-BELIEF_TESTING.md
-  Testing notes.
-
-BELIEF_MIGRATION_NOTES.md
-  Migration and release notes.
+pyproject.toml
+  Python packaging and project metadata.
 ```
-
----
 
 ## License
 
