@@ -1,0 +1,26 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
+# flake8: noqa
+
+from typing import Iterable, TypeVar
+
+from integration_test.taint import source, sink
+
+
+T = TypeVar("T")
+
+
+class MyIterable(Iterable[T]):
+    def __iter__(self):
+        return source()
+
+
+def issue_with_direct_call_of_subclass(mi: MyIterable[str]):
+    eval(mi.__iter__().__next__())
+
+
+def no_issue_with_iterable_call(mi: Iterable[str]):
+    eval(mi.__iter__().__next__())

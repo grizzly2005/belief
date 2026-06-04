@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "belief-sec"
+version = "0.1.0"
+description = "Belief Extraction and Logical Inference for Exploitable Flaws"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+dependencies = [
+    "httpx>=0.25.0",
+]
+
+[project.optional-dependencies]
+z3 = ["z3-solver>=4.12.0"]
+multilang = [
+    "tree-sitter>=0.23,<0.24",
+    "tree-sitter-javascript>=0.23,<0.24",
+    "tree-sitter-typescript>=0.23,<0.24",
+    "tree-sitter-go>=0.23,<0.24",
+    "tree-sitter-java>=0.23,<0.24",
+    "tree-sitter-rust>=0.23,<0.24",
+]
+full = [
+    "z3-solver>=4.12.0",
+    "hypothesis>=6.0.0",
+    "tree-sitter>=0.23,<0.24",
+    "tree-sitter-javascript>=0.23,<0.24",
+    "tree-sitter-typescript>=0.23,<0.24",
+    "tree-sitter-go>=0.23,<0.24",
+    "tree-sitter-java>=0.23,<0.24",
+    "tree-sitter-rust>=0.23,<0.24",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+belief = "belief.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["belief*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = [
+    "**/*_ref.py",
+    "**/*_adapted/**",
+    "**/z3_examples/**",
+    "**/angr_examples/**",
+    "**/pyt_adapted/**",
+    "**/gitpython_adapted/**",
+    "**/ossfuzz_adapted/**",
+    "**/fastapi_adapted/**",
+    "**/hypothesis_adapted/**",
+    "**/monitoring_adapted/**",
+    "**/cache_adapted/**",
+    "**/rules_data.py",
+    "**/examples/**",
+]
+
+[tool.ruff.lint]
+ignore = ["E401", "E402", "E701", "E702", "E741", "E731"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: fast local unit tests",
+    "integration: local integration tests without external network",
+    "security: security pattern and finding regression tests",
+    "slow: tests that are expected to take longer than the default suite",
+    "llm: tests requiring an LLM provider",
+    "external: tests requiring an external tool, service, or network",
+]

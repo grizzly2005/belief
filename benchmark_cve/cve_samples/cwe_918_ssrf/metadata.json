@@ -1,0 +1,6 @@
+{
+  "cwe": "CWE-918",
+  "vulnerable_lines": [6],
+  "expected_sources": ["bandit", "semgrep"],
+  "description": "SSRF via unvalidated urlopen"
+}

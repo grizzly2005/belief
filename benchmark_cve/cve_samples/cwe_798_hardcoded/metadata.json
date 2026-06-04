@@ -1,0 +1,6 @@
+{
+  "cwe": "CWE-798",
+  "vulnerable_lines": [3, 4],
+  "expected_sources": ["bandit", "semgrep"],
+  "description": "Hardcoded API key and password"
+}

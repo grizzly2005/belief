@@ -1,0 +1,6 @@
+{
+  "cwe": "CWE-22",
+  "vulnerable_lines": [9, 10],
+  "expected_sources": ["semgrep", "path_traversal"],
+  "description": "Path traversal"
+}

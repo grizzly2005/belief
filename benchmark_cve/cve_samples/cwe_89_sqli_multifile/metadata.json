@@ -1,0 +1,10 @@
+{
+  "name": "cwe_89_sqli_multifile",
+  "cwe": "CWE-89",
+  "description": "SQL injection across 3 files: Flask route → user service → DB layer. Taint flows through 2 function calls without sanitization.",
+  "vulnerable_files": ["services/user_service.py"],
+  "vulnerable_lines": [16],
+  "entrypoint": "app.py",
+  "attack_vector": "GET /user?name=' OR 1=1--",
+  "why_multifile": "grep for 'execute(f\"' would miss this: the f-string is in user_service.py but the user input is tainted in app.py. Only belief propagation across the call graph catches it."
+}

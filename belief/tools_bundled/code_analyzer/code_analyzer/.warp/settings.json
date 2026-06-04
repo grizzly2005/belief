@@ -1,0 +1,35 @@
+{
+  "name": "code-analyzer",
+  "description": "Deep source code analysis and documentation tool",
+  "language": "python",
+  "commands": {
+    "install": {
+      "command": "pip install -e .",
+      "description": "Install package in development mode"
+    },
+    "test": {
+      "command": "pytest tests/ -v",
+      "description": "Run test suite"
+    },
+    "lint": {
+      "command": "pylint code_analyzer/",
+      "description": "Run linter on code"
+    },
+    "format": {
+      "command": "black code_analyzer/ tests/",
+      "description": "Format code with black"
+    },
+    "analyze": {
+      "command": "code-analyzer analyze",
+      "description": "Run code analyzer"
+    },
+    "demo": {
+      "command": "code-analyzer analyze /Volumes/Projects/code-analyzer --deep --create-tickets --generate-docs",
+      "description": "Run analyzer on itself"
+    }
+  },
+  "tasks": {
+    "build": ["install", "lint", "test"],
+    "dev": ["install", "format", "lint"]
+  }
+}

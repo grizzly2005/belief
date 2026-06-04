@@ -1,0 +1,6 @@
+{
+  "cwe": "CWE-502",
+  "vulnerable_lines": [8],
+  "expected_sources": ["bandit", "dlint", "semgrep"],
+  "description": "yaml.load without Loader → deserialization RCE"
+}

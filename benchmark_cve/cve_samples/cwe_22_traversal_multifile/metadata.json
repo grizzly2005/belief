@@ -1,0 +1,10 @@
+{
+  "name": "cwe_22_traversal_multifile",
+  "cwe": "CWE-22",
+  "description": "Path traversal across 3 files. HTTP handler takes a filename → storage service builds a path → file reader opens it. Each layer believes the previous one validated the input.",
+  "vulnerable_files": ["storage/file_store.py"],
+  "vulnerable_lines": [18],
+  "entrypoint": "web.py",
+  "attack_vector": "GET /download?file=../../etc/passwd",
+  "why_multifile": "Path_traversal bridge correctly flags os.path.join(BASE_DIR, user_input) as tainted, but proving the taint reaches BASE_DIR from the web entrypoint requires crossing the web.py → file_store.py boundary."
+}

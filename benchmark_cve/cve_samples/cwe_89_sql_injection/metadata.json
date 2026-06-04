@@ -1,0 +1,6 @@
+{
+  "cwe": "CWE-89",
+  "vulnerable_lines": [6, 7],
+  "expected_sources": ["bandit", "semgrep"],
+  "description": "SQL injection via string formatting"
+}

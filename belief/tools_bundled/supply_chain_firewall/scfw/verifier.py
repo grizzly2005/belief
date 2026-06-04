@@ -1,0 +1,105 @@
+"""
+Provides a base class for package verifiers.
+"""
+
+from abc import (ABCMeta, abstractmethod)
+from enum import Enum
+from typing_extensions import Self
+
+from scfw.ecosystem import ECOSYSTEM
+from scfw.package import Package
+
+
+class FindingSeverity(Enum):
+    """
+    A hierarchy of severity levels for package verifier findings.
+
+    Package verifiers attach severity levels to their findings in order to direct
+    Supply-Chain Firewall to take the correct action with respect to blocking or
+    warning on a package manager command.
+
+    A `CRITICAL` finding causes Supply-Chain Firewall to block. A `WARNING` finding
+    prompts it to seek confirmation from the user before running the command.
+    """
+    CRITICAL = "CRITICAL"
+    WARNING = "WARNING"
+
+    def __str__(self) -> str:
+        """
+        Format a `FindingSeverity` for printing.
+
+        Returns:
+            A `str` representing the given `FindingSeverity` suitable for printing.
+        """
+        return self.name
+
+    @classmethod
+    def from_string(cls, s: str) -> Self:
+        """
+        Convert a string into a `FindingSeverity`.
+
+        Args:
+            s: The `str` to be converted.
+
+        Returns:
+            The `FindingSeverity` referred to by the given string.
+
+        Raises:
+            ValueError: The given string does not refer to a valid `FindingSeverity`.
+        """
+        mappings = {f"{severity}".lower(): severity for severity in cls}
+
+        try:
+            return mappings[s.lower()]
+        except KeyError:
+            raise ValueError(f"Invalid finding severity: '{s}'")
+
+
+class PackageVerifier(metaclass=ABCMeta):
+    """
+    Abstract base class for package verifiers.
+
+    Each package verifier should implement a service for verifying packages in all
+    supported ecosystems against a single reputable source of data on vulnerable and
+    malicious open source packages.
+    """
+    @classmethod
+    @abstractmethod
+    def name(cls) -> str:
+        """
+        Return the verifier's name.
+
+        Returns:
+            A constant, short, descriptive name `str` identifying the verifier.
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
+    def supported_ecosystems(cls) -> set[ECOSYSTEM]:
+        """
+        Return the set of package ecosystems the verifier supports.
+
+        Returns:
+            A constant `set` of `ECOSYSTEM` representing the package ecosystems
+            supported for verification by the verifier.
+        """
+        pass
+
+    @abstractmethod
+    def verify(self, package: Package) -> list[tuple[FindingSeverity, str]]:
+        """
+        Verify the given package.
+
+        Args:
+            package: The `Package` to verify.
+
+        Returns:
+            A `list[tuple[FindingSeverity, str]]` of all findings for the given package
+            reported by the backing data source, each tagged with a severity level.
+
+            Each `str` in this list should be a concise summary of a single finding and
+            would ideally provide a link or handle to more information about that finding
+            for the benefit of the user.
+        """
+        pass

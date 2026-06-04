@@ -1,0 +1,6 @@
+{
+  "cwe": "CWE-338",
+  "vulnerable_lines": [6],
+  "expected_sources": ["bandit", "dlint"],
+  "description": "Insecure random for session token"
+}

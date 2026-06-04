@@ -1,0 +1,6 @@
+{
+  "cwe": "CWE-95",
+  "vulnerable_lines": [5],
+  "expected_sources": ["bandit", "dlint", "semgrep"],
+  "description": "eval() on user input"
+}

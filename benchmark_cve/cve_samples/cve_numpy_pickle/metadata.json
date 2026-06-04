@@ -1,0 +1,6 @@
+{
+  "cwe": "CWE-502",
+  "vulnerable_lines": [7],
+  "expected_sources": ["bandit", "dlint", "semgrep"],
+  "description": "pickle.load of untrusted file"
+}

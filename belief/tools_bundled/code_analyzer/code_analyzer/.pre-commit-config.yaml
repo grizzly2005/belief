@@ -1,0 +1,11 @@
+# See https://pre-commit.com for more information
+repos:
+  - repo: local
+    hooks:
+      - id: code-analyzer
+        name: Code Quality Analysis
+        entry: code-analyzer analyze . --depth shallow
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]

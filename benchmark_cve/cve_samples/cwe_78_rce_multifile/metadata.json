@@ -1,0 +1,10 @@
+{
+  "name": "cwe_78_rce_multifile",
+  "cwe": "CWE-78",
+  "description": "Command injection across 3 files. HTTP handler → report generator → shell wrapper. Each file locally looks fine; the belief that 'filename' is sanitized is assumed at every hop but never actually checked.",
+  "vulnerable_files": ["utils/shell.py"],
+  "vulnerable_lines": [14],
+  "entrypoint": "api.py",
+  "attack_vector": "POST /report {\"filename\": \"a.pdf; rm -rf /\"}",
+  "why_multifile": "No single file contains both an untrusted source and a shell=True sink. The vulnerability only exists as a propagation of 'untrusted string' across 3 modules."
+}

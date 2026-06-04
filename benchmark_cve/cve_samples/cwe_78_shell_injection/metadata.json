@@ -1,0 +1,6 @@
+{
+  "cwe": "CWE-78",
+  "vulnerable_lines": [6],
+  "expected_sources": ["bandit", "semgrep"],
+  "description": "Shell injection via subprocess + shell=True"
+}
