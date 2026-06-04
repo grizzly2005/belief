@@ -1,0 +1,26 @@
+{
+  "tool_id": "dradis",
+  "name": "Dradis",
+  "repo": "https://github.com/dradis/dradis-ce",
+  "license": "UNKNOWN - verify upstream before vendoring",
+  "description": "Dradis-style Markdown note exporter for BELIEF audit evidence.",
+  "execution_mode": "recipe_export",
+  "command": null,
+  "default_args": [],
+  "input_types": ["AuditCase", "ExternalFinding"],
+  "output_types": ["markdown"],
+  "capabilities": ["report_export"],
+  "maps_to": ["AuditCase"],
+  "risk": {
+    "network": false,
+    "active_scanning": false,
+    "replays_requests": false,
+    "fuzzing": false,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": false,
+    "external_services": false,
+    "safe_default": true
+  },
+  "notes": "No Dradis API calls in MVP."
+}

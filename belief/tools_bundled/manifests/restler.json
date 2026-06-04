@@ -1,0 +1,26 @@
+{
+  "tool_id": "restler",
+  "name": "RESTler",
+  "repo": "https://github.com/microsoft/restler-fuzzer",
+  "license": "MIT",
+  "description": "Passive RESTler sequence/log importer and recipe placeholder.",
+  "execution_mode": "recipe_export",
+  "command": null,
+  "default_args": [],
+  "input_types": ["restler_json"],
+  "output_types": ["AttackPath"],
+  "capabilities": ["api_sequence_reasoning", "fuzzing_recipe"],
+  "maps_to": ["AttackPath", "AuditCase"],
+  "risk": {
+    "network": true,
+    "active_scanning": true,
+    "replays_requests": true,
+    "fuzzing": true,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": true,
+    "external_services": false,
+    "safe_default": false
+  },
+  "notes": "No RESTler fuzzing is run by BELIEF MVP. Import/recipe only."
+}

@@ -1,0 +1,26 @@
+{
+  "tool_id": "autorize",
+  "name": "Autorize",
+  "repo": "https://github.com/Quitten/Autorize",
+  "license": "UNKNOWN - verify upstream before vendoring",
+  "description": "Autorize-style authorization validation recipe exporter.",
+  "execution_mode": "recipe_export",
+  "command": null,
+  "default_args": [],
+  "input_types": ["AccessObservation", "AccessHypothesis"],
+  "output_types": ["autorize_recipe_json"],
+  "capabilities": ["authorization_recipe", "idor_validation_plan"],
+  "maps_to": ["AttackPath", "AccessObservation"],
+  "risk": {
+    "network": false,
+    "active_scanning": false,
+    "replays_requests": true,
+    "fuzzing": false,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": true,
+    "external_services": false,
+    "safe_default": false
+  },
+  "notes": "Exports placeholders only. Never writes real cookies, auth headers, or tokens."
+}

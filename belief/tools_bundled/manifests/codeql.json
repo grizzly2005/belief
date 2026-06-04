@@ -1,0 +1,26 @@
+{
+  "tool_id": "codeql",
+  "name": "CodeQL",
+  "repo": "https://github.com/github/codeql",
+  "license": "UNKNOWN - verify upstream before vendoring",
+  "description": "Passive SARIF importer for CodeQL findings and code-flow evidence.",
+  "execution_mode": "passive_import",
+  "command": "codeql",
+  "default_args": [],
+  "input_types": ["sarif"],
+  "output_types": ["ExternalFinding"],
+  "capabilities": ["sarif_import", "code_flow_import", "sast"],
+  "maps_to": ["ExternalFinding", "Finding", "AuditCase"],
+  "risk": {
+    "network": false,
+    "active_scanning": false,
+    "replays_requests": false,
+    "fuzzing": false,
+    "executes_target_code": false,
+    "writes_files": false,
+    "requires_auth_tokens": false,
+    "external_services": false,
+    "safe_default": true
+  },
+  "notes": "MVP does not run CodeQL. It imports SARIF only."
+}

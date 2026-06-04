@@ -1,0 +1,26 @@
+{
+  "tool_id": "zap",
+  "name": "OWASP ZAP",
+  "repo": "https://github.com/zaproxy/zaproxy",
+  "license": "Apache-2.0",
+  "description": "Passive ZAP alerts JSON importer. Active scan is not implemented in BELIEF MVP.",
+  "execution_mode": "passive_import",
+  "command": "zap.sh",
+  "default_args": [],
+  "input_types": ["zap_json"],
+  "output_types": ["ExternalFinding"],
+  "capabilities": ["dast_import", "alert_import"],
+  "maps_to": ["ExternalFinding", "Finding", "AuditCase"],
+  "risk": {
+    "network": true,
+    "active_scanning": true,
+    "replays_requests": true,
+    "fuzzing": true,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": true,
+    "external_services": false,
+    "safe_default": false
+  },
+  "notes": "BELIEF imports existing ZAP JSON only; it does not launch ZAP scans in MVP."
+}

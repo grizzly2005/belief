@@ -1,0 +1,26 @@
+{
+  "tool_id": "faraday",
+  "name": "Faraday",
+  "repo": "https://github.com/infobyte/faraday",
+  "license": "UNKNOWN - verify upstream before vendoring",
+  "description": "Simple Faraday-compatible JSON-like exporter.",
+  "execution_mode": "recipe_export",
+  "command": null,
+  "default_args": [],
+  "input_types": ["ExternalFinding"],
+  "output_types": ["json"],
+  "capabilities": ["report_export"],
+  "maps_to": ["Finding"],
+  "risk": {
+    "network": false,
+    "active_scanning": false,
+    "replays_requests": false,
+    "fuzzing": false,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": false,
+    "external_services": false,
+    "safe_default": true
+  },
+  "notes": "No Faraday API calls in MVP."
+}

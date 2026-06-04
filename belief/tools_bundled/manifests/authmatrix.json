@@ -1,0 +1,26 @@
+{
+  "tool_id": "authmatrix",
+  "name": "AuthMatrix",
+  "repo": "https://github.com/SecurityInnovation/AuthMatrix",
+  "license": "UNKNOWN - verify upstream before vendoring",
+  "description": "AuthMatrix-like access-control state importer/exporter without Burp/Jython execution.",
+  "execution_mode": "passive_import",
+  "command": null,
+  "default_args": [],
+  "input_types": ["authmatrix_json", "AccessObservation"],
+  "output_types": ["AccessObservation", "json"],
+  "capabilities": ["authorization_matrix", "role_testing_plan"],
+  "maps_to": ["AccessObservation", "AuditCase"],
+  "risk": {
+    "network": false,
+    "active_scanning": false,
+    "replays_requests": true,
+    "fuzzing": false,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": true,
+    "external_services": false,
+    "safe_default": false
+  },
+  "notes": "BELIEF does not run Burp/Jython and does not store cookies or tokens."
+}

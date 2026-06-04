@@ -1,0 +1,26 @@
+{
+  "tool_id": "param_miner",
+  "name": "Param Miner",
+  "repo": "https://github.com/PortSwigger/param-miner",
+  "license": "UNKNOWN - verify upstream before vendoring",
+  "description": "Sensitive-parameter wordlist exporter for manual authorized testing workflows.",
+  "execution_mode": "recipe_export",
+  "command": null,
+  "default_args": [],
+  "input_types": ["AccessHypothesis"],
+  "output_types": ["wordlist"],
+  "capabilities": ["wordlist_export", "mass_assignment_hints"],
+  "maps_to": ["AttackPath"],
+  "risk": {
+    "network": false,
+    "active_scanning": false,
+    "replays_requests": false,
+    "fuzzing": false,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": false,
+    "external_services": false,
+    "safe_default": true
+  },
+  "notes": "BELIEF does not run Param Miner. It exports a deterministic wordlist only."
+}

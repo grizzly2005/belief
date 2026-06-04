@@ -1,0 +1,26 @@
+{
+  "tool_id": "schemathesis",
+  "name": "Schemathesis",
+  "repo": "https://github.com/schemathesis/schemathesis",
+  "license": "MIT",
+  "description": "OpenAPI metadata importer and optional future dynamic API-test bridge.",
+  "execution_mode": "external_cli",
+  "command": "schemathesis",
+  "default_args": [],
+  "input_types": ["openapi_json", "openapi_yaml"],
+  "output_types": ["AccessObservation", "AttackPath"],
+  "capabilities": ["openapi", "api_testing", "schema_analysis"],
+  "maps_to": ["AccessObservation", "AttackPath", "AuditCase"],
+  "risk": {
+    "network": true,
+    "active_scanning": true,
+    "replays_requests": true,
+    "fuzzing": true,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": true,
+    "external_services": false,
+    "safe_default": false
+  },
+  "notes": "BELIEF MVP imports OpenAPI JSON only. Dynamic tests require explicit allow_dynamic, allow_network, and scope_file."
+}

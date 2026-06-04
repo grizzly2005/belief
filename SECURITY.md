@@ -16,6 +16,23 @@ The public repository focuses on:
 The public repository is not intended to provide an active network scanner or
 an exploit-generation workflow.
 
+## Tool Bridge Safety
+
+BELIEF tool bridges default to passive/local behavior:
+
+- import existing JSON/SARIF outputs;
+- export validation recipes;
+- run safe local commands only when explicitly requested.
+
+Bridges that can perform dynamic testing, request replay, fuzzing, active
+scanning, or network access are blocked by default. They require explicit
+opt-in flags such as `--allow-dynamic`, `--allow-network`, and a scope file.
+
+Do not store cookies, bearer tokens, auth headers, API keys, or session secrets
+in repository files, test fixtures, bridge manifests, or recipe exports. Recipes
+must use placeholders and require operators to supply credentials outside the
+repo.
+
 ## Reporting a Vulnerability
 
 Please report issues through GitHub security advisories or a private maintainer

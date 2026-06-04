@@ -1,0 +1,26 @@
+{
+  "tool_id": "threat_dragon",
+  "name": "OWASP Threat Dragon",
+  "repo": "https://github.com/OWASP/threat-dragon",
+  "license": "UNKNOWN - verify upstream before vendoring",
+  "description": "Simple threat-model JSON exporter for access hypotheses and observations.",
+  "execution_mode": "recipe_export",
+  "command": null,
+  "default_args": [],
+  "input_types": ["AccessHypothesis", "AccessObservation"],
+  "output_types": ["json"],
+  "capabilities": ["threat_model_export"],
+  "maps_to": ["AccessHypothesis", "AuditCase"],
+  "risk": {
+    "network": false,
+    "active_scanning": false,
+    "replays_requests": false,
+    "fuzzing": false,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": false,
+    "external_services": false,
+    "safe_default": true
+  },
+  "notes": "Small BELIEF threat model shape, not a full Threat Dragon project format."
+}

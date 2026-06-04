@@ -211,6 +211,39 @@ An AuditCase may include:
 
 ---
 
+## Tool Bridges
+
+BELIEF can normalize outputs from external tools through local/passive bridges.
+The bridge system is designed to avoid vendoring large third-party tools.
+
+Supported bridge modes:
+
+- passive import of existing JSON/SARIF outputs;
+- external CLI execution for safe local tools;
+- recipe export for manual validation workflows;
+- dynamic execution only with explicit scope and safety flags.
+
+Examples:
+
+```bash
+python -m belief tools list
+python -m belief tools info semgrep
+python -m belief tools check
+python -m belief tools import semgrep --file out/semgrep.json
+```
+
+Dynamic or network-capable bridges are blocked by default. They require explicit
+`--allow-dynamic`, `--allow-network`, and a `--scope-file` before execution.
+
+The first bridge milestone includes manifests and MVP adapters for Semgrep,
+CodeQL SARIF, ZAP JSON, Arjun JSON, OpenAPI/Schemathesis metadata,
+AuthMatrix-like access observations, Autorize-style recipes, Param Miner
+wordlists, Dradis Markdown, Faraday JSON, and simple threat-model export.
+
+See `docs/TOOL_BRIDGES.md` for architecture and extension notes.
+
+---
+
 ## Output Formats
 
 BELIEF can produce multiple output formats.
@@ -293,7 +326,7 @@ BELIEF v4 has been tested locally on real-world and benchmark-style Python codeb
 
 Current local regression baseline:
 
-- full suite: `292 passed, 31 skipped`;
+- full suite: `317 passed, 31 skipped`;
 - security suite: `44 passed`.
 
 These numbers may change as the project evolves.
@@ -415,6 +448,12 @@ belief/tools_bundled/
 
 belief/security_rules/
   Bundled security rule assets and references.
+
+belief/tools/
+  Universal external-tool bridge registry, safety gate, runners, and adapters.
+
+belief/tools_bundled/manifests/
+  JSON manifests describing supported bridge IDs, capabilities, licenses, and risk profiles.
 
 tests/
   Unit and regression tests.

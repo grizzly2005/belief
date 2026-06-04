@@ -1,0 +1,26 @@
+{
+  "tool_id": "joern",
+  "name": "Joern",
+  "repo": "https://github.com/joernio/joern",
+  "license": "UNKNOWN - verify upstream before vendoring",
+  "description": "Availability check and tolerant passive JSON import placeholder for Joern-derived findings.",
+  "execution_mode": "passive_import",
+  "command": "joern",
+  "default_args": [],
+  "input_types": ["joern_json"],
+  "output_types": ["ExternalFinding"],
+  "capabilities": ["cpg", "dataflow_import"],
+  "maps_to": ["ExternalFinding", "Finding"],
+  "risk": {
+    "network": false,
+    "active_scanning": false,
+    "replays_requests": false,
+    "fuzzing": false,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": false,
+    "external_services": false,
+    "safe_default": true
+  },
+  "notes": "MVP does not generate CPGs or run heavy Joern analysis."
+}

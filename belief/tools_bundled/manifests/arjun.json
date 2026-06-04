@@ -1,0 +1,26 @@
+{
+  "tool_id": "arjun",
+  "name": "Arjun",
+  "repo": "https://github.com/s0md3v/Arjun",
+  "license": "UNKNOWN - verify upstream before vendoring",
+  "description": "Optional external CLI bridge and passive JSON importer for discovered parameters.",
+  "execution_mode": "external_cli",
+  "command": "arjun",
+  "default_args": [],
+  "input_types": ["arjun_json", "wordlist"],
+  "output_types": ["AccessObservation"],
+  "capabilities": ["parameter_discovery", "passive_import"],
+  "maps_to": ["AccessObservation", "AttackPath"],
+  "risk": {
+    "network": true,
+    "active_scanning": true,
+    "replays_requests": true,
+    "fuzzing": true,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": false,
+    "external_services": false,
+    "safe_default": false
+  },
+  "notes": "BELIEF tests import JSON only. Dynamic Arjun execution requires explicit safety flags."
+}

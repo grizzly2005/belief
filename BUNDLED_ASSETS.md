@@ -14,15 +14,37 @@ Role:
 - bridge support material for tools such as PyT, Pyre/Pysa-style stubs, Safety DB,
   PyExZ3, CrossHair, Dlint, Bandit-style experiments, and related prototypes;
 - offline fixtures used to keep tests and bridge behavior reproducible.
+- bridge manifests under `belief/tools_bundled/manifests/`.
 
 Publication notes:
 
 - these assets may include code, examples, data, or APIs inspired by third-party
   ecosystems;
+- JSON manifests describe external tools and risk profiles; they are not
+  vendored copies of upstream tools;
 - provenance and licensing must be reviewed per subdirectory before commercial
   redistribution, repackaging, or relicensing;
 - the repository MIT license does not automatically replace any license that may
   apply to a bundled third-party asset.
+
+### `belief/tools_bundled/manifests/`
+
+The manifests directory contains small JSON descriptors for BELIEF's external
+tool bridge system.
+
+Each manifest records:
+
+- tool id and upstream repository URL;
+- conservative license/provenance notes;
+- supported execution mode;
+- input/output types;
+- normalized BELIEF concepts it maps to;
+- risk profile flags for network, replay, fuzzing, dynamic scanning, and secret
+  handling.
+
+These manifests intentionally do not vendor Semgrep, CodeQL, ZAP, RESTler,
+Schemathesis, Joern, EvoMaster, Arjun, Dradis, Faraday, AuthMatrix, Autorize, or
+Param Miner source trees.
 
 ## `belief/security_rules/`
 

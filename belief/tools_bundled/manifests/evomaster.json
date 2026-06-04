@@ -1,0 +1,26 @@
+{
+  "tool_id": "evomaster",
+  "name": "EvoMaster",
+  "repo": "https://github.com/EMResearch/EvoMaster",
+  "license": "UNKNOWN - verify upstream before vendoring",
+  "description": "Recipe/export placeholder for future EvoMaster integration.",
+  "execution_mode": "recipe_export",
+  "command": "evomaster",
+  "default_args": [],
+  "input_types": ["openapi_json", "AccessObservation"],
+  "output_types": ["AttackPath"],
+  "capabilities": ["api_test_generation_recipe"],
+  "maps_to": ["AttackPath"],
+  "risk": {
+    "network": true,
+    "active_scanning": true,
+    "replays_requests": true,
+    "fuzzing": true,
+    "executes_target_code": true,
+    "writes_files": true,
+    "requires_auth_tokens": true,
+    "external_services": false,
+    "safe_default": false
+  },
+  "notes": "No dynamic EvoMaster run in BELIEF MVP."
+}

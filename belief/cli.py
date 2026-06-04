@@ -1100,6 +1100,84 @@ def cmd_cognitive(args):
     safe_print(f"Full JSON report → {args.output}")
 
 
+def cmd_tools(args):
+    """Manage passive/local external tool bridges."""
+    from .tools import ToolInput, ToolRegistry, ToolRunner
+    from .tools.errors import ToolSafetyError
+    from .tools.schemas import to_jsonable
+
+    registry = ToolRegistry.with_builtin_bridges()
+
+    if args.tools_command == "list":
+        safe_print("BELIEF tool bridges:")
+        for bridge in registry.list_tools():
+            manifest = bridge.manifest()
+            safe_print(
+                f"  {manifest.tool_id:14} "
+                f"mode={manifest.execution_mode:14} "
+                f"safe_default={str(manifest.risk.safe_default).lower():5} "
+                f"available={str(bridge.is_available()).lower():5} "
+                f"- {manifest.name}"
+            )
+        return
+
+    if args.tools_command == "info":
+        bridge = registry.get(args.tool_id)
+        payload = to_jsonable(bridge.manifest())
+        payload["available"] = bridge.is_available()
+        safe_print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+
+    if args.tools_command == "check":
+        payload = []
+        for bridge in registry.list_tools():
+            manifest = bridge.manifest()
+            payload.append({
+                "tool_id": manifest.tool_id,
+                "name": manifest.name,
+                "execution_mode": manifest.execution_mode,
+                "available": bridge.is_available(),
+                "safe_default": manifest.risk.safe_default,
+                "risk": to_jsonable(manifest.risk),
+            })
+        safe_print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+
+    if args.tools_command == "run":
+        bridge = registry.get(args.tool_id)
+        tool_input = ToolInput(
+            target=Path(args.target) if args.target else None,
+            output_dir=Path(args.output_dir) if args.output_dir else None,
+            import_file=Path(args.file) if args.file else None,
+            allow_dynamic=bool(args.allow_dynamic),
+            allow_network=bool(args.allow_network),
+            scope_file=Path(args.scope_file) if args.scope_file else None,
+            timeout_seconds=int(args.timeout),
+        )
+        try:
+            execution = ToolRunner().run_bridge(bridge, tool_input)
+        except ToolSafetyError as exc:
+            safe_print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(2)
+        payload = to_jsonable(execution)
+        safe_print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+
+    if args.tools_command == "import":
+        bridge = registry.get(args.tool_id)
+        importer = getattr(bridge, "import_file", None)
+        if importer is None:
+            safe_print(f"ERROR: {args.tool_id} does not implement passive import.", file=sys.stderr)
+            sys.exit(2)
+        result = importer(Path(args.file))
+        payload = to_jsonable(result)
+        safe_print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+
+    safe_print("ERROR: missing tools subcommand", file=sys.stderr)
+    sys.exit(2)
+
+
 def main():
     parser = SafeArgumentParser(
         prog="belief",
@@ -1285,6 +1363,31 @@ def main():
     p_cognitive.add_argument("--no-llm", action="store_true",
                              help="Skip LLM extraction (bridges + memory only)")
 
+    # tools
+    p_tools = sub.add_parser("tools", help="List, check, run, and import tool bridge results")
+    tools_sub = p_tools.add_subparsers(dest="tools_command", parser_class=SafeArgumentParser)
+
+    tools_sub.add_parser("list", help="List built-in BELIEF tool bridges")
+
+    p_tools_info = tools_sub.add_parser("info", help="Show one bridge manifest")
+    p_tools_info.add_argument("tool_id", help="Tool bridge id, e.g. semgrep")
+
+    tools_sub.add_parser("check", help="Check bridge availability and risk profiles")
+
+    p_tools_run = tools_sub.add_parser("run", help="Run a safe external bridge")
+    p_tools_run.add_argument("tool_id", help="Tool bridge id")
+    p_tools_run.add_argument("--target", default="", help="Local target path for external CLI bridges")
+    p_tools_run.add_argument("--file", default="", help="Optional import/config file")
+    p_tools_run.add_argument("--output-dir", default="out/tools", help="Output directory for artifacts")
+    p_tools_run.add_argument("--timeout", type=int, default=300, help="External command timeout seconds")
+    p_tools_run.add_argument("--allow-dynamic", action="store_true", help="Allow dynamic tool behavior")
+    p_tools_run.add_argument("--allow-network", action="store_true", help="Allow network-capable tool behavior")
+    p_tools_run.add_argument("--scope-file", default="", help="Explicit scope file required for dynamic tools")
+
+    p_tools_import = tools_sub.add_parser("import", help="Import an existing passive tool result")
+    p_tools_import.add_argument("tool_id", help="Tool bridge id")
+    p_tools_import.add_argument("--file", required=True, help="JSON/SARIF file to import")
+
     args = parser.parse_args()
 
     commands = {
@@ -1298,6 +1401,7 @@ def main():
         "frontier": cmd_frontier,
         "report": cmd_report,
         "cognitive": cmd_cognitive,
+        "tools": cmd_tools,
     }
 
     handler = commands.get(args.command)

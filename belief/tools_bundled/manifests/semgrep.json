@@ -1,0 +1,26 @@
+{
+  "tool_id": "semgrep",
+  "name": "Semgrep",
+  "repo": "https://github.com/semgrep/semgrep",
+  "license": "LGPL-2.1",
+  "description": "External CLI bridge for Semgrep JSON/SARIF findings.",
+  "execution_mode": "external_cli",
+  "command": "semgrep",
+  "default_args": ["scan", "--json", "--config", "auto"],
+  "input_types": ["source_tree", "json_import"],
+  "output_types": ["json", "ExternalFinding"],
+  "capabilities": ["static_patterns", "multi_language", "sast"],
+  "maps_to": ["ExternalFinding", "Finding", "Hypothesis"],
+  "risk": {
+    "network": false,
+    "active_scanning": false,
+    "replays_requests": false,
+    "fuzzing": false,
+    "executes_target_code": false,
+    "writes_files": true,
+    "requires_auth_tokens": false,
+    "external_services": false,
+    "safe_default": true
+  },
+  "notes": "Do not vendor Semgrep. Invoke an installed CLI or import existing JSON/SARIF."
+}
