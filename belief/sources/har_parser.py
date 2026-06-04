@@ -9,11 +9,10 @@ Why this matters for BELIEF:
 - A pentester records a session in Burp/DevTools, saves as .har
 - BELIEF replays it offline, no network needed, 100% reproducible
 - Each request/response pair becomes a BehaviorObservation
-- The existing belief_http_engine.py extractor can then generate HttpBeliefs
+- Offline source adapters can then generate BELIEF-compatible observations
 
 The HAR parser here is STANDALONE — pure Python stdlib, no deps.
-Output is a list of dicts compatible with belief_http_engine.BehaviorObservation
-so the rest of the pipeline is untouched.
+Output is a list of dicts compatible with BELIEF's offline observation shape.
 
 Supported input formats:
 - .har (Chrome / Firefox / mitmproxy / Burp "Save All in HAR")
@@ -42,8 +41,7 @@ logger = logging.getLogger("belief.sources.har")
 class HarEntry:
     """A single request/response pair extracted from a HAR file.
 
-    Field names intentionally match belief_http_engine.BehaviorObservation
-    so we can feed them straight in.
+    Field names intentionally match BELIEF's offline HTTP observation shape.
     """
     url: str
     method: str
@@ -204,10 +202,7 @@ def filter_entries(
 
 
 def to_observations(entries: List[HarEntry]) -> List[Dict[str, Any]]:
-    """Convert HarEntry list to dicts suitable for
-    belief_http_engine.HttpBeliefExtractor.extract_from_observation().
-
-    The BehaviorObservation constructor expects flat kwargs."""
+    """Convert HarEntry list to flat offline HTTP observation dictionaries."""
     obs = []
     for e in entries:
         obs.append({

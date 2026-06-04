@@ -3,7 +3,7 @@ belief.sources — unified abstraction for all belief-producing inputs.
 
 BELIEF extracts beliefs from many kinds of sources:
 - WHITE-BOX: source code (the original BELIEF core)
-- BLACK-BOX: HTTP traffic observations (belief_http_engine.py)
+- BLACK-BOX/OFFLINE: recorded HTTP traffic observations such as HAR files
 - SUPPLY CHAIN: dependencies + CVE matches (safety_db, scfw)
 - HAR/BURP: recorded web sessions for later analysis
 - RUNTIME: observed program executions (future work)
@@ -15,6 +15,9 @@ black-box, but the sextuplet shape is preserved).
 This lets the orchestrator treat every input uniformly: scan a project,
 replay a HAR file, or correlate runtime traces — same downstream pipeline
 (cross-verify, Z3, drift, graph, report).
+
+The public repository keeps HAR parsing offline and does not ship an active
+live network scanner entrypoint.
 """
 from __future__ import annotations
 

@@ -1,12 +1,11 @@
 """
 black_box_source — BeliefSource that derives beliefs from HTTP observations.
 
-Two modes:
-1. HAR replay: feed a .har file, no network needed
-2. Live scan: wrap belief_http_engine.BeliefHttpEngine (existing)
+Current public mode:
+1. HAR replay: feed a .har file, no network needed.
 
-Both produce the same Belief sextuplets so downstream (cross-verify,
-drift, report) treats them identically to white-box beliefs.
+This produces Belief sextuplets so downstream (cross-verify, drift, report)
+treats recorded HTTP observations consistently with white-box beliefs.
 """
 from __future__ import annotations
 

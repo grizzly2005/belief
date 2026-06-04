@@ -1,6 +1,7 @@
 # BELIEF v4
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![CI](https://github.com/grizzly2005/belief/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Status](https://img.shields.io/badge/status-experimental-orange)
 ![Security](https://img.shields.io/badge/focus-white--box%20security-red)
@@ -51,6 +52,44 @@ flowchart LR
     E --> F[Z3 Checks]
     F --> G[AuditCase]
     G --> H[JSON / SARIF / Markdown]
+```
+
+## Architecture At A Glance
+
+```mermaid
+flowchart TB
+    subgraph Inputs
+        SRC[Python source tree]
+        SARIF[SARIF findings]
+        HAR[Offline HAR observations]
+        RULES[Bundled rule assets]
+    end
+
+    subgraph BELIEF Core
+        PARSER[CodeParser]
+        PATTERNS[Security patterns]
+        HYP[Hypothesis engine]
+        FLOW[Lightweight dataflow]
+        GUAR[Guarantee index]
+        LOGIC[Logic IR]
+        Z3[Optional Z3 backend]
+        AUDIT[AuditCase builder]
+    end
+
+    subgraph Outputs
+        JSON[JSON report]
+        SARIF_OUT[SARIF report]
+        MD[Markdown audit]
+    end
+
+    SRC --> PARSER
+    SARIF --> PATTERNS
+    HAR --> PATTERNS
+    RULES --> PATTERNS
+    PARSER --> PATTERNS --> HYP --> FLOW --> GUAR --> LOGIC --> Z3 --> AUDIT
+    AUDIT --> JSON
+    AUDIT --> SARIF_OUT
+    AUDIT --> MD
 ```
 
 ---
@@ -275,7 +314,12 @@ BELIEF is not an exploit generator.
 
 BELIEF does not perform network attacks.
 
-Any future bridge or scanner integration should remain local, authorized, explicit, and documented.
+The public repository intentionally excludes active black-box network scanner
+entrypoints. Offline HAR/session parsing remains available for local,
+permissioned analysis without touching live third-party systems.
+
+Any future bridge or scanner integration should remain local, authorized,
+explicit, opt-in, and documented.
 
 Do not use BELIEF against systems or codebases where you do not have permission to perform security review.
 
@@ -333,7 +377,6 @@ Planned directions include:
 - optional bridges for Semgrep, CodeQL, Bandit, and other scanners;
 - more real-world benchmark documentation;
 - improved documentation and demo assets;
-- GitHub Actions CI;
 - cleaner public examples and tutorials.
 
 ---
@@ -382,14 +425,17 @@ tests_bridges/
 benchmark_cve/
   Benchmark-style vulnerable samples used for validation.
 
-belief_http_engine.py
-  Legacy/experimental HTTP engine module kept at repository root.
-
 belief_knowledge_base.py
   Legacy/experimental knowledge-base module kept at repository root.
 
-belief_network_scanner.py
-  Legacy/experimental network-scanner module kept at repository root.
+BUNDLED_ASSETS.md
+  Inventory and publication notes for bundled assets.
+
+SECURITY.md
+  Public security policy and responsible-use guidance.
+
+.github/workflows/ci.yml
+  GitHub Actions smoke and regression workflow.
 
 README.md
   Main public project documentation.
