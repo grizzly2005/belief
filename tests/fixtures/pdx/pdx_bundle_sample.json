@@ -1,0 +1,74 @@
+{
+  "schema_version": "belief.pdx.v1",
+  "tool_id": "pdx",
+  "meta": {
+    "format_version": 1,
+    "source_file_name": "synthetic-pdx.json",
+    "target_fingerprint": "example.test",
+    "tech_stack": [
+      "flask"
+    ],
+    "provenance_chain": [
+      "unit-test"
+    ]
+  },
+  "deltas": [
+    {
+      "id": "delta-auth-1",
+      "spec_ref": "spec-auth",
+      "delta_type": "AUTH_BYPASS",
+      "category": "access_control",
+      "description": "Authorization bypass candidate on account route",
+      "expected": "owner scoped lookup",
+      "observed": "lookup without owner predicate",
+      "vector": {
+        "severity": 0.8,
+        "confidence": 0.6,
+        "auth_relevance": 0.9,
+        "noise_level": 0.2
+      },
+      "file": "app.py",
+      "line": 12,
+      "route": "GET /accounts/<id>",
+      "evidence": [
+        "route reads account by id"
+      ],
+      "cwe": [
+        "CWE-862"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "delta_ref": "delta-auth-1",
+      "result": "VULNERABLE",
+      "tested": false,
+      "human_validated": false,
+      "method": "passive_review",
+      "reason": "No dynamic validation was performed.",
+      "weight": 0.6
+    }
+  ],
+  "chains": [
+    {
+      "chain_id": "chain-auth-1",
+      "delta_refs": [
+        "delta-auth-1"
+      ],
+      "combined_severity": 0.7,
+      "combined_exploitability": 0.4,
+      "description": "Review owner scoping before reporting.",
+      "fully_exploited": false
+    }
+  ],
+  "conflicts": [
+    {
+      "delta_ref": "delta-auth-1",
+      "divergence_score": 0.4,
+      "resolution": "HUMAN_REQUIRED",
+      "local_rationale": "Static evidence only.",
+      "opus_rationale": "Potential impact is user data exposure."
+    }
+  ],
+  "train_entries": []
+}

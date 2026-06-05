@@ -1296,6 +1296,113 @@ def cmd_tools(args):
     sys.exit(2)
 
 
+def cmd_pdx(args):
+    """Import/export BELIEF's JSON-only PDX adapter format."""
+    if args.pdx_command == "import":
+        from .importers.pdx import import_pdx_bundle
+        from .pdx.io import PDXSchemaError
+        from .tool_results.io import normalized_tool_result_to_dict, write_normalized_tool_result
+
+        try:
+            result = import_pdx_bundle(args.input)
+        except (OSError, PDXSchemaError) as exc:
+            safe_print(f"ERROR: failed to import PDX JSON: {exc}", file=sys.stderr)
+            sys.exit(2)
+        payload = normalized_tool_result_to_dict(result)
+        if getattr(args, "normalized_output", ""):
+            write_normalized_tool_result(result, args.normalized_output)
+            payload["normalized_output"] = str(args.normalized_output)
+        safe_print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+
+    if args.pdx_command == "export":
+        from .exporters.pdx import write_report_as_pdx
+
+        try:
+            bundle = write_report_as_pdx(args.input_report, args.pdx_output)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            safe_print(f"ERROR: failed to export PDX JSON: {exc}", file=sys.stderr)
+            sys.exit(2)
+        safe_print(json.dumps({
+            "schema_version": bundle.schema_version,
+            "pdx_output": str(args.pdx_output),
+            "deltas": len(bundle.deltas),
+            "verdicts": len(bundle.verdicts),
+        }, indent=2, sort_keys=True))
+        return
+
+    safe_print("ERROR: missing pdx subcommand", file=sys.stderr)
+    sys.exit(2)
+
+
+def cmd_feedback(args):
+    """Manage BELIEF's minimal append-only feedback store."""
+    from .feedback.models import FeedbackEvent
+    from .feedback.store import (
+        append_feedback_event,
+        load_feedback_events,
+        write_feedback_events,
+    )
+
+    if args.feedback_command == "add":
+        event = FeedbackEvent(
+            case_id=args.case_id,
+            verdict=args.verdict,
+            reason=args.reason,
+            source=args.source,
+        )
+        path = append_feedback_event(event, args.store_dir or None)
+        safe_print(json.dumps({
+            "event": event.to_dict(),
+            "store": str(path),
+        }, indent=2, sort_keys=True))
+        return
+
+    if args.feedback_command == "list":
+        events = load_feedback_events(args.store_dir or None)
+        if getattr(args, "case_id", ""):
+            events = [event for event in events if event.case_id == args.case_id]
+        safe_print(json.dumps([event.to_dict() for event in events], indent=2, sort_keys=True))
+        return
+
+    if args.feedback_command == "export":
+        events = load_feedback_events(args.store_dir or None)
+        write_feedback_events(events, args.output)
+        safe_print(json.dumps({
+            "output": str(args.output),
+            "events": len(events),
+        }, indent=2, sort_keys=True))
+        return
+
+    safe_print("ERROR: missing feedback subcommand", file=sys.stderr)
+    sys.exit(2)
+
+
+def cmd_dataset(args):
+    """Export deterministic local datasets from BELIEF reports."""
+    if args.dataset_command == "export":
+        from .datasets.sft import export_sft_dataset_from_audit_report
+
+        if args.format != "sft":
+            safe_print("ERROR: Pass 1 only supports --format sft", file=sys.stderr)
+            sys.exit(2)
+        try:
+            rows = export_sft_dataset_from_audit_report(args.from_audit, args.output)
+        except (OSError, json.JSONDecodeError) as exc:
+            safe_print(f"ERROR: failed to export dataset: {exc}", file=sys.stderr)
+            sys.exit(2)
+        safe_print(json.dumps({
+            "schema_version": "belief.sft.v1",
+            "format": "sft",
+            "output": str(args.output),
+            "rows": len(rows),
+        }, indent=2, sort_keys=True))
+        return
+
+    safe_print("ERROR: missing dataset subcommand", file=sys.stderr)
+    sys.exit(2)
+
+
 def main():
     parser = SafeArgumentParser(
         prog="belief",
@@ -1543,6 +1650,50 @@ def main():
         help="Write normalized BELIEF tool-result JSON",
     )
 
+    # pdx
+    p_pdx = sub.add_parser("pdx", help="Import/export JSON-only PDX data")
+    pdx_sub = p_pdx.add_subparsers(dest="pdx_command", parser_class=SafeArgumentParser)
+
+    p_pdx_import = pdx_sub.add_parser("import", help="Import a PDX JSON bundle as normalized BELIEF tool results")
+    p_pdx_import.add_argument("input", help="Path to belief.pdx.v1 JSON bundle")
+    p_pdx_import.add_argument(
+        "--normalized-output",
+        default="",
+        help="Write normalized BELIEF tool-result JSON",
+    )
+
+    p_pdx_export = pdx_sub.add_parser("export", help="Export a BELIEF report/audit JSON as PDX JSON")
+    p_pdx_export.add_argument("input_report", help="Path to BELIEF scan/audit JSON")
+    p_pdx_export.add_argument("--pdx-output", required=True, help="Output PDX JSON path")
+
+    # feedback
+    p_feedback = sub.add_parser("feedback", help="Manage append-only BELIEF feedback JSONL")
+    feedback_sub = p_feedback.add_subparsers(dest="feedback_command", parser_class=SafeArgumentParser)
+
+    p_feedback_add = feedback_sub.add_parser("add", help="Append one feedback event")
+    p_feedback_add.add_argument("--store-dir", default="", help="Feedback directory (default: ./belief_feedback)")
+    p_feedback_add.add_argument("--case-id", required=True, help="Audit case id")
+    p_feedback_add.add_argument("--verdict", required=True, help="Human verdict, e.g. false_positive or valid")
+    p_feedback_add.add_argument("--reason", required=True, help="Short human-readable reason")
+    p_feedback_add.add_argument("--source", default="human", help="Feedback source label")
+
+    p_feedback_list = feedback_sub.add_parser("list", help="List feedback events")
+    p_feedback_list.add_argument("--store-dir", default="", help="Feedback directory (default: ./belief_feedback)")
+    p_feedback_list.add_argument("--case-id", default="", help="Optional case id filter")
+
+    p_feedback_export = feedback_sub.add_parser("export", help="Export feedback JSONL")
+    p_feedback_export.add_argument("--store-dir", default="", help="Feedback directory (default: ./belief_feedback)")
+    p_feedback_export.add_argument("--output", required=True, help="Output JSONL path")
+
+    # dataset
+    p_dataset = sub.add_parser("dataset", help="Export deterministic local datasets")
+    dataset_sub = p_dataset.add_subparsers(dest="dataset_command", parser_class=SafeArgumentParser)
+
+    p_dataset_export = dataset_sub.add_parser("export", help="Export a minimal SFT dataset from a BELIEF audit report")
+    p_dataset_export.add_argument("--from-audit", required=True, help="Input BELIEF audit/report JSON")
+    p_dataset_export.add_argument("--format", default="sft", choices=["sft"], help="Dataset format")
+    p_dataset_export.add_argument("--output", required=True, help="Output JSONL path")
+
     args = parser.parse_args()
 
     commands = {
@@ -1557,6 +1708,9 @@ def main():
         "report": cmd_report,
         "cognitive": cmd_cognitive,
         "tools": cmd_tools,
+        "pdx": cmd_pdx,
+        "feedback": cmd_feedback,
+        "dataset": cmd_dataset,
     }
 
     handler = commands.get(args.command)

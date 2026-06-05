@@ -95,6 +95,18 @@ python -m belief tools import codeql --file out/codeql.sarif
 python -m belief tools import zap --file out/zap.json
 ```
 
+PDX has a dedicated JSON-only adapter because it carries deltas, verdicts,
+chains, and conflicts:
+
+```bash
+python -m belief pdx import tests/fixtures/pdx/pdx_bundle_sample.json \
+  --normalized-output out/pdx.belief-tools.json
+```
+
+The adapter is passive and does not import binary PDX, HYDRA runtime code,
+personas, lures, UI, browser automation, API engines, or real sessions. Details
+are documented in `docs/PDX_BELIEF_INTEGRATION.md`.
+
 To persist BELIEF's normalized bridge format, add `--normalized-output`:
 
 ```bash

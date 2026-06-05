@@ -92,6 +92,21 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
         score += 15
         positive.append("high-impact CWE/category")
 
+    validation_results = _validation_results(metadata)
+    for result in validation_results:
+        outcome = str(result.get("outcome") or "").lower()
+        tested = bool(result.get("tested"))
+        human_validated = bool(result.get("human_validated"))
+        if outcome == "bypassed" and (tested or human_validated):
+            score += 20
+            positive.append("validated bypass evidence present")
+        elif outcome == "validated_candidate" and (tested or human_validated):
+            score += 10
+            positive.append("human validation candidate present")
+        elif outcome == "inconclusive" and _positive_validation_evidence(result):
+            score += 5
+            positive.append("positive validation evidence remains inconclusive")
+
     strong_guard = _strong_guard(case, metadata)
     contradictory_evidence = bool(case.missing_guarantees or metadata.get("missing_guards"))
     if strong_guard:
@@ -112,6 +127,16 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
     if str(case.severity or "").lower() in {"low", "info"}:
         score -= 10
         negative.append("severity is low/info")
+    for result in validation_results:
+        outcome = str(result.get("outcome") or "").lower()
+        tested = bool(result.get("tested"))
+        human_validated = bool(result.get("human_validated"))
+        if outcome == "enforced" and (tested or human_validated):
+            score -= 25
+            negative.append("validation indicates guard enforced")
+        elif outcome == "false_positive" and (tested or human_validated):
+            score -= 35
+            negative.append("validation marked false positive")
 
     if not case.route_context and not metadata.get("route") and not metadata.get("path"):
         missing_evidence.append("affected route or endpoint")
@@ -248,6 +273,27 @@ def _high_impact(text: str) -> bool:
 
 def _as_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else ([] if value in (None, "") else [value])
+
+
+def _validation_results(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    values: list[Any] = []
+    direct = metadata.get("validation_results")
+    if isinstance(direct, list):
+        values.extend(direct)
+    external_raw = metadata.get("external_raw")
+    if isinstance(external_raw, dict):
+        nested = external_raw.get("validation_results")
+        if isinstance(nested, list):
+            values.extend(nested)
+        pdx = external_raw.get("pdx")
+        if isinstance(pdx, dict) and isinstance(pdx.get("validation_results"), list):
+            values.extend(pdx["validation_results"])
+    return [item for item in values if isinstance(item, dict)]
+
+
+def _positive_validation_evidence(result: dict[str, Any]) -> bool:
+    metadata = result.get("metadata")
+    return isinstance(metadata, dict) and metadata.get("positive_evidence") is True
 
 
 def _dedupe(values: Iterable[Any]) -> list[str]:

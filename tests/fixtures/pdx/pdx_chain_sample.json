@@ -1,0 +1,8 @@
+{
+  "chain_id": "chain-demo",
+  "delta_refs": ["delta-auth-1", "delta-ssrf-1"],
+  "combined_severity": 0.6,
+  "combined_exploitability": 0.3,
+  "description": "Two passive findings require review.",
+  "fully_exploited": false
+}

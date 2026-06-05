@@ -1,0 +1,8 @@
+{
+  "delta_ref": "delta-auth-1",
+  "opus_vector": {"severity": 0.8},
+  "local_vector": {"severity": 0.3},
+  "divergence_score": 0.5,
+  "resolution": "HUMAN_REQUIRED",
+  "resolution_reason": "Static-only disagreement."
+}

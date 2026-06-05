@@ -15,6 +15,31 @@ BELIEF is not an exploit generator. It is a local reasoning and triage layer int
 
 ---
 
+## PDX JSON Adapter
+
+BELIEF can passively import JSON-only PDX bundles as normalized tool results:
+
+```bash
+python -m belief pdx import tests/fixtures/pdx/pdx_bundle_sample.json \
+  --normalized-output out/pdx.belief-tools.json
+```
+
+Those normalized results can then be fed into audit/reportability mode:
+
+```bash
+python -m belief scan ./app \
+  --import-tool-results out/pdx.belief-tools.json \
+  --reportability \
+  --json-output out/audit.json
+```
+
+This adapter is deliberately offline and conservative. It does not import
+binary PDX, HYDRA runtime code, UI, browser automation, gcloud sync, API engines,
+personas, lures, or real sessions. See
+[`docs/PDX_BELIEF_INTEGRATION.md`](docs/PDX_BELIEF_INTEGRATION.md).
+
+---
+
 ## What It Does
 
 BELIEF's current review path is:

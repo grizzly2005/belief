@@ -1,0 +1,42 @@
+{
+  "schema_version": "belief.audit.v1",
+  "audit_cases": [
+    {
+      "case_id": "case-auth-1",
+      "case_type": "idor_bola_possible",
+      "status": "needs_review",
+      "review_priority": "high",
+      "confidence": 0.71,
+      "severity": "high",
+      "file": "app.py",
+      "line": 12,
+      "rule_id": "PDX_AUTH_BYPASS",
+      "cwe": "CWE-862",
+      "source": "GET /accounts/<id>",
+      "sink": "Account.query.get",
+      "dataflow_path": [
+        "request:id",
+        "Account.query.get"
+      ],
+      "human_next_steps": [
+        "Confirm owner scoping in authorized local scope."
+      ],
+      "reason": "Imported candidate still needs authorized validation.",
+      "metadata": {
+        "reportability": {
+          "score": 65,
+          "verdict": "needs_manual_validation",
+          "positive_factors": [
+            "external finding present"
+          ],
+          "negative_factors": [
+            "weak generic static-only signal"
+          ],
+          "missing_evidence": [
+            "dynamic validation"
+          ]
+        }
+      }
+    }
+  ]
+}

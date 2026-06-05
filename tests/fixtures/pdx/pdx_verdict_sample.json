@@ -1,0 +1,9 @@
+{
+  "delta_ref": "delta-auth-1",
+  "result": "VULNERABLE",
+  "tested": true,
+  "human_validated": false,
+  "method": "authorized local replay",
+  "reason": "Guard bypass reproduced in a local fixture.",
+  "weight": 0.8
+}

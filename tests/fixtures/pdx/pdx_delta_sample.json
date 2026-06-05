@@ -1,0 +1,11 @@
+{
+  "id": "delta-ssrf-1",
+  "delta_type": "SSRF",
+  "description": "SSRF candidate from untrusted URL",
+  "expected": "host allowlist",
+  "observed": "direct outbound request",
+  "vector": [0.7, 0.6, 0.4],
+  "file": "views.py",
+  "line": 21,
+  "cwe": ["CWE-918"]
+}
