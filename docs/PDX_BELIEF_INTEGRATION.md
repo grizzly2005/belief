@@ -14,6 +14,8 @@ Implemented in this pass:
 - PDX import/export CLI commands.
 - Minimal append-only feedback JSONL store.
 - Minimal deterministic SFT JSONL export from BELIEF audit reports.
+- Offline deterministic reasoning over audit cases.
+- Minimal deterministic SFT quality validation.
 
 Out of scope:
 
@@ -22,6 +24,7 @@ Out of scope:
 - HYDRA SSH honeypot, virtual filesystem, personas, lures, UI, gcloud sync,
   browser automation, API engines, or real sessions;
 - CPT, ReAct, RAFT, or LLM calls.
+- WebChat, network calls, active validation, or scanning.
 
 ## PDX JSON Bundle
 
@@ -111,6 +114,29 @@ Default directory:
 
 Use `--store-dir` to override it in tests or local experiments.
 
+Apply feedback to an audit report by exact `case_id`:
+
+```bash
+python -m belief feedback apply \
+  --audit out/audit.json \
+  --store-dir ./belief_feedback \
+  --output out/audit.feedback.json
+```
+
+Feedback application is deterministic and metadata-only:
+
+- feedback only matches exact `case_id`;
+- no global suppression;
+- no fuzzy matching;
+- no ML or RAG;
+- no LLM calls;
+- no evidence deletion.
+
+Matched feedback is attached under `case.metadata.feedback_events`.
+The conservative adjustment is attached under
+`case.metadata.feedback_adjustment`. Reasoning consumes embedded feedback
+events when running over the adjusted audit report.
+
 ## SFT Export
 
 Minimal SFT export is deterministic and offline:
@@ -125,3 +151,45 @@ python -m belief dataset export \
 The exporter does not emit chain-of-thought, payload recipes, secrets, real
 tokens, or active exploit instructions.
 
+Validate generated SFT JSONL:
+
+```bash
+python -m belief dataset validate --input out/belief.sft.jsonl
+```
+
+The validator returns JSON with `passed`, `score`, and `issues`.
+
+## Offline Reasoning
+
+Run deterministic local reasoning over BELIEF audit cases:
+
+```bash
+python -m belief reason \
+  --audit out/audit.json \
+  --engine offline \
+  --output out/reasoned.json
+```
+
+The offline engine uses existing reportability metadata, validation results,
+missing evidence, and any feedback events already embedded in an audit case.
+It does not call LLM APIs, model servers, browsers, WebChat, HYDRA runtime, PDX
+runtime, or network services.
+
+User-facing recommendations are limited to conservative review language:
+
+- `keep`
+- `lower_confidence`
+- `needs_manual_validation`
+- `likely_false_positive`
+- `protected_by_guard`
+- `request_more_evidence`
+
+Responses include `rationale_summary` only. They do not include chain-of-thought
+or hidden reasoning traces.
+
+## Documentation Schemas
+
+Minimal JSON Schema files live under `schemas/`. They document the current JSON
+shapes for PDX bundles, validation results, feedback events, SFT rows, and
+reasoning responses. They are not enforced at runtime and do not add a
+`jsonschema` dependency.

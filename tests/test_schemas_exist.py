@@ -1,0 +1,21 @@
+import json
+from pathlib import Path
+
+
+SCHEMAS = [
+    "belief-pdx-v1.schema.json",
+    "belief-validation-result-v1.schema.json",
+    "belief-feedback-v1.schema.json",
+    "belief-sft-v1.schema.json",
+    "belief-reasoning-v1.schema.json",
+]
+
+
+def test_minimal_schema_files_exist_and_are_valid_json():
+    root = Path(__file__).resolve().parents[1] / "schemas"
+    for name in SCHEMAS:
+        path = root / name
+        assert path.exists(), name
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+        assert payload["type"] == "object"

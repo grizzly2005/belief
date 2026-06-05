@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.test/belief/schemas/belief-feedback-v1.schema.json",
+  "title": "BELIEF FeedbackEvent v1",
+  "type": "object",
+  "required": ["schema_version", "event_id", "case_id", "verdict", "reason", "source", "created_at"],
+  "properties": {
+    "schema_version": {"const": "belief.feedback.v1"},
+    "event_id": {"type": "string"},
+    "case_id": {"type": "string"},
+    "verdict": {"type": "string"},
+    "reason": {"type": "string"},
+    "source": {"type": "string"},
+    "created_at": {"type": "string"},
+    "metadata": {"type": "object"}
+  },
+  "additionalProperties": true
+}

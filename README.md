@@ -38,6 +38,38 @@ binary PDX, HYDRA runtime code, UI, browser automation, gcloud sync, API engines
 personas, lures, or real sessions. See
 [`docs/PDX_BELIEF_INTEGRATION.md`](docs/PDX_BELIEF_INTEGRATION.md).
 
+Offline reasoning and dataset quality checks are also available:
+
+```bash
+python -m belief reason \
+  --audit out/audit.json \
+  --engine offline \
+  --output out/reasoned.json
+
+python -m belief dataset validate --input out/belief.sft.jsonl
+```
+
+The reasoning engine is deterministic and local. It does not call LLM APIs,
+model servers, browsers, or network services.
+
+Feedback can be applied to audit JSON by exact `case_id` only:
+
+```bash
+python -m belief feedback apply \
+  --audit out/audit.json \
+  --store-dir ./belief_feedback \
+  --output out/audit.feedback.json
+```
+
+A typical offline review loop is:
+
+```bash
+python -m belief dataset export --from-audit out/audit.json --format sft --output out/belief.sft.jsonl
+python -m belief dataset validate --input out/belief.sft.jsonl
+python -m belief reason --audit out/audit.json --engine offline --output out/reasoned.json
+python -m belief feedback apply --audit out/audit.json --store-dir ./belief_feedback --output out/audit.feedback.json
+```
+
 ---
 
 ## What It Does

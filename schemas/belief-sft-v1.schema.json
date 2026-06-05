@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.test/belief/schemas/belief-sft-v1.schema.json",
+  "title": "BELIEF SFT JSONL Row v1",
+  "type": "object",
+  "required": ["messages", "metadata"],
+  "properties": {
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "content"],
+        "properties": {
+          "role": {"type": "string", "enum": ["system", "user", "assistant"]},
+          "content": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["schema_version", "case_id"],
+      "properties": {
+        "schema_version": {"const": "belief.sft.v1"},
+        "source": {"type": "string"},
+        "case_id": {"type": "string"},
+        "case_type": {"type": "string"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

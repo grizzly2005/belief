@@ -41,6 +41,12 @@ def export_sft_dataset_from_audit_report(
 def _case_to_sft_row(case: dict[str, Any]) -> dict[str, Any]:
     metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
     reportability = metadata.get("reportability") if isinstance(metadata.get("reportability"), dict) else {}
+    reasoning = metadata.get("reasoning") if isinstance(metadata.get("reasoning"), dict) else {}
+    feedback_adjustment = (
+        metadata.get("feedback_adjustment")
+        if isinstance(metadata.get("feedback_adjustment"), dict)
+        else {}
+    )
     user_content = "\n".join([
         f"case_type: {case.get('case_type') or ''}",
         f"severity: {case.get('severity') or ''}",
@@ -57,6 +63,8 @@ def _case_to_sft_row(case: dict[str, Any]) -> dict[str, Any]:
         "positive_factors: " + ", ".join(str(item) for item in reportability.get("positive_factors") or []),
         "negative_factors: " + ", ".join(str(item) for item in reportability.get("negative_factors") or []),
         "next_step: " + _first(case.get("human_next_steps") or reportability.get("validation_steps") or []),
+        *_optional_reasoning_lines(reasoning),
+        *_optional_feedback_lines(feedback_adjustment),
     ]).strip()
     return {
         "messages": [
@@ -82,6 +90,25 @@ def _first(values: Any) -> str:
     if isinstance(values, tuple) and values:
         return str(values[0])
     return ""
+
+
+def _optional_reasoning_lines(reasoning: dict[str, Any]) -> list[str]:
+    lines = []
+    recommendation = str(reasoning.get("recommendation") or "").strip()
+    rationale_summary = str(reasoning.get("rationale_summary") or "").strip()
+    if recommendation:
+        lines.append(f"reasoning_recommendation: {recommendation}")
+    if rationale_summary:
+        lines.append(f"rationale_summary: {rationale_summary}")
+    return lines
+
+
+def _optional_feedback_lines(adjustment: dict[str, Any]) -> list[str]:
+    recommendation = str(adjustment.get("recommendation") or "").strip()
+    effect = str(adjustment.get("reportability_effect") or "").strip()
+    if not recommendation and not effect:
+        return []
+    return [f"feedback_adjustment_summary: recommendation={recommendation or 'none'} effect={effect or 'none'}"]
 
 
 __all__ = [

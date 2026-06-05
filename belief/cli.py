@@ -1374,6 +1374,32 @@ def cmd_feedback(args):
         }, indent=2, sort_keys=True))
         return
 
+    if args.feedback_command == "apply":
+        from .feedback.apply import apply_feedback_to_audit_report
+
+        try:
+            audit = json.loads(Path(args.audit).read_text(encoding="utf-8"))
+            events = load_feedback_events(args.store_dir or None)
+            adjusted = apply_feedback_to_audit_report(audit, events)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            safe_print(f"ERROR: failed to apply feedback: {exc}", file=sys.stderr)
+            sys.exit(2)
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(adjusted, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        summary = adjusted.get("feedback_application") if isinstance(adjusted, dict) else {}
+        safe_print(json.dumps({
+            "schema_version": "belief.feedback_application.v1",
+            "output": str(output),
+            "audit_cases": len(adjusted.get("audit_cases", [])),
+            "feedback_events": len(events),
+            "matched_cases": int((summary or {}).get("matched_cases", 0)),
+        }, indent=2, sort_keys=True))
+        return
+
     safe_print("ERROR: missing feedback subcommand", file=sys.stderr)
     sys.exit(2)
 
@@ -1399,8 +1425,46 @@ def cmd_dataset(args):
         }, indent=2, sort_keys=True))
         return
 
+    if args.dataset_command == "validate":
+        from .datasets.quality import validate_sft_jsonl
+
+        try:
+            result = validate_sft_jsonl(args.input)
+        except (OSError, ValueError) as exc:
+            safe_print(f"ERROR: failed to validate dataset: {exc}", file=sys.stderr)
+            sys.exit(2)
+        safe_print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+        sys.exit(0 if result.passed else 1)
+
     safe_print("ERROR: missing dataset subcommand", file=sys.stderr)
     sys.exit(2)
+
+
+def cmd_reason(args):
+    """Run deterministic offline reasoning over BELIEF audit cases."""
+    from .reasoning.router import reason_audit_report
+
+    if args.engine != "offline":
+        safe_print("ERROR: Subpass 2A only supports --engine offline", file=sys.stderr)
+        sys.exit(2)
+    try:
+        report = json.loads(Path(args.audit).read_text(encoding="utf-8"))
+        payload = reason_audit_report(report, engine=args.engine)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        safe_print(f"ERROR: failed to reason over audit report: {exc}", file=sys.stderr)
+        sys.exit(2)
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    safe_print(json.dumps({
+        "schema_version": payload["schema_version"],
+        "engine": payload["engine"],
+        "output": str(output),
+        "responses": payload["counts"]["responses"],
+    }, indent=2, sort_keys=True))
 
 
 def main():
@@ -1615,6 +1679,12 @@ def main():
     p_cognitive.add_argument("--no-llm", action="store_true",
                              help="Skip LLM extraction (bridges + memory only)")
 
+    # reason
+    p_reason = sub.add_parser("reason", help="Run deterministic offline reasoning over audit JSON")
+    p_reason.add_argument("--audit", required=True, help="Input BELIEF audit/report JSON")
+    p_reason.add_argument("--engine", default="offline", choices=["offline"], help="Reasoning engine")
+    p_reason.add_argument("--output", required=True, help="Output reasoned audit JSON")
+
     # tools
     p_tools = sub.add_parser("tools", help="List, check, run, and import tool bridge results")
     tools_sub = p_tools.add_subparsers(dest="tools_command", parser_class=SafeArgumentParser)
@@ -1685,6 +1755,11 @@ def main():
     p_feedback_export.add_argument("--store-dir", default="", help="Feedback directory (default: ./belief_feedback)")
     p_feedback_export.add_argument("--output", required=True, help="Output JSONL path")
 
+    p_feedback_apply = feedback_sub.add_parser("apply", help="Apply exact-case feedback to an audit JSON")
+    p_feedback_apply.add_argument("--audit", required=True, help="Input BELIEF audit/report JSON")
+    p_feedback_apply.add_argument("--store-dir", default="", help="Feedback directory (default: ./belief_feedback)")
+    p_feedback_apply.add_argument("--output", required=True, help="Adjusted audit JSON output path")
+
     # dataset
     p_dataset = sub.add_parser("dataset", help="Export deterministic local datasets")
     dataset_sub = p_dataset.add_subparsers(dest="dataset_command", parser_class=SafeArgumentParser)
@@ -1693,6 +1768,9 @@ def main():
     p_dataset_export.add_argument("--from-audit", required=True, help="Input BELIEF audit/report JSON")
     p_dataset_export.add_argument("--format", default="sft", choices=["sft"], help="Dataset format")
     p_dataset_export.add_argument("--output", required=True, help="Output JSONL path")
+
+    p_dataset_validate = dataset_sub.add_parser("validate", help="Validate minimal SFT JSONL quality")
+    p_dataset_validate.add_argument("--input", required=True, help="Input SFT JSONL path")
 
     args = parser.parse_args()
 
@@ -1707,6 +1785,7 @@ def main():
         "frontier": cmd_frontier,
         "report": cmd_report,
         "cognitive": cmd_cognitive,
+        "reason": cmd_reason,
         "tools": cmd_tools,
         "pdx": cmd_pdx,
         "feedback": cmd_feedback,

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.test/belief/schemas/belief-pdx-v1.schema.json",
+  "title": "BELIEF PDX JSON Bundle v1",
+  "type": "object",
+  "required": ["schema_version", "tool_id", "deltas"],
+  "properties": {
+    "schema_version": {"const": "belief.pdx.v1"},
+    "tool_id": {"const": "pdx"},
+    "meta": {"type": "object"},
+    "deltas": {"type": "array", "items": {"type": "object"}},
+    "verdicts": {"type": "array", "items": {"type": "object"}},
+    "chains": {"type": "array", "items": {"type": "object"}},
+    "conflicts": {"type": "array", "items": {"type": "object"}},
+    "train_entries": {"type": "array", "items": {"type": "object"}}
+  },
+  "additionalProperties": true
+}
