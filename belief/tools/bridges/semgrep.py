@@ -62,15 +62,30 @@ class SemgrepBridge(ManifestBridge):
     def normalize(self, execution: ToolExecution) -> NormalizedToolResult:
         if execution.skipped:
             return NormalizedToolResult(tool_id=self.tool_id, warnings=[execution.skip_reason or "skipped"])
+        warnings = []
+        if execution.returncode != 0:
+            warnings.append(f"semgrep exited with returncode {execution.returncode}")
         try:
             payload = json.loads(execution.stdout or "{}")
         except json.JSONDecodeError as exc:
-            return NormalizedToolResult(tool_id=self.tool_id, warnings=[f"invalid Semgrep JSON: {exc}"])
+            return NormalizedToolResult(
+                tool_id=self.tool_id,
+                warnings=[*warnings, f"invalid Semgrep JSON: {exc}"],
+                artifacts=list(execution.artifacts),
+                raw={
+                    "returncode": execution.returncode,
+                    "stderr_excerpt": execution.stderr[:1000],
+                },
+            )
         return NormalizedToolResult(
             tool_id=self.tool_id,
             findings=semgrep_payload_to_findings(payload),
             artifacts=list(execution.artifacts),
-            raw={"returncode": execution.returncode},
+            warnings=warnings,
+            raw={
+                "returncode": execution.returncode,
+                "stderr_excerpt": execution.stderr[:1000] if execution.returncode != 0 else "",
+            },
         )
 
 

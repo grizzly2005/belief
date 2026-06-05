@@ -33,6 +33,22 @@ in repository files, test fixtures, bridge manifests, or recipe exports. Recipes
 must use placeholders and require operators to supply credentials outside the
 repo.
 
+## Reportability and Bug Bounty Drafts
+
+BELIEF reportability scoring is a triage aid, not a vulnerability confirmation.
+Imported static findings, SARIF results, access observations, and attack-path
+recipes must be treated as candidates until a human validates them in an
+authorized test scope.
+
+`--bug-bounty-markdown` generates a local draft for review. It is not an
+auto-submission workflow, it does not include exploit payloads, and it should
+not contain cookies, bearer tokens, auth headers, API keys, session secrets, or
+live credentials.
+
+Dynamic validation, request replay, or live target testing must happen only
+where the operator has explicit authorization and must stay within the stated
+scope.
+
 ## Reporting a Vulnerability
 
 Please report issues through GitHub security advisories or a private maintainer

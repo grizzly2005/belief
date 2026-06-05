@@ -95,6 +95,105 @@ python -m belief tools import codeql --file out/codeql.sarif
 python -m belief tools import zap --file out/zap.json
 ```
 
+To persist BELIEF's normalized bridge format, add `--normalized-output`:
+
+```bash
+python -m belief tools import semgrep \
+  --file out/semgrep.json \
+  --normalized-output out/semgrep.belief-tools.json
+```
+
+The stable JSON schema is:
+
+```json
+{
+  "schema_version": "belief.tools.v1",
+  "tool_id": "semgrep",
+  "findings": [],
+  "access_observations": [],
+  "attack_paths": [],
+  "warnings": [],
+  "artifacts": [],
+  "raw": {}
+}
+```
+
+The writer redacts auth headers, cookies, bearer tokens, API keys, passwords,
+and other token-shaped values before writing JSON. Optional arrays may be
+omitted by producers and are treated as empty on import.
+
+## Imported Results in Audit Reports
+
+Normalized files can be imported into `scan`:
+
+```bash
+python -m belief scan ./app \
+  --import-tool-results out/semgrep.belief-tools.json \
+  --audit-mode \
+  --json-output out/audit.json
+```
+
+Multiple files are supported by repeating `--import-tool-results`. BELIEF maps:
+
+- `ExternalFinding` to a stable `Finding` and a candidate `AuditCase`;
+- `AccessObservation` to an IDOR/BOLA-style candidate or protected case;
+- `AttackPath` to a workflow validation candidate.
+
+Imported audit cases preserve provenance in `AuditCase.metadata.provenance`.
+Near-duplicate cases are merged conservatively by normalized category, file,
+route, nearby line bucket, and object/sink. Merged cases keep all source tools,
+validation steps, evidence snippets, and original provenance.
+
+## Reportability
+
+Reportability is opt-in:
+
+```bash
+python -m belief scan ./app \
+  --import-tool-results out/semgrep.belief-tools.json \
+  --reportability \
+  --json-output out/audit-reportability.json
+```
+
+The assessment is attached under `AuditCase.metadata.reportability` and uses
+these verdicts:
+
+- `reportable_candidate`
+- `needs_manual_validation`
+- `weak_signal`
+- `likely_false_positive`
+- `protected_by_guard`
+
+Positive factors include agreement across tools, CodeQL/SARIF code-flow
+evidence, route context, access observations, attack paths, missing owner or
+tenant guards, state mutation, sensitive objects, validation steps, and
+high-impact CWE/category. Negative factors include strong guards, admin-only
+guards for admin actions, test/generated/vendor paths, weak static-only
+signals, missing route/source-to-sink evidence, and low/info severity.
+
+Filtering options:
+
+```bash
+python -m belief scan ./app \
+  --import-tool-results out/all-tools.json \
+  --reportability \
+  --min-reportability-score 50 \
+  --only-reportable \
+  --json-output out/reportable.json
+```
+
+Bug-bounty-style Markdown drafts are available with:
+
+```bash
+python -m belief scan ./app \
+  --import-tool-results out/all-tools.json \
+  --reportability \
+  --bug-bounty-markdown out/bug-bounty-candidates.md
+```
+
+This output is a candidate draft only. It avoids exploit payloads and reminds
+the reviewer that manual validation in authorized scope is required.
+
 ### External CLI
 
 Use external CLI mode only for local tools with safe defaults.
@@ -103,6 +202,16 @@ Example:
 
 ```bash
 python -m belief tools run semgrep --target ./app --output-dir out/tools
+```
+
+Direct runs can also emit normalized JSON when the bridge supports
+normalization:
+
+```bash
+python -m belief tools run semgrep \
+  --target ./app \
+  --output-dir out/tools \
+  --normalized-output out/semgrep.belief-tools.json
 ```
 
 External commands must be invoked as lists with `shell=False`.

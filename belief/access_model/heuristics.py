@@ -27,7 +27,11 @@ SENSITIVE_OBJECTS = {
 }
 
 
-def infer_access_hypotheses_from_source_tree(target: Path) -> list[AccessHypothesis]:
+def infer_access_hypotheses_from_source_tree(
+    target: Path,
+    *,
+    include_protected: bool = False,
+) -> list[AccessHypothesis]:
     root = Path(target)
     files = [root] if root.is_file() else sorted(root.rglob("*.py"))
     hypotheses: list[AccessHypothesis] = []
@@ -41,7 +45,12 @@ def infer_access_hypotheses_from_source_tree(target: Path) -> list[AccessHypothe
             continue
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                hypothesis = _function_hypothesis(node, source, str(path))
+                hypothesis = _function_hypothesis(
+                    node,
+                    source,
+                    str(path),
+                    include_protected=include_protected,
+                )
                 if hypothesis:
                     hypotheses.append(hypothesis)
     return sorted(hypotheses, key=lambda item: (item.route or "", item.title))
@@ -51,6 +60,8 @@ def _function_hypothesis(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     source: str,
     file_path: str,
+    *,
+    include_protected: bool = False,
 ) -> AccessHypothesis | None:
     names = _names(node)
     object_id = _object_id(node, names)
@@ -61,7 +72,7 @@ def _function_hypothesis(
         return None
     guards = _guards(node, source, file_path)
     strong_guards = [guard for guard in guards if guard.strength == "strong"]
-    if strong_guards:
+    if strong_guards and not include_protected:
         return None
 
     detected = guards
@@ -72,10 +83,15 @@ def _function_hypothesis(
         owner_field="owner_id" if "owner" in names else None,
         tenant_field="tenant_id" if "tenant_id" in names else None,
     )
-    missing = ["owner_or_tenant_scoped_lookup"]
-    if any(guard.strength == "weak" for guard in guards):
+    protected = bool(strong_guards)
+    missing = [] if protected else ["owner_or_tenant_scoped_lookup"]
+    if not protected and any(guard.strength == "weak" for guard in guards):
         missing.append("authorization_beyond_login")
-    title = f"Candidate object authorization gap on {route}"
+    title = (
+        f"Likely protected object authorization on {route}"
+        if protected
+        else f"Candidate object authorization gap on {route}"
+    )
     return AccessHypothesis(
         title=title,
         actor=_actor(names),

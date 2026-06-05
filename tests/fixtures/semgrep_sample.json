@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "check_id": "python.flask.xss",
+      "path": "app.py",
+      "start": {"line": 7, "col": 12},
+      "end": {"line": 7, "col": 24},
+      "extra": {
+        "message": "Candidate XSS: user value reaches render_template",
+        "severity": "WARNING",
+        "metadata": {
+          "confidence": "medium",
+          "cwe": ["CWE-79"]
+        }
+      }
+    }
+  ]
+}

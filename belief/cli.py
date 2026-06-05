@@ -14,7 +14,7 @@ import json
 import logging
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Optional, Set
 
@@ -269,6 +269,8 @@ def cmd_scan(args):
     invariant_beliefs = []
     source_contexts: dict[str, str] = {}
     dataflow_summaries = {}
+    imported_tool_results = []
+    imported_audit_cases = []
 
     for f in files:
         try:
@@ -316,6 +318,18 @@ def cmd_scan(args):
     elif "cycles" in selected_categories and selected_categories != SCAN_CATEGORY_SET:
         safe_print(
             "  Cycle analysis not enabled; use --include-cycles to populate cycle findings."
+        )
+
+    if getattr(args, "import_tool_results", None):
+        (
+            imported_tool_results,
+            imported_findings,
+            imported_audit_cases,
+        ) = _load_imported_tool_results(args)
+        total["security"] += len(imported_findings)
+        scan_records.extend(
+            ScanRecord("security", _with_scan_category(finding, "security"))
+            for finding in imported_findings
         )
 
     if dataflow_enabled:
@@ -373,6 +387,10 @@ def cmd_scan(args):
                 routes,
                 source_contexts=source_contexts,
             )
+        if imported_audit_cases:
+            from .tool_results.merger import merge_audit_cases
+
+            audit_cases = merge_audit_cases([*audit_cases, *imported_audit_cases])
         guarantee_summary = summarize_guarantees(invariant_beliefs)
         if getattr(args, "dedup_audit_cases", False):
             from .audit_dedup import cluster_audit_cases, cluster_to_dict
@@ -382,6 +400,8 @@ def cmd_scan(args):
             audit_case_clusters_payload = [
                 cluster_to_dict(cluster) for cluster in audit_case_clusters
             ]
+        if _scan_reportability_enabled(args):
+            audit_cases = _apply_reportability(args, audit_cases)
 
     if getattr(args, "show_routes", False):
         _print_routes_summary(routes, top=int(args.top))
@@ -658,10 +678,12 @@ def _scan_filters_active(args) -> bool:
     return (
         getattr(args, "only", "all") != "all"
         or float(getattr(args, "min_confidence", 0.0) or 0.0) > 0.0
+        or int(getattr(args, "min_reportability_score", 0) or 0) > 0
         or bool(getattr(args, "hide_structural", False))
         or int(getattr(args, "top", 15) or 15) != 15
         or getattr(args, "only_hypotheses", "all") != "all"
         or bool(getattr(args, "interesting_only", False))
+        or bool(getattr(args, "only_reportable", False))
     )
 
 
@@ -690,6 +712,8 @@ def _scan_audit_cases_enabled(args) -> bool:
     return (
         bool(getattr(args, "audit_mode", False))
         or bool(getattr(args, "interesting_only", False))
+        or bool(getattr(args, "import_tool_results", None))
+        or _scan_reportability_enabled(args)
         or _scan_audit_outputs_enabled(args)
         or (
             bool(getattr(args, "json_output", ""))
@@ -702,6 +726,7 @@ def _scan_audit_outputs_enabled(args) -> bool:
     return (
         bool(getattr(args, "sarif_output", ""))
         or bool(getattr(args, "audit_markdown", ""))
+        or bool(getattr(args, "bug_bounty_markdown", ""))
         or bool(getattr(args, "dedup_audit_cases", False))
     )
 
@@ -712,6 +737,61 @@ def _scan_routes_enabled(args) -> bool:
         or bool(getattr(args, "show_routes", False))
         or bool(getattr(args, "routes_json", ""))
     )
+
+
+def _scan_reportability_enabled(args) -> bool:
+    return (
+        bool(getattr(args, "reportability", False))
+        or bool(getattr(args, "bug_bounty_markdown", ""))
+        or bool(getattr(args, "only_reportable", False))
+        or int(getattr(args, "min_reportability_score", 0) or 0) > 0
+    )
+
+
+def _load_imported_tool_results(args) -> tuple[list[Any], list[Any], list[Any]]:
+    from .tool_results.io import read_many_normalized_tool_results
+    from .tool_results.mapper import normalized_result_to_audit_cases, normalized_result_to_findings
+    from .tool_results.models import ToolResultSchemaError
+
+    paths = [Path(path) for path in (getattr(args, "import_tool_results", None) or [])]
+    try:
+        results = read_many_normalized_tool_results(paths)
+    except (OSError, ToolResultSchemaError) as exc:
+        safe_print(f"ERROR: failed to import normalized tool results: {exc}", file=sys.stderr)
+        sys.exit(2)
+    findings = []
+    audit_cases = []
+    for result in results:
+        findings.extend(normalized_result_to_findings(result))
+        audit_cases.extend(normalized_result_to_audit_cases(result))
+    return results, findings, audit_cases
+
+
+def _apply_reportability(args, audit_cases: list[Any]) -> list[Any]:
+    from .reportability.scoring import attach_reportability_to_cases
+
+    cases = attach_reportability_to_cases(audit_cases)
+    min_score = int(getattr(args, "min_reportability_score", 0) or 0)
+    if min_score:
+        cases = [
+            case for case in cases
+            if _case_reportability(case).get("score", 0) >= min_score
+        ]
+    if bool(getattr(args, "only_reportable", False)):
+        allowed = {"reportable_candidate", "needs_manual_validation"}
+        cases = [
+            case for case in cases
+            if _case_reportability(case).get("verdict") in allowed
+        ]
+    return cases
+
+
+def _case_reportability(case: Any) -> dict[str, Any]:
+    metadata = getattr(case, "metadata", None)
+    if not isinstance(metadata, dict):
+        return {}
+    reportability = metadata.get("reportability")
+    return reportability if isinstance(reportability, dict) else {}
 
 
 def _scan_json_payload(
@@ -756,6 +836,10 @@ def _scan_json_payload(
             "interesting_only": bool(getattr(args, "interesting_only", False)),
             "dedup_audit_cases": bool(getattr(args, "dedup_audit_cases", False)),
             "routes": bool(_scan_routes_enabled(args)),
+            "import_tool_results": [str(path) for path in (getattr(args, "import_tool_results", None) or [])],
+            "reportability": bool(_scan_reportability_enabled(args)),
+            "min_reportability_score": int(getattr(args, "min_reportability_score", 0) or 0),
+            "only_reportable": bool(getattr(args, "only_reportable", False)),
         },
         "counts": {
             "total_before_filter": len(before_records),
@@ -765,6 +849,7 @@ def _scan_json_payload(
             "audit_cases": _audit_case_counts(audit_cases),
             "audit_case_clusters": len(audit_case_clusters),
             "routes": len(routes),
+            "reportability": _reportability_counts(audit_cases),
         },
         "findings": [
             _scan_record_to_dict(record)
@@ -928,11 +1013,36 @@ def _write_scan_side_outputs(
         )
         safe_print(f"\nAudit Markdown saved to: {args.audit_markdown}")
 
+    if getattr(args, "bug_bounty_markdown", ""):
+        from .exporters.bug_bounty_markdown import write_bug_bounty_markdown
+
+        write_bug_bounty_markdown(
+            audit_cases,
+            args.bug_bounty_markdown,
+            str(target),
+        )
+        safe_print(f"\nBug bounty candidate Markdown saved to: {args.bug_bounty_markdown}")
+
 
 def _audit_case_counts(audit_cases: list[Any]) -> dict[str, int]:
     counts = {status: 0 for status in ("actionable", "needs_review", "protected", "false_positive_likely")}
     for case in audit_cases:
         counts[case.status] = counts.get(case.status, 0) + 1
+    return counts
+
+
+def _reportability_counts(audit_cases: list[Any]) -> dict[str, int]:
+    counts = {
+        "reportable_candidate": 0,
+        "needs_manual_validation": 0,
+        "weak_signal": 0,
+        "likely_false_positive": 0,
+        "protected_by_guard": 0,
+    }
+    for case in audit_cases:
+        verdict = _case_reportability(case).get("verdict")
+        if verdict in counts:
+            counts[verdict] += 1
     return counts
 
 
@@ -1105,6 +1215,7 @@ def cmd_tools(args):
     from .tools import ToolInput, ToolRegistry, ToolRunner
     from .tools.errors import ToolSafetyError
     from .tools.schemas import to_jsonable
+    from .tool_results.io import write_normalized_tool_result
 
     registry = ToolRegistry.with_builtin_bridges()
 
@@ -1160,6 +1271,10 @@ def cmd_tools(args):
             safe_print(f"ERROR: {exc}", file=sys.stderr)
             sys.exit(2)
         payload = to_jsonable(execution)
+        if getattr(args, "normalized_output", ""):
+            normalized = bridge.normalize(execution)
+            write_normalized_tool_result(normalized, args.normalized_output)
+            payload["normalized_output"] = str(args.normalized_output)
         safe_print(json.dumps(payload, indent=2, sort_keys=True))
         return
 
@@ -1171,6 +1286,9 @@ def cmd_tools(args):
             sys.exit(2)
         result = importer(Path(args.file))
         payload = to_jsonable(result)
+        if getattr(args, "normalized_output", ""):
+            write_normalized_tool_result(result, args.normalized_output)
+            payload["normalized_output"] = str(args.normalized_output)
         safe_print(json.dumps(payload, indent=2, sort_keys=True))
         return
 
@@ -1234,6 +1352,33 @@ def main():
         "--audit-markdown",
         default="",
         help="Write a concise Markdown audit report for audit cases",
+    )
+    p_scan.add_argument(
+        "--import-tool-results",
+        action="append",
+        default=[],
+        help="Import a BELIEF normalized tool-result JSON file (repeatable)",
+    )
+    p_scan.add_argument(
+        "--reportability",
+        action="store_true",
+        help="Attach reportability assessment metadata to audit cases",
+    )
+    p_scan.add_argument(
+        "--min-reportability-score",
+        type=int,
+        default=0,
+        help="Filter audit cases below this reportability score",
+    )
+    p_scan.add_argument(
+        "--only-reportable",
+        action="store_true",
+        help="Keep only reportable_candidate and needs_manual_validation cases",
+    )
+    p_scan.add_argument(
+        "--bug-bounty-markdown",
+        default="",
+        help="Write a bug-bounty-style candidate Markdown draft",
     )
     p_scan.add_argument(
         "--include-protected-in-report",
@@ -1383,10 +1528,20 @@ def main():
     p_tools_run.add_argument("--allow-dynamic", action="store_true", help="Allow dynamic tool behavior")
     p_tools_run.add_argument("--allow-network", action="store_true", help="Allow network-capable tool behavior")
     p_tools_run.add_argument("--scope-file", default="", help="Explicit scope file required for dynamic tools")
+    p_tools_run.add_argument(
+        "--normalized-output",
+        default="",
+        help="Write normalized BELIEF tool-result JSON after running the bridge",
+    )
 
     p_tools_import = tools_sub.add_parser("import", help="Import an existing passive tool result")
     p_tools_import.add_argument("tool_id", help="Tool bridge id")
     p_tools_import.add_argument("--file", required=True, help="JSON/SARIF file to import")
+    p_tools_import.add_argument(
+        "--normalized-output",
+        default="",
+        help="Write normalized BELIEF tool-result JSON",
+    )
 
     args = parser.parse_args()
 

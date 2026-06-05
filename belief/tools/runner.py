@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -46,6 +47,11 @@ def run_external_command(
         text=True,
         encoding="utf-8",
         errors="replace",
+        env={
+            **os.environ,
+            "PYTHONUTF8": "1",
+            "PYTHONIOENCODING": "utf-8",
+        },
     )
     return ToolExecution(
         tool_id=tool_id,

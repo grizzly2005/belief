@@ -52,6 +52,7 @@ def audit_case_to_sarif_result(case: AuditCase) -> dict:
             "related_finding_fingerprint": case.related_finding_fingerprint,
             "reason": case.reason,
             "route_context": dict(case.route_context),
+            "metadata": dict(case.metadata),
         },
     }
     return result

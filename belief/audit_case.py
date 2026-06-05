@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Iterable
 
 from .dataflow import DataFlowPath, DataFlowSummary
-from .models import Belief, Finding
+from .models import Belief, Finding, _json_safe
 
 
 AUDIT_SCHEMA_VERSION = "belief.audit.v1"
@@ -46,6 +46,7 @@ class AuditCase:
     related_finding_fingerprint: str = ""
     reason: str = ""
     route_context: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         data = {
@@ -73,6 +74,8 @@ class AuditCase:
         }
         if self.route_context:
             data["route_context"] = dict(self.route_context)
+        if self.metadata:
+            data["metadata"] = _json_safe(self.metadata)
         return data
 
 

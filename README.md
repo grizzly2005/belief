@@ -242,6 +242,32 @@ wordlists, Dradis Markdown, Faraday JSON, and simple threat-model export.
 
 See `docs/TOOL_BRIDGES.md` for architecture and extension notes.
 
+### Imported Tool Results and Reportability
+
+BELIEF can persist bridge output as stable normalized JSON, import one or more
+of those files during `scan`, convert the signals into audit cases, and attach
+conservative reportability assessments.
+
+```bash
+python -m belief tools import semgrep \
+  --file out/semgrep.json \
+  --normalized-output out/semgrep.belief-tools.json
+
+python -m belief scan ./app \
+  --import-tool-results out/semgrep.belief-tools.json \
+  --reportability \
+  --json-output out/audit.json
+
+python -m belief scan ./app \
+  --import-tool-results out/semgrep.belief-tools.json \
+  --reportability \
+  --bug-bounty-markdown out/bug-bounty-candidates.md
+```
+
+Reportability output uses candidate language. Static/imported evidence is not a
+confirmed vulnerability; the generated validation steps are a safe manual review
+plan for authorized scope.
+
 ---
 
 ## Output Formats
