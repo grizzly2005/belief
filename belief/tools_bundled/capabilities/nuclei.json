@@ -1,0 +1,21 @@
+{
+  "tool_id": "nuclei",
+  "name": "Nuclei",
+  "category": "dast",
+  "input_types": ["url", "json"],
+  "output_formats": ["json"],
+  "languages": [],
+  "capabilities": ["active_scan"],
+  "requires_network": true,
+  "requires_dynamic": true,
+  "requires_scope": true,
+  "can_run_local": false,
+  "can_import_only": true,
+  "risk_level": "high",
+  "default_timeout_seconds": 300,
+  "profiles": ["bug-bounty-passive", "authorized-dynamic"],
+  "run_command_template": [],
+  "import_format": "nuclei_json",
+  "normalized_output_name": "nuclei.belief-tools.json",
+  "safety_notes": ["Import-only in this pass; active execution denied by default."]
+}

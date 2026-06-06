@@ -1,0 +1,7 @@
+{
+  "profile_id": "appsec-local",
+  "name": "AppSec Local",
+  "description": "Local code, dependency, IaC, and passive artifact import profile.",
+  "tools": ["belief", "semgrep", "bandit", "gitleaks", "trufflehog", "pip_audit", "osv_scanner", "checkov", "trivy", "codeql", "joern", "openapi", "har", "burp"],
+  "safety_notes": ["CodeQL and Joern are optional and skipped if unavailable."]
+}

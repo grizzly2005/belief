@@ -1,0 +1,12 @@
+[
+  {
+    "template-id": "example-test",
+    "matched-at": "https://app.example.test/",
+    "matcher-name": "synthetic",
+    "info": {
+      "name": "Synthetic imported nuclei result",
+      "severity": "info",
+      "description": "Imported output only."
+    }
+  }
+]

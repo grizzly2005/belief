@@ -1,0 +1,7 @@
+{
+  "profile_id": "local-safe",
+  "name": "Local Safe",
+  "description": "Passive and local static tools only. Missing tools are skipped.",
+  "tools": ["belief", "semgrep", "bandit", "gitleaks", "trufflehog", "pip_audit", "osv_scanner", "checkov", "trivy"],
+  "safety_notes": ["No network or dynamic scanning by default."]
+}

@@ -1,0 +1,21 @@
+{
+  "tool_id": "burp",
+  "name": "Burp Suite export",
+  "category": "traffic",
+  "input_types": ["burp_xml"],
+  "output_formats": ["xml"],
+  "languages": [],
+  "capabilities": ["passive_import"],
+  "requires_network": false,
+  "requires_dynamic": false,
+  "requires_scope": false,
+  "can_run_local": false,
+  "can_import_only": true,
+  "risk_level": "low",
+  "default_timeout_seconds": 120,
+  "profiles": ["appsec-local", "bug-bounty-passive"],
+  "run_command_template": [],
+  "import_format": "burp_xml",
+  "normalized_output_name": "burp.belief-tools.json",
+  "safety_notes": ["Passive XML import only."]
+}

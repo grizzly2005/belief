@@ -1,0 +1,21 @@
+{
+  "tool_id": "gitleaks",
+  "name": "Gitleaks",
+  "category": "secrets",
+  "input_types": ["local_path"],
+  "output_formats": ["json"],
+  "languages": [],
+  "capabilities": ["secret_detection"],
+  "requires_network": false,
+  "requires_dynamic": false,
+  "requires_scope": false,
+  "can_run_local": true,
+  "can_import_only": true,
+  "risk_level": "low",
+  "default_timeout_seconds": 180,
+  "profiles": ["local-safe", "appsec-local"],
+  "run_command_template": ["gitleaks", "detect", "--source", "{target}", "--report-format", "json", "--report-path", "{raw_output}"],
+  "import_format": "gitleaks_json",
+  "normalized_output_name": "gitleaks.belief-tools.json",
+  "safety_notes": ["Secret values must be redacted."]
+}

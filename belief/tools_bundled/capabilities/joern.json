@@ -1,0 +1,21 @@
+{
+  "tool_id": "joern",
+  "name": "Joern",
+  "category": "static",
+  "input_types": ["local_path"],
+  "output_formats": ["json"],
+  "languages": ["java", "javascript", "typescript", "php"],
+  "capabilities": ["static_analysis", "container"],
+  "requires_network": false,
+  "requires_dynamic": false,
+  "requires_scope": false,
+  "can_run_local": false,
+  "can_import_only": false,
+  "risk_level": "medium",
+  "default_timeout_seconds": 300,
+  "profiles": ["appsec-local"],
+  "run_command_template": [],
+  "import_format": null,
+  "normalized_output_name": null,
+  "safety_notes": ["Container/deep integration not enabled in this pass."]
+}

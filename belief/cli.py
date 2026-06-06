@@ -1167,6 +1167,141 @@ def cmd_benchmark(args):
         print(suite.engine_comparison())
 
 
+def cmd_scope(args):
+    """Validate BELIEF scope JSON."""
+    if args.scope_command == "validate":
+        from .scope import load_scope
+
+        try:
+            scope = load_scope(args.file)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            safe_print(json.dumps({"passed": False, "error": str(exc)}, indent=2, sort_keys=True), file=sys.stderr)
+            sys.exit(2)
+        payload = scope.to_dict()
+        payload["passed"] = True
+        safe_print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    safe_print("ERROR: missing scope subcommand", file=sys.stderr)
+    sys.exit(2)
+
+
+def cmd_target(args):
+    """Classify local/URL/API/traffic targets."""
+    if args.target_command == "classify":
+        from .targeting import classify_target
+
+        profile = classify_target(args.target)
+        payload = profile.to_dict()
+        if getattr(args, "json_output", ""):
+            output = Path(args.json_output)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        safe_print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    safe_print("ERROR: missing target subcommand", file=sys.stderr)
+    sys.exit(2)
+
+
+def cmd_plan(args):
+    """Build a safe BELIEF run plan."""
+    from .orchestration.planner import build_run_plan, write_run_plan
+
+    try:
+        plan = build_run_plan(
+            args.target,
+            profile_id=args.profile,
+            flags=args.flags,
+            scope_file=args.scope or None,
+            output_dir=args.output_dir,
+            timeout_seconds=args.timeout,
+            budget=args.budget,
+        )
+    except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
+        safe_print(json.dumps({"error": str(exc)}, indent=2, sort_keys=True), file=sys.stderr)
+        sys.exit(2)
+    write_run_plan(plan, args.json_output)
+    safe_print(json.dumps({
+        "schema_version": plan.schema_version,
+        "output": str(args.json_output),
+        "selected_tools": len(plan.selected_tools),
+        "skipped_tools": len(plan.skipped_tools),
+        "commands": len(plan.commands),
+    }, indent=2, sort_keys=True))
+
+
+def cmd_execute_plan(args):
+    """Execute a BELIEF run plan with safe subprocess controls."""
+    from .orchestration.executor import execute_run_plan
+
+    try:
+        summary = execute_run_plan(args.plan)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        safe_print(json.dumps({"error": str(exc)}, indent=2, sort_keys=True), file=sys.stderr)
+        sys.exit(2)
+    safe_print(json.dumps({
+        "schema_version": summary["schema_version"],
+        "completed": len(summary["completed"]),
+        "skipped": len(summary["skipped"]),
+        "failed": len(summary["failed"]),
+        "unavailable": len(summary["unavailable"]),
+    }, indent=2, sort_keys=True))
+
+
+def cmd_run(args):
+    """Unified v1 orchestration: classify, plan, execute, and summarize."""
+    from .orchestration.executor import execute_run_plan
+    from .orchestration.planner import build_run_plan, write_run_plan
+    from .orchestration.run_manifest import write_run_manifest
+    from .targeting import classify_target
+
+    output_dir = Path(args.output_dir)
+    metadata = output_dir / "metadata"
+    metadata.mkdir(parents=True, exist_ok=True)
+    try:
+        target_profile = classify_target(args.target)
+        (metadata / "target-profile.json").write_text(
+            json.dumps(target_profile.to_dict(), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        plan = build_run_plan(
+            args.target,
+            profile_id=args.profile,
+            flags=args.flags,
+            scope_file=args.scope or None,
+            output_dir=args.output_dir,
+        )
+        plan_path = metadata / "run-plan.json"
+        write_run_plan(plan, plan_path)
+        (metadata / "scope-summary.json").write_text(
+            json.dumps(plan.to_dict()["scope_summary"], indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        execution = execute_run_plan(plan_path)
+        manifest = write_run_manifest(output_dir, {
+            "target": args.target,
+            "target_profile": target_profile.to_dict(),
+            "plan": plan_path.as_posix(),
+            "execution_summary": (metadata / "execution-summary.json").as_posix(),
+            "reportability_requested": bool(args.reportability),
+            "reason_requested": bool(args.reason),
+            "limitations": [
+                "Unified run v1 performs plan + execute + summary.",
+                "Scan/import merge is best-effort and remains local-only.",
+            ],
+        })
+    except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
+        safe_print(json.dumps({"error": str(exc)}, indent=2, sort_keys=True), file=sys.stderr)
+        sys.exit(2)
+    safe_print(json.dumps({
+        "schema_version": manifest["schema_version"],
+        "output_dir": output_dir.as_posix(),
+        "plan": plan_path.as_posix(),
+        "completed": len(execution["completed"]),
+        "failed": len(execution["failed"]),
+        "unavailable": len(execution["unavailable"]),
+    }, indent=2, sort_keys=True))
+
+
 def cmd_export(args):
     """Export a report in different formats."""
     from .models import AnalysisReport
@@ -1230,9 +1365,49 @@ def cmd_cognitive(args):
 def cmd_tools(args):
     """Manage passive/local external tool bridges."""
     from .tools import ToolInput, ToolRegistry, ToolRunner
+    from .tools.availability import availability_for_profile
     from .tools.errors import ToolSafetyError
+    from .tools.profiles import load_tool_profile, load_tool_profiles
     from .tools.schemas import to_jsonable
     from .tool_results.io import write_normalized_tool_result
+
+    if args.tools_command == "profile":
+        if args.profile_command == "list":
+            payload = {
+                "schema_version": "belief.tool_profiles.v1",
+                "profiles": [
+                    profile.to_dict()
+                    for profile in sorted(load_tool_profiles().values(), key=lambda item: item.profile_id)
+                ],
+            }
+            safe_print(json.dumps(payload, indent=2, sort_keys=True))
+            return
+        if args.profile_command == "show":
+            try:
+                profile = load_tool_profile(args.profile_id)
+            except KeyError as exc:
+                safe_print(json.dumps({"error": str(exc)}, indent=2, sort_keys=True), file=sys.stderr)
+                sys.exit(2)
+            safe_print(json.dumps(profile.to_dict(), indent=2, sort_keys=True))
+            return
+        safe_print("ERROR: missing tools profile subcommand", file=sys.stderr)
+        sys.exit(2)
+
+    if args.tools_command == "availability":
+        from .scope import load_scope
+
+        try:
+            scope = load_scope(args.scope) if getattr(args, "scope", "") else None
+            payload = availability_for_profile(args.profile, scope=scope, target=getattr(args, "target", ""))
+        except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
+            safe_print(json.dumps({"error": str(exc)}, indent=2, sort_keys=True), file=sys.stderr)
+            sys.exit(2)
+        if getattr(args, "json_output", ""):
+            output = Path(args.json_output)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        safe_print(json.dumps(payload, indent=2, sort_keys=True))
+        return
 
     registry = ToolRegistry.with_builtin_bridges()
 
@@ -1296,12 +1471,7 @@ def cmd_tools(args):
         return
 
     if args.tools_command == "import":
-        bridge = registry.get(args.tool_id)
-        importer = getattr(bridge, "import_file", None)
-        if importer is None:
-            safe_print(f"ERROR: {args.tool_id} does not implement passive import.", file=sys.stderr)
-            sys.exit(2)
-        result = importer(Path(args.file))
+        result = _import_passive_tool_result(args.tool_id, args.file, registry)
         payload = to_jsonable(result)
         if getattr(args, "normalized_output", ""):
             write_normalized_tool_result(result, args.normalized_output)
@@ -1311,6 +1481,49 @@ def cmd_tools(args):
 
     safe_print("ERROR: missing tools subcommand", file=sys.stderr)
     sys.exit(2)
+
+
+def _import_passive_tool_result(tool_id: str, path: str | Path, registry=None):
+    """Import passive tool output, including v1 importer-pack tools."""
+    key = str(tool_id).strip().lower().replace("-", "_")
+    if key == "bandit":
+        from .importers.bandit_json import import_bandit_json
+
+        return import_bandit_json(path)
+    if key == "gitleaks":
+        from .importers.gitleaks_json import import_gitleaks_json
+
+        return import_gitleaks_json(path)
+    if key == "pip_audit":
+        from .importers.pip_audit_json import import_pip_audit_json
+
+        return import_pip_audit_json(path)
+    if key == "checkov":
+        from .importers.checkov_json import import_checkov_json
+
+        return import_checkov_json(path)
+    if key == "nuclei":
+        from .importers.nuclei_json import import_nuclei_json
+
+        return import_nuclei_json(path)
+    if key == "har":
+        from .importers.har import import_har
+
+        return import_har(path)
+    if key == "burp":
+        from .importers.burp_xml import import_burp_xml
+
+        return import_burp_xml(path)
+    if registry is None:
+        from .tools import ToolRegistry
+
+        registry = ToolRegistry.with_builtin_bridges()
+    bridge = registry.get(key)
+    importer = getattr(bridge, "import_file", None)
+    if importer is None:
+        safe_print(f"ERROR: {tool_id} does not implement passive import.", file=sys.stderr)
+        sys.exit(2)
+    return importer(Path(path))
 
 
 def cmd_pdx(args):
@@ -1491,6 +1704,19 @@ def main():
     )
     parser.add_argument("-v", "--verbose", action="store_true", default=True)
     sub = parser.add_subparsers(dest="command", parser_class=SafeArgumentParser)
+
+    # scope
+    p_scope = sub.add_parser("scope", help="Validate BELIEF scope policies")
+    scope_sub = p_scope.add_subparsers(dest="scope_command", parser_class=SafeArgumentParser)
+    p_scope_validate = scope_sub.add_parser("validate", help="Validate scope JSON")
+    p_scope_validate.add_argument("--file", required=True, help="Scope JSON file")
+
+    # target
+    p_target = sub.add_parser("target", help="Classify local targets and passive artifacts")
+    target_sub = p_target.add_subparsers(dest="target_command", parser_class=SafeArgumentParser)
+    p_target_classify = target_sub.add_parser("classify", help="Classify a target")
+    p_target_classify.add_argument("target", help="Path or URL target")
+    p_target_classify.add_argument("--json-output", default="", help="Write target profile JSON")
 
     # analyze (full LLM analysis)
     p_analyze = sub.add_parser("analyze", help="Full analysis with LLM (requires provider)")
@@ -1729,6 +1955,18 @@ def main():
 
     tools_sub.add_parser("check", help="Check bridge availability and risk profiles")
 
+    p_tools_profile = tools_sub.add_parser("profile", help="List or show orchestration tool profiles")
+    profile_sub = p_tools_profile.add_subparsers(dest="profile_command", parser_class=SafeArgumentParser)
+    profile_sub.add_parser("list", help="List tool profiles")
+    p_tools_profile_show = profile_sub.add_parser("show", help="Show one tool profile")
+    p_tools_profile_show.add_argument("profile_id", help="Profile id, e.g. local-safe")
+
+    p_tools_availability = tools_sub.add_parser("availability", help="Check optional tool availability")
+    p_tools_availability.add_argument("--profile", default="local-safe", help="Tool profile id")
+    p_tools_availability.add_argument("--target", default="", help="Optional target for scope decisions")
+    p_tools_availability.add_argument("--scope", default="", help="Optional scope JSON")
+    p_tools_availability.add_argument("--json-output", default="", help="Write availability JSON")
+
     p_tools_run = tools_sub.add_parser("run", help="Run a safe external bridge")
     p_tools_run.add_argument("tool_id", help="Tool bridge id")
     p_tools_run.add_argument("--target", default="", help="Local target path for external CLI bridges")
@@ -1805,10 +2043,35 @@ def main():
     p_dataset_validate = dataset_sub.add_parser("validate", help="Validate minimal SFT JSONL quality")
     p_dataset_validate.add_argument("--input", required=True, help="Input SFT JSONL path")
 
+    # plan / execute-plan / run
+    p_plan = sub.add_parser("plan", help="Build a safe BELIEF orchestration run plan")
+    p_plan.add_argument("target", help="Path or URL target")
+    p_plan.add_argument("--profile", default="local-safe", help="Tool profile id")
+    p_plan.add_argument("--flags", default="auto", help="Comma-separated planning flags")
+    p_plan.add_argument("--scope", default="", help="Optional scope JSON")
+    p_plan.add_argument("--output-dir", default="out/run", help="Run output directory")
+    p_plan.add_argument("--json-output", required=True, help="Run plan JSON output")
+    p_plan.add_argument("--timeout", type=int, default=None, help="Override tool timeout seconds")
+    p_plan.add_argument("--budget", default="balanced", choices=["fast", "balanced", "deep"], help="Planning budget")
+
+    p_execute_plan = sub.add_parser("execute-plan", help="Execute a BELIEF run plan safely")
+    p_execute_plan.add_argument("plan", help="Run plan JSON")
+
+    p_run = sub.add_parser("run", help="Classify, plan, execute, and summarize a local BELIEF run")
+    p_run.add_argument("target", help="Path or URL target")
+    p_run.add_argument("--profile", default="local-safe", help="Tool profile id")
+    p_run.add_argument("--flags", default="auto", help="Comma-separated planning flags")
+    p_run.add_argument("--scope", default="", help="Optional scope JSON")
+    p_run.add_argument("--output-dir", default="out/run", help="Run output directory")
+    p_run.add_argument("--reportability", action="store_true", help="Request reportability mode when scan integration is available")
+    p_run.add_argument("--reason", action="store_true", help="Request offline reasoning when audit JSON is available")
+
     args = parser.parse_args()
 
     commands = {
         "analyze": cmd_analyze,
+        "scope": cmd_scope,
+        "target": cmd_target,
         "scan": cmd_scan,
         "hunt": cmd_hunt,
         "self-check": cmd_self_check,
@@ -1820,6 +2083,9 @@ def main():
         "cognitive": cmd_cognitive,
         "reason": cmd_reason,
         "tools": cmd_tools,
+        "plan": cmd_plan,
+        "execute-plan": cmd_execute_plan,
+        "run": cmd_run,
         "pdx": cmd_pdx,
         "feedback": cmd_feedback,
         "dataset": cmd_dataset,

@@ -137,6 +137,34 @@ See [`benchmark_reportability/README.md`](benchmark_reportability/README.md).
 
 ---
 
+## Toolchain Manager / Orchestrator v1
+
+BELIEF can build a safe local run plan before executing anything:
+
+```bash
+python -m belief scope validate --file tests/fixtures/scope/local_safe_scope.json
+python -m belief target classify tests/fixtures/sample_app --json-output out/target-profile.json
+python -m belief tools profile list
+python -m belief tools profile show local-safe
+python -m belief tools availability --profile local-safe --json-output out/availability.json
+
+python -m belief plan tests/fixtures/sample_app \
+  --profile local-safe \
+  --flags auto \
+  --scope tests/fixtures/scope/local_safe_scope.json \
+  --output-dir out/run \
+  --json-output out/run/metadata/run-plan.json
+
+python -m belief execute-plan out/run/metadata/run-plan.json
+```
+
+The planner marks missing tools as unavailable instead of failing. Network and
+dynamic tools remain disabled unless explicit scope permits them. See
+[`docs/PDX_HYDRA_RECOVERY_PLAN.md`](docs/PDX_HYDRA_RECOVERY_PLAN.md) for the
+passive-only PDX/HYDRA recovery boundary.
+
+---
+
 ## What It Does
 
 BELIEF's current review path is:

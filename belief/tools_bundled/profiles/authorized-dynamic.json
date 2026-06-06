@@ -1,0 +1,7 @@
+{
+  "profile_id": "authorized-dynamic",
+  "name": "Authorized Dynamic",
+  "description": "Dynamic-capable tools listed for planning, denied unless scope explicitly permits.",
+  "tools": ["belief", "semgrep", "nuclei", "zap", "schemathesis", "restler", "httpx", "katana"],
+  "safety_notes": ["Requires explicit scope and network/dynamic permissions."]
+}

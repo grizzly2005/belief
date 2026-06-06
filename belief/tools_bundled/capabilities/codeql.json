@@ -1,0 +1,21 @@
+{
+  "tool_id": "codeql",
+  "name": "CodeQL",
+  "category": "static",
+  "input_types": ["sarif"],
+  "output_formats": ["sarif"],
+  "languages": ["python", "javascript", "typescript", "go", "java"],
+  "capabilities": ["static_analysis", "passive_import"],
+  "requires_network": false,
+  "requires_dynamic": false,
+  "requires_scope": false,
+  "can_run_local": true,
+  "can_import_only": true,
+  "risk_level": "medium",
+  "default_timeout_seconds": 300,
+  "profiles": ["appsec-local", "bug-bounty-passive"],
+  "run_command_template": ["codeql"],
+  "import_format": "sarif",
+  "normalized_output_name": "codeql.belief-tools.json",
+  "safety_notes": ["Optional; SARIF import is preferred in CI."]
+}

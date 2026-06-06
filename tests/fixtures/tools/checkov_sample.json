@@ -1,0 +1,15 @@
+{
+  "results": {
+    "failed_checks": [
+      {
+        "check_id": "CKV_TEST_1",
+        "check_name": "Synthetic IaC issue",
+        "file_path": "main.tf",
+        "file_line_range": [4, 8],
+        "resource": "aws_s3_bucket.demo",
+        "severity": "LOW",
+        "guideline": "Use a safe local benchmark fixture."
+      }
+    ]
+  }
+}

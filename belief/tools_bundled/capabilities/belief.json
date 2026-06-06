@@ -1,0 +1,21 @@
+{
+  "tool_id": "belief",
+  "name": "BELIEF local scan",
+  "category": "static",
+  "input_types": ["local_path"],
+  "output_formats": ["json"],
+  "languages": ["python"],
+  "capabilities": ["static_analysis", "reportability"],
+  "requires_network": false,
+  "requires_dynamic": false,
+  "requires_scope": false,
+  "can_run_local": true,
+  "can_import_only": false,
+  "risk_level": "low",
+  "default_timeout_seconds": 180,
+  "profiles": ["local-safe", "appsec-local", "bug-bounty-passive", "authorized-dynamic"],
+  "run_command_template": ["python", "-m", "belief", "scan", "{target}", "--json-output", "{raw_output}"],
+  "import_format": null,
+  "normalized_output_name": null,
+  "safety_notes": ["Local code scan only."]
+}

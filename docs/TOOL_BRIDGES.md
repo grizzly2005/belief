@@ -3,6 +3,18 @@
 BELIEF tool bridges normalize external security-tool outputs into BELIEF's
 review models without vendoring full upstream projects.
 
+BELIEF also includes an orchestration v1 layer for safe local planning:
+
+- `belief scope validate --file scope.json`
+- `belief target classify TARGET`
+- `belief tools profile list`
+- `belief tools availability --profile local-safe`
+- `belief plan TARGET --profile local-safe --flags auto`
+- `belief execute-plan out/run/metadata/run-plan.json`
+
+External tools remain optional. Missing tools are reported as unavailable and
+network/dynamic tooling is denied by default unless scope explicitly allows it.
+
 The bridge layer is intentionally conservative:
 
 - passive import first;

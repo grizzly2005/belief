@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<items>
+  <item>
+    <method>GET</method>
+    <url>https://app.example.test/api/accounts/1</url>
+    <request>GET /api/accounts/1 HTTP/1.1&#10;Authorization: Bearer secret</request>
+    <response>HTTP/1.1 200 OK&#10;Set-Cookie: session=secret</response>
+  </item>
+</items>

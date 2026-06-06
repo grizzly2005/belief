@@ -1,0 +1,22 @@
+{
+  "schema_version": "belief.scope.v1",
+  "name": "authorized-dynamic-placeholder",
+  "mode": "authorized-dynamic",
+  "include": ["https://app.example.test"],
+  "exclude": ["https://admin.example.test"],
+  "rules": {
+    "allow_network": true,
+    "allow_dynamic": true,
+    "allow_active_scan": false,
+    "allow_fuzzing": false,
+    "allow_auth_tests": false,
+    "max_requests_per_second": 1,
+    "timeout_seconds": 180
+  },
+  "redaction": {
+    "cookies": true,
+    "authorization": true,
+    "tokens": true,
+    "secrets": true
+  }
+}

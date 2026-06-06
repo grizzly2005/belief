@@ -1,0 +1,15 @@
+{
+  "dependencies": [
+    {
+      "name": "demo-package",
+      "version": "1.0.0",
+      "vulns": [
+        {
+          "id": "PYSEC-TEST-1",
+          "description": "Synthetic dependency advisory",
+          "fix_versions": ["1.0.1"]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "tool_id": "schemathesis",
+  "name": "Schemathesis",
+  "category": "dast",
+  "input_types": ["openapi", "url"],
+  "output_formats": ["json"],
+  "languages": [],
+  "capabilities": ["fuzzing", "active_scan"],
+  "requires_network": true,
+  "requires_dynamic": true,
+  "requires_scope": true,
+  "can_run_local": false,
+  "can_import_only": false,
+  "risk_level": "high",
+  "default_timeout_seconds": 300,
+  "profiles": ["authorized-dynamic"],
+  "run_command_template": [],
+  "import_format": null,
+  "normalized_output_name": null,
+  "safety_notes": ["Planned only; execution denied by default."]
+}

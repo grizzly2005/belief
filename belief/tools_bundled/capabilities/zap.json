@@ -1,0 +1,21 @@
+{
+  "tool_id": "zap",
+  "name": "OWASP ZAP",
+  "category": "dast",
+  "input_types": ["url", "json"],
+  "output_formats": ["json"],
+  "languages": [],
+  "capabilities": ["passive_import", "active_scan"],
+  "requires_network": true,
+  "requires_dynamic": true,
+  "requires_scope": true,
+  "can_run_local": false,
+  "can_import_only": true,
+  "risk_level": "high",
+  "default_timeout_seconds": 300,
+  "profiles": ["bug-bounty-passive", "authorized-dynamic"],
+  "run_command_template": [],
+  "import_format": "zap_json",
+  "normalized_output_name": "zap.belief-tools.json",
+  "safety_notes": ["Passive JSON import exists; execution denied by default."]
+}

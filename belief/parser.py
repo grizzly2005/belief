@@ -125,6 +125,7 @@ DEFAULT_EXCLUDE_DIRS = {
     "migrations",
     "node_modules",
     "security_rules",
+    "symbolic",
     "target_flaskjwt",
     "third_party",
     "tools_bundled",

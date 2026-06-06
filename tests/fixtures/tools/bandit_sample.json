@@ -1,0 +1,15 @@
+{
+  "results": [
+    {
+      "filename": "app.py",
+      "line_number": 7,
+      "test_id": "B307",
+      "test_name": "blacklist",
+      "issue_text": "Use of possibly insecure function",
+      "issue_severity": "MEDIUM",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {"id": 94},
+      "code": "eval(value)"
+    }
+  ]
+}

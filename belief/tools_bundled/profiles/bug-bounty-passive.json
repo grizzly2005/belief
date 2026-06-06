@@ -1,0 +1,7 @@
+{
+  "profile_id": "bug-bounty-passive",
+  "name": "Bug Bounty Passive",
+  "description": "Imported outputs and local code review only for authorized programs.",
+  "tools": ["belief", "semgrep", "codeql", "har", "burp", "openapi", "zap", "nuclei"],
+  "safety_notes": ["Dynamic tooling remains import-only unless explicit scope allows future execution."]
+}

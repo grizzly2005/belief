@@ -1,0 +1,21 @@
+{
+  "tool_id": "har",
+  "name": "HAR traffic export",
+  "category": "traffic",
+  "input_types": ["har"],
+  "output_formats": ["har"],
+  "languages": [],
+  "capabilities": ["passive_import"],
+  "requires_network": false,
+  "requires_dynamic": false,
+  "requires_scope": false,
+  "can_run_local": false,
+  "can_import_only": true,
+  "risk_level": "low",
+  "default_timeout_seconds": 120,
+  "profiles": ["appsec-local", "bug-bounty-passive"],
+  "run_command_template": [],
+  "import_format": "har",
+  "normalized_output_name": "har.belief-tools.json",
+  "safety_notes": ["Passive HAR import only; headers are redacted."]
+}
