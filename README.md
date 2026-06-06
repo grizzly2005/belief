@@ -7,11 +7,83 @@
 ![Security](https://img.shields.io/badge/focus-white--box%20security-red)
 ![Output](https://img.shields.io/badge/output-JSON%20%7C%20SARIF%20%7C%20Markdown-purple)
 
-BELIEF v4 is an experimental white-box security reasoning engine for Python code.
+BELIEF v4 is an experimental local reportability layer for AppSec, code review, and bug bounty triage.
 
-It is designed for local, authorized code review and research workflows where raw findings are not enough. BELIEF keeps a stable finding model, then adds hypothesis metadata, lightweight dataflow, mined guarantees, optional boolean Z3 checks, route context, and audit-oriented output formats.
+It turns scanner, PDX, and static-analysis signals into evidence-backed audit cases, conservative reasoning summaries, exact-case feedback, reportability benchmarks, and dataset-ready examples.
 
-BELIEF is not an exploit generator. It is a local reasoning and triage layer intended to help a human reviewer understand what is actionable, what is protected, what is likely noise, and what still needs manual validation.
+BELIEF does not replace Semgrep, CodeQL, Burp, or manual validation. It helps a human reviewer decide whether a signal is a reportable candidate, protected by guard, likely false positive, weak signal, or still needs manual validation.
+
+---
+
+## What BELIEF Is / Is Not
+
+### BELIEF Is
+
+- A local reportability layer for AppSec and bug bounty triage.
+- A bridge/orchestration layer for scanner, PDX, and static-analysis signals.
+- An audit case, reasoning, and exact-case feedback system.
+- A benchmarkable triage engine.
+- A safe offline dataset exporter.
+
+### BELIEF Is Not
+
+- Not an exploit generator.
+- Not an autonomous vulnerability scanner.
+- Not a bug bounty auto-submitter.
+- Not a replacement for Semgrep, CodeQL, Burp, or manual testing.
+- Not proof of confirmed vulnerability from static-only evidence.
+
+---
+
+## Why BELIEF?
+
+Security tools produce signals. Pentesters and AppSec teams need reportable evidence.
+
+BELIEF sits between noisy scanner output and human review. It preserves provenance, maps signals into audit cases, scores reportability conservatively, attaches exact-case feedback, runs deterministic offline reasoning, and turns reviewed cases into safe dataset examples.
+
+The project is deliberately conservative: static and imported evidence remains candidate evidence until manually validated in an authorized scope.
+
+---
+
+## Quick Offline Flow
+
+From the repository root:
+
+```bash
+mkdir -p out/demo
+
+python -m belief pdx import tests/fixtures/pdx/pdx_bundle_sample.json \
+  --normalized-output out/demo/pdx.belief-tools.json
+
+python -m belief scan tests/fixtures/sample_app \
+  --import-tool-results out/demo/pdx.belief-tools.json \
+  --reportability \
+  --json-output out/demo/audit.json
+
+python -m belief reason \
+  --audit out/demo/audit.json \
+  --engine offline \
+  --output out/demo/reasoned.json
+
+python -m belief feedback apply \
+  --audit out/demo/audit.json \
+  --store-dir ./belief_feedback \
+  --output out/demo/audit.feedback.json
+
+python -m belief dataset export \
+  --from-audit out/demo/audit.feedback.json \
+  --format sft \
+  --output out/demo/belief.sft.jsonl
+
+python -m belief dataset validate \
+  --input out/demo/belief.sft.jsonl
+
+python -m belief benchmark reportability \
+  --target benchmark_reportability \
+  --json-output out/demo/benchmark.json
+```
+
+This flow is local and deterministic. It does not call LLM APIs, model servers, browsers, network services, or external scanners. Static and imported evidence remains candidate evidence until manually validated in authorized scope.
 
 ---
 
@@ -33,28 +105,25 @@ python -m belief scan ./app \
   --json-output out/audit.json
 ```
 
-This adapter is deliberately offline and conservative. It does not import
-binary PDX, HYDRA runtime code, UI, browser automation, gcloud sync, API engines,
-personas, lures, or real sessions. See
-[`docs/PDX_BELIEF_INTEGRATION.md`](docs/PDX_BELIEF_INTEGRATION.md).
+This adapter is deliberately offline and conservative. It does not import binary PDX, HYDRA runtime code, UI, browser automation, gcloud sync, API engines, personas, lures, or real sessions.
 
-Offline reasoning and dataset quality checks are also available:
+Offline reasoning, feedback application, dataset export, dataset validation, and benchmarking are shown in the quick offline flow above. The PDX adapter itself only performs passive JSON import/export and normalization.
 
-```bash
-python -m belief reason \
-  --audit out/audit.json \
-  --engine offline \
-  --output out/reasoned.json
+See [`docs/PDX_BELIEF_INTEGRATION.md`](docs/PDX_BELIEF_INTEGRATION.md).
 
-python -m belief dataset validate --input out/belief.sft.jsonl
-```
+---
 
-The reasoning engine is deterministic and local. It does not call LLM APIs,
-model servers, browsers, or network services.
+## Reportability Benchmark
 
-An offline reportability benchmark MVP is available for deterministic local
-evaluation of reportable candidates, protected-by-guard cases, weak signals,
-and likely false-positive traps:
+`benchmark_reportability` is a deterministic offline benchmark for reportability triage. It contains synthetic local cases for:
+
+- IDOR/BOLA;
+- mass assignment;
+- path traversal;
+- protected-by-guard cases;
+- likely false-positive traps.
+
+Run:
 
 ```bash
 python -m belief benchmark reportability \
@@ -62,26 +131,9 @@ python -m belief benchmark reportability \
   --json-output out/benchmark.json
 ```
 
-The benchmark uses metadata ground truth. It does not run scanners, execute
-fixtures, call external tools, or prove real-world vulnerability discovery.
+The current benchmark mode is `metadata_ground_truth_mvp`. It evaluates expected and observed reportability labels deterministically. It does not run scanners, execute fixture files, call external tools, or prove real-world vulnerability discovery.
 
-Feedback can be applied to audit JSON by exact `case_id` only:
-
-```bash
-python -m belief feedback apply \
-  --audit out/audit.json \
-  --store-dir ./belief_feedback \
-  --output out/audit.feedback.json
-```
-
-A typical offline review loop is:
-
-```bash
-python -m belief dataset export --from-audit out/audit.json --format sft --output out/belief.sft.jsonl
-python -m belief dataset validate --input out/belief.sft.jsonl
-python -m belief reason --audit out/audit.json --engine offline --output out/reasoned.json
-python -m belief feedback apply --audit out/audit.json --store-dir ./belief_feedback --output out/audit.feedback.json
-```
+See [`benchmark_reportability/README.md`](benchmark_reportability/README.md).
 
 ---
 
@@ -90,24 +142,34 @@ python -m belief feedback apply --audit out/audit.json --store-dir ./belief_feed
 BELIEF's current review path is:
 
 ```text
-Finding -> Hypothesis -> Dataflow -> Guarantees -> Z3 -> AuditCase
+Scanner / PDX / static signal
+-> NormalizedToolResult
+-> Finding / Hypothesis
+-> Dataflow / Guarantees
+-> AuditCase
+-> ReportabilityAssessment
+-> Offline Reasoning
+-> Exact-case Feedback
+-> Dataset / Benchmark Output
 ```
 
 The goal is to help a reviewer understand why a finding may be:
 
-- actionable;
+- a reportable candidate;
 - protected by local guarantees;
 - likely false-positive context;
-- still in need of manual review.
+- weak signal;
+- still in need of manual validation.
 
 In practical terms, BELIEF tries to answer questions like:
 
-- What did the scanner find?
-- What vulnerability hypothesis does this finding imply?
-- Is there a source-to-sink dataflow?
+- What signal was imported or discovered?
+- What vulnerability hypothesis does it imply?
+- Is there source-to-sink or access-control evidence?
 - Does the code contain defensive guarantees?
-- Can a simple logical contradiction prove that a hypothesis is protected?
-- What should a human auditor review next?
+- Is the case protected, weak, likely false positive, or worth manual validation?
+- What evidence is still missing before a report can be made?
+- How should exact-case human feedback change future triage?
 
 ---
 
@@ -115,14 +177,17 @@ In practical terms, BELIEF tries to answer questions like:
 
 ```mermaid
 flowchart LR
-    A[Python Codebase] --> B[Findings]
-    B --> C[Hypotheses]
-    C --> D[Dataflow]
-    D --> E[Guarantees]
-    E --> F[Z3 Checks]
-    F --> G[AuditCase]
-    G --> H[JSON / SARIF / Markdown]
+    A[Python Codebase / Tool Output / PDX JSON] --> B[Normalized Signals]
+    B --> C[Findings and Hypotheses]
+    C --> D[Dataflow and Guarantees]
+    D --> E[AuditCase]
+    E --> F[ReportabilityAssessment]
+    F --> G[Offline Reasoning]
+    G --> H[Exact-case Feedback]
+    H --> I[JSON / SARIF / Markdown / SFT / Benchmark]
 ```
+
+---
 
 ## Architecture At A Glance
 
@@ -130,36 +195,53 @@ flowchart LR
 flowchart TB
     subgraph Inputs
         SRC[Python source tree]
-        SARIF[SARIF findings]
-        HAR[Offline HAR observations]
+        TOOL[Tool output / SARIF / JSON]
+        PDX[PDX JSON]
         RULES[Bundled rule assets]
     end
 
+    subgraph Normalization
+        BRIDGE[Tool bridges]
+        NTR[NormalizedToolResult]
+        PROV[Signal provenance]
+    end
+
     subgraph BELIEF Core
-        PARSER[CodeParser]
-        PATTERNS[Security patterns]
-        HYP[Hypothesis engine]
+        FIND[Finding]
+        HYP[Hypothesis]
         FLOW[Lightweight dataflow]
         GUAR[Guarantee index]
-        LOGIC[Logic IR]
-        Z3[Optional Z3 backend]
-        AUDIT[AuditCase builder]
+        AUDIT[AuditCase]
+        REPORT[ReportabilityAssessment]
+    end
+
+    subgraph Review Loop
+        REASON[Offline reasoning]
+        FEEDBACK[Exact-case feedback]
+        DATASET[SFT export]
+        QUALITY[Dataset validation]
+        BENCH[Reportability benchmark]
     end
 
     subgraph Outputs
-        JSON[JSON report]
-        SARIF_OUT[SARIF report]
-        MD[Markdown audit]
+        JSON[JSON]
+        SARIF[SARIF]
+        MD[Markdown]
+        SFT[JSONL dataset]
     end
 
-    SRC --> PARSER
-    SARIF --> PATTERNS
-    HAR --> PATTERNS
-    RULES --> PATTERNS
-    PARSER --> PATTERNS --> HYP --> FLOW --> GUAR --> LOGIC --> Z3 --> AUDIT
-    AUDIT --> JSON
-    AUDIT --> SARIF_OUT
-    AUDIT --> MD
+    SRC --> FIND
+    TOOL --> BRIDGE --> NTR --> FIND
+    PDX --> NTR
+    RULES --> FIND
+    FIND --> HYP --> FLOW --> GUAR --> AUDIT --> REPORT
+    REPORT --> REASON --> FEEDBACK --> AUDIT
+    REPORT --> JSON
+    REPORT --> SARIF
+    REPORT --> MD
+    FEEDBACK --> DATASET --> QUALITY
+    AUDIT --> BENCH
+    DATASET --> SFT
 ```
 
 ---
@@ -168,155 +250,81 @@ flowchart TB
 
 ### Finding
 
-A `Finding` is a raw security signal found in the code.
-
-Examples:
-
-- dangerous function call;
-- suspicious hardcoded value;
-- unsafe deserialization pattern;
-- possible path traversal sink;
-- possible XSS sink.
-
-A finding alone is not always a vulnerability. It is only the starting point.
+A `Finding` is the stable low-level signal. It can come from BELIEF's local scanner, an imported tool result, a SARIF file, a PDX bundle, or another bridge.
 
 ### Hypothesis
 
-A `Hypothesis` is BELIEF's interpretation of a finding.
-
-Example:
-
-```text
-This open(path) call may be a path traversal risk.
-```
-
-or:
-
-```text
-This pickle.loads(...) call may be unsafe deserialization.
-```
-
-The hypothesis can later be strengthened, weakened, contradicted, or left unproven.
+A `Hypothesis` describes what a finding could mean from a security perspective. BELIEF keeps this separate from proof so that weak signals, protected cases, and false-positive contexts can remain explicit.
 
 ### Dataflow
 
-Dataflow tries to connect where a value comes from to where it is used.
-
-Example:
-
-```text
-request parameter -> variable -> function call -> dangerous sink
-```
-
-BELIEF currently uses lightweight source-to-sink reasoning. It is intentionally conservative and does not claim to be a complete interprocedural static analysis engine.
+BELIEF includes lightweight source-to-sink dataflow to help connect request-controlled values to potentially sensitive operations. It is intentionally conservative and does not claim complete program understanding.
 
 ### Guarantees
 
-A guarantee is evidence in the code that reduces or contradicts a vulnerability hypothesis.
-
-Examples:
-
-- authentication decorator;
-- object ownership check;
-- tenant scoping;
-- path boundary validation;
-- escaping function;
-- server-generated filename;
-- safe wrapper around file paths.
-
-Guarantees are important because many static-analysis findings are not exploitable when the surrounding code proves that the risky condition cannot happen.
+Guarantees are defensive facts mined from the code, such as owner checks, tenant checks, allowlists, path containment, validators, or sanitizers. Guarantees help downgrade protected cases and identify missing evidence.
 
 ### Z3 Checks
 
-BELIEF includes a minimal boolean logic layer that can use Z3 for narrow contradiction checks.
-
-Example:
-
-```text
-Hypothesis: path may escape storage
-Guarantee: path cannot escape storage
-Result: contradiction
-```
-
-When a contradiction is proven, BELIEF can classify a case as protected instead of leaving it as a raw alert.
-
-Z3 support is currently limited and intentionally scoped.
+When available, optional Z3 checks can model simple boolean contradictions. This is useful for guarded cases, but it is not a substitute for manual validation.
 
 ### AuditCase
 
-An `AuditCase` is the review-oriented output.
-
-It is meant for a human auditor.
-
-An AuditCase may include:
-
-- priority;
-- status;
-- source;
-- sink;
-- file and line;
-- route context;
-- dataflow summary;
-- guarantees;
-- missing guarantees;
-- next manual validation steps.
+An `AuditCase` is the review-facing unit. It groups findings, hypotheses, evidence, missing evidence, reportability assessment, validation guidance, reasoning summaries, feedback, and export metadata.
 
 ---
 
 ## Features
 
 - local Python code scanning;
-- audit mode;
+- passive import of normalized external tool results;
+- JSON-only PDX adapter;
 - stable `Finding` / `Hypothesis` / `AuditCase` model;
+- conservative reportability assessment;
+- offline deterministic reasoning;
+- exact-case feedback application;
+- safe SFT dataset export;
+- dataset quality validation;
+- reportability benchmark MVP;
 - lightweight source-to-sink dataflow;
 - guarantee extraction;
 - optional Z3 boolean contradiction checks;
 - Flask / FastAPI / Django route inventory;
 - `route_context` enrichment for `AuditCase`;
 - JSON / SARIF / Markdown outputs;
-- SARIF import skeleton for future bridge outputs;
+- bug bounty candidate Markdown export;
 - audit deduplication and clustering;
 - centralized security taxonomy;
-- optional bridge-oriented architecture for external tools.
+- bridge-oriented architecture for external tools.
 
 ---
 
 ## Tool Bridges
 
-BELIEF can normalize outputs from external tools through local/passive bridges.
-The bridge system is designed to avoid vendoring large third-party tools.
+BELIEF includes a safe bridge architecture for external tools and passive outputs. Bridges can normalize results into BELIEF's common model while preserving provenance and conservative reportability semantics.
 
-Supported bridge modes:
+Examples of supported or documented bridge directions include:
 
-- passive import of existing JSON/SARIF outputs;
-- external CLI execution for safe local tools;
-- recipe export for manual validation workflows;
-- dynamic execution only with explicit scope and safety flags.
+- Semgrep JSON import;
+- CodeQL SARIF import;
+- ZAP passive JSON import;
+- Arjun JSON import;
+- OpenAPI observations;
+- AuthMatrix-like JSON import/export;
+- Autorize recipe export;
+- Param Miner wordlist export;
+- Dradis Markdown export;
+- Faraday-like JSON export;
+- Threat Dragon simple JSON export;
+- RESTler / Joern / EvoMaster / Schemathesis placeholders or passive import stubs.
 
-Examples:
+Dynamic tools remain blocked by default unless explicit safety controls and authorized scope are provided. See [`docs/TOOL_BRIDGES.md`](docs/TOOL_BRIDGES.md).
 
-```bash
-python -m belief tools list
-python -m belief tools info semgrep
-python -m belief tools check
-python -m belief tools import semgrep --file out/semgrep.json
-```
+---
 
-Dynamic or network-capable bridges are blocked by default. They require explicit
-`--allow-dynamic`, `--allow-network`, and a `--scope-file` before execution.
+## Imported Tool Results and Reportability
 
-The first bridge milestone includes manifests and MVP adapters for Semgrep,
-CodeQL SARIF, ZAP JSON, Arjun JSON, OpenAPI/Schemathesis metadata,
-AuthMatrix-like access observations, Autorize-style recipes, Param Miner
-wordlists, Dradis Markdown, Faraday JSON, and simple threat-model export.
-
-See `docs/TOOL_BRIDGES.md` for architecture and extension notes.
-
-### Imported Tool Results and Reportability
-
-BELIEF can persist bridge output as stable normalized JSON, import one or more
-of those files during `scan`, convert the signals into audit cases, and attach
-conservative reportability assessments.
+Imported results can be converted into BELIEF audit cases and evaluated with conservative reportability scoring:
 
 ```bash
 python -m belief tools import semgrep \
@@ -327,103 +335,88 @@ python -m belief scan ./app \
   --import-tool-results out/semgrep.belief-tools.json \
   --reportability \
   --json-output out/audit.json
-
-python -m belief scan ./app \
-  --import-tool-results out/semgrep.belief-tools.json \
-  --reportability \
-  --bug-bounty-markdown out/bug-bounty-candidates.md
 ```
 
-Reportability output uses candidate language. Static/imported evidence is not a
-confirmed vulnerability; the generated validation steps are a safe manual review
-plan for authorized scope.
+A result can become a `reportable_candidate`, `needs_manual_validation`, `weak_signal`, `likely_false_positive`, or `protected_by_guard`. BELIEF does not treat static-only evidence as confirmation.
 
 ---
 
 ## Output Formats
 
-BELIEF can produce multiple output formats.
-
 ### JSON
 
-Useful for automation, debugging, and integration.
+Use JSON for automation, regression testing, reportability scoring, and dataset generation:
 
 ```bash
-python -m belief scan path/to/python/project \
-  --audit-mode \
-  --json-output out/audit.json
+python -m belief scan ./app --json-output out/audit.json
 ```
 
 ### SARIF
 
-Useful for security tooling interoperability.
+Use SARIF for code scanning platforms and review tooling:
 
 ```bash
-python -m belief scan path/to/python/project \
-  --audit-mode \
-  --sarif-output out/audit.sarif
+python -m belief scan ./app --sarif-output out/belief.sarif
 ```
 
 ### Markdown
 
-Useful for human-readable audit summaries.
+Use Markdown for human-readable audit notes or bug bounty candidate drafts:
 
 ```bash
-python -m belief scan path/to/python/project \
-  --audit-mode \
-  --audit-markdown out/audit.md
+python -m belief scan ./app --bug-bounty-markdown out/bug-bounty.md
 ```
+
+Markdown output remains candidate-oriented and should be manually validated before submission.
 
 ---
 
 ## Example Usage
 
-From the repository root:
+Install in editable mode:
 
 ```bash
 python -m pip install -e ".[dev,z3]"
-python -m belief --help
-python -m belief scan --help
 ```
 
-Example local scan:
+Run a local scan:
 
 ```bash
-python -m belief scan path/to/python/project \
-  --audit-mode \
-  --dataflow \
-  --routes \
-  --json-output out/audit.json
+python -m belief scan ./app --reportability --json-output out/audit.json
 ```
 
-Example with SARIF and Markdown output:
+List tool bridges:
 
 ```bash
-python -m belief scan path/to/python/project \
-  --audit-mode \
-  --dataflow \
-  --routes \
-  --dedup-audit-cases \
-  --json-output out/audit.json \
-  --sarif-output out/audit.sarif \
-  --audit-markdown out/audit.md
+python -m belief tools list
+python -m belief tools check
+```
+
+Run the reportability benchmark:
+
+```bash
+python -m belief benchmark reportability \
+  --target benchmark_reportability \
+  --json-output out/benchmark.json
+```
+
+Run the test suite:
+
+```bash
+python -m pytest -q
+python -m pytest -q -m security
+python -m pytest -q -m "not slow and not external and not llm"
 ```
 
 ---
 
 ## Current Validation
 
-BELIEF v4 has been tested locally on real-world and benchmark-style Python codebases to validate several behaviors:
-
-- keeping unsafe deserialization findings visible when no strong guarantee is found;
-- downgrading protected findings when local guarantees contradict the vulnerability hypothesis;
-- reducing noisy false positives in generated SDK-style code;
-- attaching route context to audit cases when static route extraction is possible.
-
 Current local regression baseline:
 
-- full suite: `317 passed, 31 skipped`;
-- security suite: `44 passed`.
+- full suite: `403 passed, 30 skipped`;
+- security suite: `44 passed`;
+- non-slow / non-external / non-LLM suite: `403 passed, 30 skipped`.
 
 These numbers may change as the project evolves.
 
@@ -431,67 +424,33 @@ These numbers may change as the project evolves.
 
 ## Responsible Use
 
-BELIEF is intended for:
+BELIEF is intended for local, authorized code review, AppSec research, and defensive or bug bounty triage workflows.
 
-- authorized code review;
-- local auditing;
-- security research;
-- education;
-- bug bounty work within program scope.
+Do not use BELIEF to attack systems without permission. Do not treat candidate output as proof of exploitable impact. Do not submit bug bounty reports without validating scope, authorization, reproduction steps, impact, and program rules.
 
-BELIEF is not an exploit generator.
+BELIEF is designed to reduce noise and improve review structure, not to bypass responsible disclosure or human judgment.
 
-BELIEF does not perform network attacks.
-
-The public repository intentionally excludes active black-box network scanner
-entrypoints. Offline HAR/session parsing remains available for local,
-permissioned analysis without touching live third-party systems.
-
-Any future bridge or scanner integration should remain local, authorized,
-explicit, opt-in, and documented.
-
-Do not use BELIEF against systems or codebases where you do not have permission to perform security review.
+See [`SECURITY.md`](SECURITY.md).
 
 ---
 
 ## Bundled Assets
 
-This repository intentionally keeps:
+BELIEF may include bundled compatibility assets, local helper resources, security rule references, and manifests used by tests or bridge adapters.
 
-- `belief/tools_bundled/`
-- `belief/security_rules/`
-
-These directories contain optional local assets, compatibility resources, rule packs, or bridge-support materials used by BELIEF during analysis and testing. They are kept for reproducibility and research transparency.
-
-Some files in these directories may originate from third-party ecosystems or rule formats. Their provenance and licensing should be reviewed per subdirectory before commercial redistribution, repackaging, or relicensing.
-
-The BELIEF core remains in:
-
-```text
-belief/
-```
-
-See `BUNDLED_ASSETS.md` for the current asset inventory and publication notes.
+See [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md) for the current asset inventory and publication notes.
 
 ---
 
 ## Limitations
 
-BELIEF v4 is still an experimental MVP.
-
-Current limitations include:
-
-- Python-focused analysis;
-- conservative static analysis;
-- no complete CFG engine;
-- no complete alias analysis;
-- limited interprocedural reasoning;
-- Z3 support currently limited to narrow boolean contradiction checks;
-- route extraction is static and heuristic;
-- bundled assets require per-subdirectory provenance and license review;
-- human validation is still required.
-
-BELIEF should be treated as a triage and reasoning assistant, not as a fully automated vulnerability oracle.
+- BELIEF is experimental.
+- Static and imported evidence can produce candidates, not guaranteed vulnerabilities.
+- The reportability benchmark is currently `metadata_ground_truth_mvp` and does not run scanners or prove real-world discovery.
+- The reasoning engine is deterministic and local; it is not an LLM agent.
+- Dynamic validation is intentionally not enabled by default.
+- External tools are not vendored as full runtimes.
+- Manual validation in authorized scope remains required before any real-world claim.
 
 ---
 
@@ -499,37 +458,29 @@ BELIEF should be treated as a triage and reasoning assistant, not as a fully aut
 
 Planned directions include:
 
+- scan-driven reportability benchmark evaluation;
+- production-quality Semgrep and CodeQL packs with BELIEF metadata;
 - stronger route-to-audit-case enrichment;
 - better interprocedural caller reasoning;
 - improved source/sink/sanitizer taxonomy;
-- more robust SARIF import for external tools;
-- optional bridges for Semgrep, CodeQL, Bandit, and other scanners;
-- more real-world benchmark documentation;
-- improved documentation and demo assets;
-- cleaner public examples and tutorials.
+- deeper SARIF and external-tool import coverage;
+- richer public demo flows;
+- clearer benchmark reports and comparison baselines;
+- improved examples and tutorials.
 
 ---
 
 ## Tests
 
-Run the default local suite:
+The main regression commands are:
 
 ```bash
 python -m pytest -q
-```
-
-Run security-focused regressions:
-
-```bash
 python -m pytest -q -m security
+python -m pytest -q -m "not slow and not external and not llm"
 ```
 
-Run CLI checks:
-
-```bash
-python -m belief --help
-python -m belief scan --help
-```
+The project also includes bridge tests, access-model tests, dataset tests, reasoning tests, feedback tests, and benchmark tests.
 
 ---
 
@@ -539,17 +490,38 @@ python -m belief scan --help
 belief/
   Core BELIEF package.
 
+belief/tools/
+  Universal external-tool bridge registry, safety gate, runners, and adapters.
+
+belief/tool_results/
+  Normalized external tool result schema, mapping, provenance, and merge helpers.
+
+belief/reportability/
+  Conservative reportability scoring and explanations.
+
+belief/pdx/
+  JSON-only PDX adapter, redaction, import/export helpers, and mapping logic.
+
+belief/validation/
+  Generic validation result models and PDX verdict adaptation.
+
+belief/reasoning/
+  Deterministic offline reasoning models, router, and rule-based engine.
+
+belief/feedback/
+  Append-only feedback store and exact-case feedback application.
+
+belief/datasets/
+  SFT export and dataset quality validation.
+
+belief/benchmark/
+  Offline benchmark loading, metrics, and reportability benchmark runner.
+
 belief/tools_bundled/
   Optional bundled compatibility assets and local helper resources.
 
 belief/security_rules/
   Bundled security rule assets and references.
-
-belief/tools/
-  Universal external-tool bridge registry, safety gate, runners, and adapters.
-
-belief/tools_bundled/manifests/
-  JSON manifests describing supported bridge IDs, capabilities, licenses, and risk profiles.
 
 tests/
   Unit and regression tests.
@@ -560,8 +532,17 @@ tests_bridges/
 benchmark_cve/
   Benchmark-style vulnerable samples used for validation.
 
-belief_knowledge_base.py
-  Legacy/experimental knowledge-base module kept at repository root.
+benchmark_reportability/
+  Synthetic offline reportability benchmark corpus.
+
+schemas/
+  Documentation-only JSON schemas for BELIEF data formats.
+
+external_packs/
+  Documentation-only external pack placeholders and passive mapping notes.
+
+docs/
+  Project documentation and integration notes.
 
 BUNDLED_ASSETS.md
   Inventory and publication notes for bundled assets.
@@ -582,20 +563,24 @@ pyproject.toml
   Python packaging and project metadata.
 ```
 
+---
+
+## Documentation
+
+- [`docs/PDX_BELIEF_INTEGRATION.md`](docs/PDX_BELIEF_INTEGRATION.md)
+- [`docs/TOOL_BRIDGES.md`](docs/TOOL_BRIDGES.md)
+- [`benchmark_reportability/README.md`](benchmark_reportability/README.md)
+- [`SECURITY.md`](SECURITY.md)
+- [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md)
+
+---
+
 ## License
 
-BELIEF v4 is released under the MIT License. See `LICENSE`.
-
-The repository-level license does not necessarily replace or override licenses attached to bundled third-party assets, rule packs, examples, or compatibility resources under `belief/tools_bundled/` and `belief/security_rules/`.
-
-See `BUNDLED_ASSETS.md`.
+[MIT](LICENSE)
 
 ---
 
 ## Disclaimer
 
-BELIEF is experimental research software.
-
-Results may be incomplete, conservative, or wrong. A human reviewer must validate findings before making security claims.
-
-Use responsibly and only in authorized contexts.
+BELIEF is research software. It may miss vulnerabilities, misclassify findings, or produce incomplete audit context. Use it only in authorized environments and treat all outputs as candidates requiring human review.
