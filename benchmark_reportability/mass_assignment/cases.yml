@@ -1,0 +1,33 @@
+- id: mass-assignment-vulnerable-role-update
+  file: vulnerable_role_update.py
+  category: mass_assignment
+  expected_verdict: reportable_candidate
+  expected_min_score: 70
+  expected_max_score: 90
+  expected_evidence:
+    - request JSON copied into model
+    - sensitive fields may be updated
+  expected_missing_evidence:
+    - field allowlist
+    - role update guard
+  expected_playbook: mass_assignment
+  should_not_include:
+    - confirmed exploit
+    - real target
+  notes: Synthetic local fixture for reportable-candidate behavior.
+- id: mass-assignment-protected-allowlist
+  file: protected_allowlist.py
+  category: mass_assignment
+  expected_verdict: protected_by_guard
+  expected_min_score: 15
+  expected_max_score: 40
+  expected_evidence:
+    - request JSON input
+    - explicit safe field allowlist
+  expected_missing_evidence:
+    - authorized manual validation if allowlist changes
+  expected_playbook: mass_assignment
+  should_not_include:
+    - confirmed exploit
+    - real target
+  notes: Synthetic local fixture with an allowlist guard.

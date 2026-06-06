@@ -1134,6 +1134,23 @@ def cmd_serve(args):
 
 def cmd_benchmark(args):
     """Run benchmarks on example codebases."""
+    if getattr(args, "benchmark_command", "") == "reportability":
+        from .benchmark.reportability import write_reportability_benchmark_json
+
+        try:
+            payload = write_reportability_benchmark_json(args.reportability_target, args.json_output)
+        except ValueError as exc:
+            safe_print(json.dumps({"error": str(exc)}, indent=2, sort_keys=True), file=sys.stderr)
+            sys.exit(2)
+
+        safe_print(json.dumps({
+            "schema_version": payload["schema_version"],
+            "output": str(args.json_output),
+            "case_count": payload["case_count"],
+            "mode": payload["mode"],
+        }, indent=2, sort_keys=True))
+        return
+
     from .benchmark_suite import BenchmarkRunner
 
     setup_logging(args.verbose)
@@ -1642,6 +1659,22 @@ def main():
     p_bench = sub.add_parser("benchmark", help="Run performance benchmarks")
     p_bench.add_argument("--target", default="", help="Specific directory to benchmark")
     p_bench.add_argument("--max-files", type=int, default=100)
+    bench_sub = p_bench.add_subparsers(dest="benchmark_command", parser_class=SafeArgumentParser)
+    p_bench_reportability = bench_sub.add_parser(
+        "reportability",
+        help="Run the offline reportability metadata benchmark",
+    )
+    p_bench_reportability.add_argument(
+        "--target",
+        dest="reportability_target",
+        default="benchmark_reportability",
+        help="Benchmark corpus root",
+    )
+    p_bench_reportability.add_argument(
+        "--json-output",
+        required=True,
+        help="Write full benchmark JSON to this path",
+    )
 
     # export
     p_export = sub.add_parser("export", help="Export report in different formats")

@@ -52,6 +52,19 @@ python -m belief dataset validate --input out/belief.sft.jsonl
 The reasoning engine is deterministic and local. It does not call LLM APIs,
 model servers, browsers, or network services.
 
+An offline reportability benchmark MVP is available for deterministic local
+evaluation of reportable candidates, protected-by-guard cases, weak signals,
+and likely false-positive traps:
+
+```bash
+python -m belief benchmark reportability \
+  --target benchmark_reportability \
+  --json-output out/benchmark.json
+```
+
+The benchmark uses metadata ground truth. It does not run scanners, execute
+fixtures, call external tools, or prove real-world vulnerability discovery.
+
 Feedback can be applied to audit JSON by exact `case_id` only:
 
 ```bash

@@ -1,0 +1,48 @@
+- id: idor-vulnerable-raw-lookup
+  file: vulnerable_raw_lookup_mutation.py
+  category: idor
+  expected_verdict: needs_manual_validation
+  expected_min_score: 60
+  expected_max_score: 85
+  expected_evidence:
+    - request-controlled object id
+    - object mutation
+  expected_missing_evidence:
+    - owner or tenant guard validation
+  expected_playbook: idor_bola
+  should_not_include:
+    - confirmed exploit
+    - real target
+  notes: Synthetic local fixture for reportability benchmark.
+- id: idor-protected-owner-filter
+  file: protected_owner_filter.py
+  category: idor
+  expected_verdict: protected_by_guard
+  expected_min_score: 20
+  expected_max_score: 45
+  expected_evidence:
+    - request-controlled object id
+    - explicit owner guard
+  expected_missing_evidence:
+    - authorized manual validation if behavior changes
+  expected_playbook: idor_bola
+  should_not_include:
+    - confirmed exploit
+    - real target
+  notes: Synthetic local fixture with a visible owner guard.
+- id: idor-false-positive-internal-admin-seed
+  file: false_positive_internal_admin_seed.py
+  category: idor
+  expected_verdict: likely_false_positive
+  expected_min_score: 0
+  expected_max_score: 30
+  expected_evidence:
+    - object mutation
+    - internal seed helper
+  expected_missing_evidence:
+    - request-controlled object id
+  expected_playbook: idor_bola
+  should_not_include:
+    - confirmed exploit
+    - real target
+  notes: Synthetic trap for mutation without request control.

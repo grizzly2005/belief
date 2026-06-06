@@ -1,0 +1,34 @@
+- id: path-traversal-vulnerable-open-request-path
+  file: vulnerable_open_request_path.py
+  category: path_traversal
+  expected_verdict: needs_manual_validation
+  expected_min_score: 60
+  expected_max_score: 85
+  expected_evidence:
+    - request-controlled path segment
+    - file read
+  expected_missing_evidence:
+    - canonical root guard
+    - safe basename or allowlist
+  expected_playbook: path_traversal
+  should_not_include:
+    - confirmed exploit
+    - real target
+  notes: Synthetic local fixture for path traversal reportability review.
+- id: path-traversal-protected-safe-join
+  file: protected_safe_join.py
+  category: path_traversal
+  expected_verdict: protected_by_guard
+  expected_min_score: 15
+  expected_max_score: 40
+  expected_evidence:
+    - request-controlled path segment
+    - canonical root guard
+    - basename reduction
+  expected_missing_evidence:
+    - authorized manual validation if path policy changes
+  expected_playbook: path_traversal
+  should_not_include:
+    - confirmed exploit
+    - real target
+  notes: Synthetic local fixture with path containment protection.
