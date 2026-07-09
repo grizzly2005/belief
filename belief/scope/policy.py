@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .matchers import is_url, match_scope_pattern
-from .models import SCOPE_SCHEMA_VERSION, ScopeDecision, ScopePolicy
+from .models import ScopeDecision, ScopePolicy
 from .validation import validate_scope
 
 

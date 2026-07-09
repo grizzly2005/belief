@@ -34,6 +34,15 @@ def test_classifies_har_and_burp_artifacts():
     assert burp.target_type == "burp_xml"
 
 
+def test_classifies_only_real_pdx_bundle_as_pdx(tmp_path):
+    unrelated = tmp_path / "ordinary.json"
+    unrelated.write_text('{"meta": "ordinary metadata"}', encoding="utf-8")
+
+    profile = classify_target(unrelated)
+
+    assert profile.target_type == "json_file"
+
+
 def test_target_classify_cli_writes_json(tmp_path):
     output = tmp_path / "target.json"
     result = subprocess.run(

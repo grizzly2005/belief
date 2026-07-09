@@ -56,3 +56,43 @@ def test_importer_cli_acceptance_for_all_pack_tools(tmp_path):
         )
         assert result.returncode == 0, (tool_id, result.stderr)
         assert json.loads(output.read_text(encoding="utf-8"))["tool_id"].replace("_", "-") in {tool_id, "pip-audit"}
+
+
+def test_importer_cli_malformed_json_exits_2(tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{invalid json", encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "belief", "tools", "import", "bandit", "--file", str(bad)],
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "failed to import bandit" in result.stderr
+
+
+def test_gitleaks_cli_output_is_redacted(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "belief",
+            "tools",
+            "import",
+            "gitleaks",
+            "--file",
+            str(FIXTURES / "gitleaks_sample.json"),
+            "--normalized-output",
+            str(tmp_path / "gitleaks.json"),
+        ],
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "abc123secret" not in result.stdout

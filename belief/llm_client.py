@@ -29,9 +29,10 @@ import logging
 import re
 import time
 from collections import deque
-from typing import Optional
-
-import httpx
+try:
+    import httpx
+except ImportError:  # The static/offline CLI must not require an LLM transport.
+    httpx = None
 
 from .config import BeliefConfig, LLMProvider
 
@@ -246,6 +247,19 @@ class PromptTooLargeError(Exception):
     expected to chunk and retry; this is *not* an LLM failure."""
 
 
+class LLMDependencyError(RuntimeError):
+    """Raised when an LLM feature is requested without its HTTP transport."""
+
+
+def _require_httpx():
+    if httpx is None:
+        raise LLMDependencyError(
+            "LLM features require the optional 'httpx' dependency. "
+            "Install BELIEF's project dependencies in the active environment."
+        )
+    return httpx
+
+
 def _is_groq(provider: LLMProvider) -> bool:
     """Detect a groq provider regardless of config naming conventions."""
     if getattr(provider, "name", "").lower() == "groq":
@@ -260,7 +274,7 @@ class LLMClient:
     def __init__(self, config: BeliefConfig):
         self.config = config
         self.limiters: dict[str, RateLimiter] = {}
-        self.http = httpx.Client(timeout=180.0)
+        self.http = _require_httpx().Client(timeout=180.0)
         for p in config.providers:
             self.limiters[p.name] = RateLimiter(p.rate_limit_per_min)
 
@@ -477,11 +491,14 @@ class LLMClient:
                 response = self.http.post(
                     url, headers=headers, json=payload, params=params,
                 )
-            except (httpx.TimeoutException, httpx.ConnectError) as e:
+            except Exception as exc:
+                transport = _require_httpx()
+                if not isinstance(exc, (transport.TimeoutException, transport.ConnectError)):
+                    raise
                 # Transport-level failure — try next key (no penalty) if pool,
                 # otherwise bubble up.
                 if pool:
-                    last_err = e
+                    last_err = exc
                     continue
                 raise
 

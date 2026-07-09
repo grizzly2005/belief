@@ -31,3 +31,13 @@ def test_unified_run_cli_writes_manifest(tmp_path):
     manifest = json.loads((output_dir / "metadata" / "run-manifest.json").read_text(encoding="utf-8"))
     assert manifest["schema_version"] == "belief.run_manifest.v1"
     assert manifest["reportability_requested"] is True
+    assert manifest["audit_output"]
+    assert manifest["reasoned_output"]
+    assert Path(manifest["audit_output"]).exists()
+    assert Path(manifest["reasoned_output"]).exists()
+    summary = json.loads((output_dir / "metadata" / "execution-summary.json").read_text(encoding="utf-8"))
+    assert manifest["unavailable_tools"] == sorted(
+        summary["unavailable"],
+        key=lambda item: str(item.get("tool_id") or ""),
+    )
+    assert all(item.get("tool_id") and item.get("reason") for item in manifest["unavailable_tools"])

@@ -37,7 +37,7 @@ def detect_artifacts(files: list[Path]) -> dict[str, list[str]]:
                     api_files.append(rel)
                 if isinstance(payload.get("log"), dict) and isinstance(payload["log"].get("entries"), list):
                     traffic_files.append(rel)
-                if payload.get("schema_version") == "belief.pdx.v1" or {"meta", "deltas", "verdicts"} & set(payload):
+                if payload.get("schema_version") == "belief.pdx.v1" or {"meta", "deltas", "verdicts"} <= set(payload):
                     pdx_files.append(rel)
     return {
         "api_files": sorted(set(api_files)),

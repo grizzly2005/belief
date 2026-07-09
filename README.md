@@ -163,6 +163,11 @@ dynamic tools remain disabled unless explicit scope permits them. See
 [`docs/PDX_HYDRA_RECOVERY_PLAN.md`](docs/PDX_HYDRA_RECOVERY_PLAN.md) for the
 passive-only PDX/HYDRA recovery boundary.
 
+`run-manifest.json` now records `unavailable_tools` as stable records with a
+tool id, status when known, and reason. The planner never installs a missing
+tool: inspect `metadata/run-plan.json`, `metadata/execution-summary.json`, or
+the manifest before deciding whether an optional local CLI is needed.
+
 ---
 
 ## What It Does
@@ -404,8 +409,14 @@ Markdown output remains candidate-oriented and should be manually validated befo
 Install in editable mode:
 
 ```bash
-python -m pip install -e ".[dev,z3]"
+python -m venv .venv
+.venv\Scripts\python -m pip install -e ".[dev,z3]"  # Windows PowerShell
 ```
+
+The static CLI can be imported and run from source without `httpx`; LLM-backed
+`analyze` requires that transport dependency in the active environment. For an
+offline bootstrap, the build and dependency wheels must already be available in
+the local package cache.
 
 Run a local scan:
 
@@ -442,9 +453,9 @@ python -m pytest -q -m "not slow and not external and not llm"
 
 Current local regression baseline:
 
-- full suite: `403 passed, 30 skipped`;
-- security suite: `44 passed`;
-- non-slow / non-external / non-LLM suite: `403 passed, 30 skipped`.
+- full suite: `446 passed, 31 skipped`;
+- security suite: `47 passed`;
+- non-slow / non-external / non-LLM suite: `446 passed, 31 skipped`.
 
 These numbers may change as the project evolves.
 

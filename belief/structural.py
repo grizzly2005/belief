@@ -425,34 +425,128 @@ class StructuralExtractor:
         return beliefs
 
     def _check_unsafe_path_ops(
-        self, node: ast.FunctionDef, scope: Scope
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
     ) -> list[Belief]:
+        """Emit path-safety beliefs only for locally traceable external input."""
         beliefs = []
+        tainted_vars = self._external_path_variables(node)
+        path_sinks = {
+            "open",
+            "builtins.open",
+            "io.open",
+            "os.open",
+            "path",
+            "pathlib.path",
+            "os.path.join",
+        }
         for child in ast.walk(node):
-            if isinstance(child, ast.Call):
-                call_name = self._get_call_name(child)
-                if call_name and any(p in call_name.lower() for p in ["os.path.join", "open", "path("]):
-                    # Check if any argument is a variable (not a constant)
-                    for arg in child.args:
-                        if isinstance(arg, ast.Name):
-                            beliefs.append(Belief(
-                                predicate=Predicate(
-                                    expression=f"{arg.id} not in PATH_TRAVERSAL_PATTERNS",
-                                    variables=(arg.id,),
-                                    anchor_lines=(child.lineno,),
-                                    natural_language=(
-                                        f"Variable '{arg.id}' used in path operation "
-                                        f"at line {child.lineno} without path traversal check."
-                                    ),
-                                ),
-                                scope=scope,
-                                justification=JustificationCategory.C5_NO_JUSTIFICATION,
-                                epistemic_status=EpistemicStatus.BELIEF,
-                                logic_type=LogicType.INFORMATION_FLOW,
-                                confidence_score=0.78,
-                            ))
-                            break  # one per call
+            if not isinstance(child, ast.Call):
+                continue
+            call_name = (self._get_call_name(child) or "").lower()
+            if call_name not in path_sinks:
+                continue
+            source_arg = next(
+                (arg for arg in child.args if self._is_external_path_expr(arg, tainted_vars)),
+                None,
+            )
+            if source_arg is None:
+                continue
+            source_name = self._get_name(source_arg) or "external path input"
+            beliefs.append(Belief(
+                predicate=Predicate(
+                    expression=f"{source_name} not in PATH_TRAVERSAL_PATTERNS",
+                    variables=(source_name,),
+                    anchor_lines=(child.lineno,),
+                    natural_language=(
+                        f"Externally controlled path used in path operation at line "
+                        f"{child.lineno} without a path traversal check."
+                    ),
+                ),
+                scope=scope,
+                justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                epistemic_status=EpistemicStatus.BELIEF,
+                logic_type=LogicType.INFORMATION_FLOW,
+                confidence_score=0.78,
+            ))
         return beliefs
+
+    def _external_path_variables(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> set[str]:
+        """Follow direct aliases of external path input within one function."""
+        parameters = [
+            *node.args.posonlyargs,
+            *node.args.args,
+            *node.args.kwonlyargs,
+        ]
+        if node.args.vararg:
+            parameters.append(node.args.vararg)
+        if node.args.kwarg:
+            parameters.append(node.args.kwarg)
+        tainted = {
+            arg.arg for arg in parameters
+            if self._is_likely_external_path_name(arg.arg)
+        }
+        for statement in ast.walk(node):
+            if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = statement.value
+            if value is None:
+                continue
+            targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+            for target in targets:
+                target_name = self._get_name(target)
+                if not target_name:
+                    continue
+                if self._is_external_path_expr(value, tainted):
+                    tainted.add(target_name)
+                else:
+                    tainted.discard(target_name)
+        return tainted
+
+    @staticmethod
+    def _is_likely_external_path_name(name: str) -> bool:
+        normalized = name.lower().replace("-", "_")
+        if normalized in {
+            "user_input",
+            "userinput",
+            "uploaded_file",
+            "upload_filename",
+            "request_path",
+            "request_file",
+            "untrusted_path",
+            "untrusted_file",
+            "client_path",
+            "client_file",
+        }:
+            return True
+        if normalized.endswith("_input"):
+            return True
+        return (
+            normalized.startswith(("user_", "request_", "untrusted_", "client_"))
+            and normalized.endswith(("path", "file", "filename"))
+        )
+
+    def _is_external_path_expr(self, node: ast.AST, tainted_vars: set[str]) -> bool:
+        if isinstance(node, ast.Name):
+            return node.id in tainted_vars or self._is_likely_external_path_name(node.id)
+        dotted_name = self._get_name(node)
+        if dotted_name:
+            lowered = dotted_name.lower()
+            if lowered == "sys.argv" or lowered.startswith(("sys.argv.", "os.environ", "request.", "req.")):
+                return True
+        if isinstance(node, ast.Call):
+            call_name = (self._get_call_name(node) or "").lower()
+            if (
+                call_name in {"input", "getenv", "os.getenv"}
+                or call_name.endswith(".input")
+                or call_name.startswith(("request.", "req.", "os.environ."))
+            ):
+                return True
+        return any(self._is_external_path_expr(child, tainted_vars) for child in ast.iter_child_nodes(node))
 
     def _check_unchecked_coercion(
         self, node: ast.FunctionDef, scope: Scope

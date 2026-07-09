@@ -104,3 +104,57 @@ def test_detects_sql_fstring_and_unsafe_deserialization():
 
     assert "CWE-89" in cwes
     assert "CWE-502" in cwes
+
+
+def test_detects_path_traversal_from_request_alias():
+    findings = _by_cwe(
+        """
+        def download(request):
+            requested_path = request.args.get("path")
+            local_alias = requested_path
+            with open(local_alias, "rb") as handle:
+                return handle.read()
+        """,
+        "CWE-22",
+    )
+
+    assert len(findings) == 1
+    assert "externally controlled path" in findings[0].predicate.natural_language
+
+
+def test_detects_direct_path_input_but_ignores_internal_output_directory():
+    vulnerable = _by_cwe(
+        """
+        from pathlib import Path
+
+        def download(user_input):
+            return Path(user_input).read_text()
+        """,
+        "CWE-22",
+    )
+    safe = _by_cwe(
+        """
+        from pathlib import Path
+
+        def write_report(output_dir):
+            output = Path(output_dir) / "report.json"
+            output.write_text("{}")
+        """,
+        "CWE-22",
+    )
+
+    assert len(vulnerable) == 1
+    assert safe == []
+
+
+def test_does_not_treat_generic_internal_project_path_as_external_input():
+    findings = _by_cwe(
+        """
+        def save_results(project_path):
+            with open(project_path, "w") as handle:
+                handle.write("ok")
+        """,
+        "CWE-22",
+    )
+
+    assert findings == []

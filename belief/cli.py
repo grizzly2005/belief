@@ -14,9 +14,10 @@ import json
 import logging
 import re
 import sys
-from dataclasses import dataclass, replace
+from xml.etree import ElementTree as ET
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Set
+from typing import Any, Optional
 
 from .config import BeliefConfig
 from .orchestrator import Orchestrator
@@ -1125,10 +1126,16 @@ def _dedupe_beliefs_by_id(beliefs: list[Any]) -> list[Any]:
 
 def cmd_serve(args):
     """Start the REST API server."""
-    from .api_server import APIServer
+    from .api_server import APIServer, is_loopback_host
 
     setup_logging(args.verbose)
-    server = APIServer(host=args.host, port=args.port)
+    if not args.allow_public and not is_loopback_host(args.host):
+        safe_print(
+            "ERROR: refusing non-loopback API bind without --allow-public.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    server = APIServer(host=args.host, port=args.port, allow_public=bool(args.allow_public))
     server.start()
 
 
@@ -1215,6 +1222,7 @@ def cmd_plan(args):
             output_dir=args.output_dir,
             timeout_seconds=args.timeout,
             budget=args.budget,
+            reportability=bool(getattr(args, "reportability", False)),
         )
     except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
         safe_print(json.dumps({"error": str(exc)}, indent=2, sort_keys=True), file=sys.stderr)
@@ -1249,6 +1257,8 @@ def cmd_execute_plan(args):
 
 def cmd_run(args):
     """Unified v1 orchestration: classify, plan, execute, and summarize."""
+    import shutil
+
     from .orchestration.executor import execute_run_plan
     from .orchestration.planner import build_run_plan, write_run_plan
     from .orchestration.run_manifest import write_run_manifest
@@ -1269,6 +1279,7 @@ def cmd_run(args):
             flags=args.flags,
             scope_file=args.scope or None,
             output_dir=args.output_dir,
+            reportability=bool(args.reportability),
         )
         plan_path = metadata / "run-plan.json"
         write_run_plan(plan, plan_path)
@@ -1277,6 +1288,38 @@ def cmd_run(args):
             encoding="utf-8",
         )
         execution = execute_run_plan(plan_path)
+        audit_output = None
+        reasoned_output = None
+        run_limitations = [
+            "External tool outputs are not merged automatically in orchestration v1.",
+            "Network and dynamic tools remain disabled by default.",
+        ]
+        belief_raw = output_dir / "raw" / "belief.json"
+        if belief_raw.exists():
+            audit_output = output_dir / "audit" / "belief-audit.json"
+            audit_output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(belief_raw, audit_output)
+            if args.reason:
+                from .reasoning.router import reason_audit_report
+
+                try:
+                    reasoned = reason_audit_report(
+                        json.loads(audit_output.read_text(encoding="utf-8")),
+                        engine="offline",
+                    )
+                    reasoned_output = output_dir / "audit" / "reasoned.json"
+                    reasoned_output.write_text(
+                        json.dumps(reasoned, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
+                except (json.JSONDecodeError, ValueError) as exc:
+                    run_limitations.append(f"Offline reasoning skipped: {exc}")
+        elif args.reportability or args.reason:
+            run_limitations.append("No local BELIEF audit output was available for reportability/reasoning.")
+        unavailable_tools = sorted(
+            (dict(item) for item in execution["unavailable"]),
+            key=lambda item: str(item.get("tool_id") or ""),
+        )
         manifest = write_run_manifest(output_dir, {
             "target": args.target,
             "target_profile": target_profile.to_dict(),
@@ -1284,10 +1327,10 @@ def cmd_run(args):
             "execution_summary": (metadata / "execution-summary.json").as_posix(),
             "reportability_requested": bool(args.reportability),
             "reason_requested": bool(args.reason),
-            "limitations": [
-                "Unified run v1 performs plan + execute + summary.",
-                "Scan/import merge is best-effort and remains local-only.",
-            ],
+            "audit_output": audit_output.as_posix() if audit_output else None,
+            "reasoned_output": reasoned_output.as_posix() if reasoned_output else None,
+            "unavailable_tools": unavailable_tools,
+            "limitations": run_limitations,
         })
     except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
         safe_print(json.dumps({"error": str(exc)}, indent=2, sort_keys=True), file=sys.stderr)
@@ -1299,6 +1342,7 @@ def cmd_run(args):
         "completed": len(execution["completed"]),
         "failed": len(execution["failed"]),
         "unavailable": len(execution["unavailable"]),
+        "unavailable_tool_ids": [item.get("tool_id") for item in manifest["unavailable_tools"]],
     }, indent=2, sort_keys=True))
 
 
@@ -1369,7 +1413,7 @@ def cmd_tools(args):
     from .tools.errors import ToolSafetyError
     from .tools.profiles import load_tool_profile, load_tool_profiles
     from .tools.schemas import to_jsonable
-    from .tool_results.io import write_normalized_tool_result
+    from .tool_results.io import normalized_tool_result_to_dict, sanitize_for_json, write_normalized_tool_result
 
     if args.tools_command == "profile":
         if args.profile_command == "list":
@@ -1462,7 +1506,7 @@ def cmd_tools(args):
         except ToolSafetyError as exc:
             safe_print(f"ERROR: {exc}", file=sys.stderr)
             sys.exit(2)
-        payload = to_jsonable(execution)
+        payload = sanitize_for_json(to_jsonable(execution))
         if getattr(args, "normalized_output", ""):
             normalized = bridge.normalize(execution)
             write_normalized_tool_result(normalized, args.normalized_output)
@@ -1471,8 +1515,12 @@ def cmd_tools(args):
         return
 
     if args.tools_command == "import":
-        result = _import_passive_tool_result(args.tool_id, args.file, registry)
-        payload = to_jsonable(result)
+        try:
+            result = _import_passive_tool_result(args.tool_id, args.file, registry)
+        except (OSError, json.JSONDecodeError, ET.ParseError, ValueError, TypeError) as exc:
+            safe_print(json.dumps({"error": f"failed to import {args.tool_id}: {exc}"}, indent=2, sort_keys=True), file=sys.stderr)
+            sys.exit(2)
+        payload = normalized_tool_result_to_dict(result)
         if getattr(args, "normalized_output", ""):
             write_normalized_tool_result(result, args.normalized_output)
             payload["normalized_output"] = str(args.normalized_output)
@@ -1880,6 +1928,7 @@ def main():
     p_serve = sub.add_parser("serve", help="Start REST API server")
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=8420)
+    p_serve.add_argument("--allow-public", action="store_true", help="Explicitly allow a non-loopback bind")
 
     # benchmark
     p_bench = sub.add_parser("benchmark", help="Run performance benchmarks")
@@ -2053,6 +2102,7 @@ def main():
     p_plan.add_argument("--json-output", required=True, help="Run plan JSON output")
     p_plan.add_argument("--timeout", type=int, default=None, help="Override tool timeout seconds")
     p_plan.add_argument("--budget", default="balanced", choices=["fast", "balanced", "deep"], help="Planning budget")
+    p_plan.add_argument("--reportability", action="store_true", help="Include reportability metadata in the local BELIEF scan step")
 
     p_execute_plan = sub.add_parser("execute-plan", help="Execute a BELIEF run plan safely")
     p_execute_plan.add_argument("plan", help="Run plan JSON")

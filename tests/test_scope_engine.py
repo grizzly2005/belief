@@ -26,6 +26,13 @@ def test_exclusions_override_inclusions():
     assert is_in_scope(scope, "tests/fixtures/sample_app/private/secret.py") is False
 
 
+def test_relative_scope_does_not_match_unrelated_suffix_path(tmp_path):
+    scope = load_scope(FIXTURES / "local_safe_scope.json")
+    unrelated = tmp_path / "other" / "sample_app" / "app.py"
+
+    assert is_in_scope(scope, str(unrelated)) is False
+
+
 def test_network_dynamic_tool_denied_without_scope_permission():
     scope = load_scope(FIXTURES / "local_safe_scope.json")
     nuclei = load_tool_capability("nuclei")

@@ -634,25 +634,140 @@ class SecurityPatternExtractor:
                     ))
         return beliefs
 
-    def _check_path_traversal(self, node: ast.FunctionDef, scope: Scope) -> list[Belief]:
-        """Detect potential path traversal (CWE-22)."""
+    def _check_path_traversal(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
+    ) -> list[Belief]:
+        """Detect path operations reached from likely external path input (CWE-22)."""
         beliefs = []
+        tainted_vars, constant_vars = self._path_assignment_facts(node)
+        path_sinks = {
+            "open",
+            "builtins.open",
+            "io.open",
+            "os.open",
+            "Path",
+            "pathlib.Path",
+            "os.path.join",
+        }
         for child in ast.walk(node):
-            if isinstance(child, ast.Call):
-                name = self._get_call_name(child)
-                if not name:
-                    continue
-                if any(p in name for p in ["open", "os.path.join", "Path"]):
-                    for arg in child.args:
-                        if isinstance(arg, ast.Name):
-                            beliefs.append(self._make_belief(
-                                f"{arg.id} not in PATH_TRAVERSAL",
-                                f"File operation with variable path at line {child.lineno} — "
-                                f"potential path traversal (CWE-22).",
-                                scope, child.lineno, "high", "CWE-22",
-                            ))
-                            break
+            if not isinstance(child, ast.Call):
+                continue
+            name = self._get_call_name(child)
+            if name not in path_sinks:
+                continue
+            source_arg = next(
+                (
+                    arg for arg in child.args
+                    if self._is_path_controlled_expr(arg, tainted_vars, constant_vars)
+                ),
+                None,
+            )
+            if source_arg is None:
+                continue
+            source_name = self._get_name(source_arg) or "external path input"
+            beliefs.append(self._make_belief(
+                f"{source_name} not in PATH_TRAVERSAL",
+                f"File operation with externally controlled path at line {child.lineno} — "
+                f"potential path traversal (CWE-22).",
+                scope, child.lineno, "high", "CWE-22",
+            ))
         return beliefs
+
+    def _path_assignment_facts(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> tuple[set[str], dict[str, object]]:
+        """Track obvious external path data without tainting every function argument.
+
+        General command analysis treats parameters as potentially untrusted.  That is
+        useful for a shell sink, but overly broad for filesystem operations: internal
+        helpers commonly receive ``output_dir`` or ``root``.  Path traversal keeps a
+        smaller, explainable seed set and follows only simple local aliases.
+        """
+        tainted_vars = self._initial_path_controlled_vars(node)
+        constant_vars: dict[str, object] = {}
+        for stmt in ast.walk(node):
+            if not isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+                continue
+            targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+            value = stmt.value
+            if value is None:
+                continue
+            for target in targets:
+                target_name = self._get_name(target)
+                if not target_name:
+                    continue
+                constant_value = self._literal_constant_value(value, constant_vars)
+                if constant_value is not _UNKNOWN:
+                    constant_vars[target_name] = constant_value
+                    tainted_vars.discard(target_name)
+                elif self._is_path_controlled_expr(value, tainted_vars, constant_vars):
+                    constant_vars.pop(target_name, None)
+                    tainted_vars.add(target_name)
+                else:
+                    constant_vars.pop(target_name, None)
+                    tainted_vars.discard(target_name)
+        return tainted_vars, constant_vars
+
+    def _initial_path_controlled_vars(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> set[str]:
+        names = {arg.arg for arg in node.args.posonlyargs}
+        names.update(arg.arg for arg in node.args.args)
+        names.update(arg.arg for arg in node.args.kwonlyargs)
+        if node.args.vararg:
+            names.add(node.args.vararg.arg)
+        if node.args.kwarg:
+            names.add(node.args.kwarg.arg)
+        return {name for name in names if self._is_likely_external_path_name(name)}
+
+    @staticmethod
+    def _is_likely_external_path_name(name: str) -> bool:
+        normalized = name.lower().replace("-", "_")
+        if normalized in {
+            "user_input",
+            "userinput",
+            "uploaded_file",
+            "upload_filename",
+            "request_path",
+            "request_file",
+            "untrusted_path",
+            "untrusted_file",
+            "client_path",
+            "client_file",
+        }:
+            return True
+        if normalized.endswith("_input"):
+            return True
+        return (
+            normalized.startswith(("user_", "request_", "untrusted_", "client_"))
+            and normalized.endswith(("path", "file", "filename"))
+        )
+
+    def _is_path_controlled_expr(
+        self,
+        node: ast.AST,
+        tainted_vars: set[str],
+        constant_vars: dict[str, object],
+    ) -> bool:
+        if self._literal_constant_value(node, constant_vars) is not _UNKNOWN:
+            return False
+        if isinstance(node, ast.Name):
+            return node.id in tainted_vars or self._is_likely_external_path_name(node.id)
+        dotted_name = self._get_name(node)
+        if dotted_name and self._is_user_controlled_name(dotted_name):
+            return True
+        if isinstance(node, ast.Call):
+            call_name = self._get_call_name(node) or ""
+            if self._is_user_input_source_call(call_name):
+                return True
+        return any(
+            self._is_path_controlled_expr(child, tainted_vars, constant_vars)
+            for child in ast.iter_child_nodes(node)
+        )
 
     def _check_xss(self, node: ast.FunctionDef, scope: Scope,
                    source: str) -> list[Belief]:

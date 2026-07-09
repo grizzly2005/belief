@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -35,18 +36,23 @@ def _match_url(pattern: str, target: str) -> bool:
 
 
 def _match_path(pattern: str, target: str) -> bool:
-    pattern_path = _norm_path(pattern)
-    target_path = _norm_path(target)
-    return (
-        target_path == pattern_path
-        or target_path.startswith(pattern_path + "/")
-        or target_path.endswith("/" + pattern_path)
-        or pattern_path.endswith("/" + target_path)
-    )
+    """Match only the configured path or a child path.
+
+    Relative entries are resolved from the current workspace.  The former
+    suffix-based matching accepted unrelated sibling paths ending with the
+    same directory name, which is unsafe for scope enforcement.
+    """
+    pattern_path = _resolved_path(pattern)
+    target_path = _resolved_path(target)
+    try:
+        target_path.relative_to(pattern_path)
+        return True
+    except ValueError:
+        return False
 
 
-def _norm_path(value: str) -> str:
-    return Path(value).as_posix().rstrip("/") or "."
+def _resolved_path(value: str) -> Path:
+    return Path(os.path.normcase(str(Path(value).resolve(strict=False))))
 
 
 __all__ = ["is_url", "match_scope_pattern"]

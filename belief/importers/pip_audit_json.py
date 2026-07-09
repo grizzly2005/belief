@@ -25,10 +25,14 @@ def import_pip_audit_json(path: str | Path) -> NormalizedToolResult:
                 rule_id=vuln_id or None,
                 title=f"Vulnerable dependency candidate: {_str(dep.get('name'))}",
                 message=_str(vuln.get("description")) or None,
-                severity=_str(vuln.get("fix_versions")) or None,
+                severity=_str(vuln.get("severity")) or "medium",
                 confidence="imported",
                 file=_str(dep.get("name")) or None,
-                evidence=[f"package={_str(dep.get('name'))}", f"version={_str(dep.get('version'))}"],
+                evidence=[
+                    f"package={_str(dep.get('name'))}",
+                    f"version={_str(dep.get('version'))}",
+                    *_fix_version_evidence(vuln.get("fix_versions")),
+                ],
                 raw={"dependency": dep.get("name"), "version": dep.get("version"), "vulnerability": vuln},
             ))
     return NormalizedToolResult(tool_id="pip_audit", findings=sorted(findings, key=lambda f: (f.file or "", f.rule_id or "")))
@@ -36,6 +40,11 @@ def import_pip_audit_json(path: str | Path) -> NormalizedToolResult:
 
 def _str(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _fix_version_evidence(value: Any) -> list[str]:
+    values = value if isinstance(value, list) else [value] if value else []
+    return [f"fix_version={_str(item)}" for item in values if _str(item)]
 
 
 __all__ = ["import_pip_audit_json"]

@@ -14,6 +14,7 @@ Uses Python's built-in http.server — zero external dependencies.
 from __future__ import annotations
 
 import json
+import ipaddress
 import logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -24,6 +25,9 @@ from ..security_patterns import SecurityPatternExtractor
 from ..taint import TaintEngine
 
 logger = logging.getLogger("belief.api_server")
+MAX_REQUEST_BYTES = 1_000_000
+MAX_STORED_REPORTS = 100
+MAX_LIST_LIMIT = 500
 
 
 class BeliefAPIHandler(BaseHTTPRequestHandler):
@@ -67,8 +71,19 @@ class BeliefAPIHandler(BaseHTTPRequestHandler):
     def _handle_analyze(self):
         """Handle POST /analyze with source code in body."""
         try:
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length).decode("utf-8")
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+            except (TypeError, ValueError):
+                self._json_response({"error": "Invalid Content-Length"}, status=400)
+                return
+            if content_length < 0 or content_length > MAX_REQUEST_BYTES:
+                self._json_response({"error": "Request body is too large"}, status=413)
+                return
+            try:
+                body = self.rfile.read(content_length).decode("utf-8")
+            except UnicodeDecodeError:
+                self._json_response({"error": "Request body must be UTF-8"}, status=400)
+                return
 
             try:
                 data = json.loads(body)
@@ -81,9 +96,11 @@ class BeliefAPIHandler(BaseHTTPRequestHandler):
                 file_path = "uploaded.py"
                 project_name = "api_upload"
 
-            if not source_code:
+            if not isinstance(source_code, str) or not source_code:
                 self._json_response({"error": "No code provided"}, status=400)
                 return
+            file_path = _bounded_text(file_path, "uploaded.py")
+            project_name = _bounded_text(project_name, "api_upload")
 
             # Run analysis
             all_beliefs = []
@@ -99,6 +116,10 @@ class BeliefAPIHandler(BaseHTTPRequestHandler):
             # Store report
             import hashlib
             report_id = hashlib.sha256(source_code.encode()).hexdigest()[:12]
+            if report_id not in self.reports and len(self.reports) >= MAX_STORED_REPORTS:
+                oldest_report_id = next(iter(self.reports), None)
+                if oldest_report_id is not None:
+                    del self.reports[oldest_report_id]
             self.reports[report_id] = report
 
             self._json_response({
@@ -108,9 +129,9 @@ class BeliefAPIHandler(BaseHTTPRequestHandler):
                 "beliefs": [b.to_dict() for b in all_beliefs[:50]],
             })
 
-        except Exception as e:
-            logger.error(f"Analysis error: {e}")
-            self._json_response({"error": str(e)}, status=500)
+        except Exception:
+            logger.exception("Analysis error")
+            self._json_response({"error": "Analysis failed"}, status=500)
 
     def _get_report(self, report_id: str):
         report = self.reports.get(report_id)
@@ -152,7 +173,7 @@ class BeliefAPIHandler(BaseHTTPRequestHandler):
                           if b.get("justification") == just_filter]
 
         # Limit
-        limit = int(params.get("limit", [100])[0])
+        limit = _bounded_limit(params.get("limit", [100])[0])
         return {
             "total": len(all_beliefs),
             "beliefs": all_beliefs[:limit],
@@ -170,7 +191,8 @@ class BeliefAPIHandler(BaseHTTPRequestHandler):
     def _json_response(self, data: dict, status: int = 200):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(json.dumps(data, default=str).encode("utf-8"))
 
@@ -181,13 +203,16 @@ class BeliefAPIHandler(BaseHTTPRequestHandler):
 class APIServer:
     """BELIEF REST API server."""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 8420):
+    def __init__(self, host: str = "127.0.0.1", port: int = 8420, *, allow_public: bool = False):
         self.host = host
         self.port = port
+        self.allow_public = allow_public
         self.server: HTTPServer | None = None
 
     def start(self):
         """Start the API server (blocking)."""
+        if not self.allow_public and not is_loopback_host(self.host):
+            raise ValueError("refusing non-loopback bind without allow_public=True")
         self.server = HTTPServer((self.host, self.port), BeliefAPIHandler)
         logger.info(f"BELIEF API server running on http://{self.host}:{self.port}")
         print(f"BELIEF API server running on http://{self.host}:{self.port}")
@@ -201,3 +226,26 @@ class APIServer:
         if self.server:
             self.server.shutdown()
             logger.info("API server stopped")
+
+
+def _bounded_limit(value, default: int = 100) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return min(max(parsed, 1), MAX_LIST_LIMIT)
+
+
+def _bounded_text(value, default: str) -> str:
+    text = str(value or default).strip()
+    return text[:256] or default
+
+
+def is_loopback_host(host: str) -> bool:
+    value = str(host or "").strip().lower()
+    if value == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(value).is_loopback
+    except ValueError:
+        return False

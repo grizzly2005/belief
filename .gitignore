@@ -14,6 +14,7 @@ build/
 .venv/
 venv/
 env/
+.wheelhouse/
 
 .env
 .env.*

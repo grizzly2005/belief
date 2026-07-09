@@ -16,6 +16,9 @@ from .models import RunCommand, RunPlan
 from .output_layout import build_output_layout
 
 
+MAX_PLAN_TIMEOUT_SECONDS = 3600
+
+
 def build_run_plan(
     target: str,
     *,
@@ -25,7 +28,10 @@ def build_run_plan(
     output_dir: str = "out/run",
     timeout_seconds: int | None = None,
     budget: str = "balanced",
+    reportability: bool = False,
 ) -> RunPlan:
+    if timeout_seconds is not None and not 1 <= int(timeout_seconds) <= MAX_PLAN_TIMEOUT_SECONDS:
+        raise ValueError(f"timeout must be between 1 and {MAX_PLAN_TIMEOUT_SECONDS} seconds")
     target_profile = classify_target(target)
     scope = load_scope(scope_file) if scope_file else None
     profile = load_tool_profile(profile_id)
@@ -63,7 +69,7 @@ def build_run_plan(
             skipped.append({"tool_id": capability.tool_id, "reason": availability.reason, "status": availability.status})
             continue
 
-        command = _command_for_tool(capability, target, layout, timeout_seconds)
+        command = _command_for_tool(capability, target, layout, timeout_seconds, reportability=reportability)
         commands.append(command)
         selected.append({"tool_id": capability.tool_id, "status": availability.status, "category": capability.category})
 
@@ -75,7 +81,11 @@ def build_run_plan(
         commands=tuple(commands),
         import_steps=tuple(import_steps),
         merge_step={"enabled": True, "mode": "best_effort_normalized_merge"},
-        audit_step={"enabled": True, "mode": "local_scan_when_applicable"},
+        audit_step={
+            "enabled": True,
+            "mode": "local_scan_when_applicable",
+            "reportability": bool(reportability),
+        },
         report_steps=({"format": "json"}, {"format": "markdown"}),
         output_layout=layout,
         safety_decisions=tuple(decisions),
@@ -121,32 +131,37 @@ def _command_for_tool(
     target: str,
     layout: dict[str, str],
     timeout_seconds: int | None,
+    *,
+    reportability: bool,
 ) -> RunCommand:
     raw_output = Path(layout["raw"]) / f"{capability.tool_id}.json"
+    command_target = _command_target(target)
     normalized = (
         Path(layout["normalized"]) / capability.normalized_output_name
         if capability.normalized_output_name
         else None
     )
     if capability.tool_id == "belief":
-        argv = (
+        argv = [
             sys.executable,
             "-m",
             "belief",
             "scan",
-            target,
+            command_target,
             "--json-output",
             raw_output.as_posix(),
-        )
+        ]
+        if reportability:
+            argv.append("--reportability")
     else:
         argv = tuple(
-            item.replace("{target}", target).replace("{raw_output}", raw_output.as_posix())
+            item.replace("{target}", command_target).replace("{raw_output}", raw_output.as_posix())
             for item in capability.run_command_template
         )
     return RunCommand(
         tool_id=capability.tool_id,
         argv=tuple(argv),
-        cwd=str(Path.cwd()),
+        cwd=_cwd_for_target(target),
         raw_output=raw_output.as_posix(),
         normalized_output=normalized.as_posix() if normalized else None,
         timeout_seconds=int(timeout_seconds or capability.default_timeout_seconds),
@@ -163,6 +178,19 @@ def _scope_summary(scope: ScopePolicy | None) -> dict[str, Any]:
     payload = scope.to_dict()
     payload["present"] = True
     return payload
+
+
+def _cwd_for_target(target: str) -> str:
+    """Constrain local tool processes to the target directory when possible."""
+    path = Path(target)
+    if path.exists():
+        return str((path if path.is_dir() else path.parent).resolve())
+    return str(Path.cwd())
+
+
+def _command_target(target: str) -> str:
+    path = Path(target)
+    return str(path.resolve()) if path.exists() else target
 
 
 __all__ = ["build_run_plan", "write_run_plan"]
