@@ -414,9 +414,25 @@ python -m venv .venv
 ```
 
 The static CLI can be imported and run from source without `httpx`; LLM-backed
-`analyze` requires that transport dependency in the active environment. For an
-offline bootstrap, the build and dependency wheels must already be available in
-the local package cache.
+`analyze` requires that transport dependency in the active environment.
+
+### Reproducible Offline Test Environment
+
+The checked-in [`requirements-offline-test.lock`](requirements-offline-test.lock)
+pins and hashes the local Windows CPython 3.12 validation toolchain. Place the
+matching wheels in the ignored `.wheelhouse/` directory, then create an isolated
+environment without contacting a package index:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap_offline.ps1 \
+  -VenvDir .venv-repro
+```
+
+The bootstrap only reads the local wheelhouse, installs BELIEF from the current
+checkout, and finishes with `pip check`. It never falls back to the network or
+to globally installed packages. See
+[`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md) for the
+platform boundary and verification commands.
 
 Run a local scan:
 
@@ -453,11 +469,15 @@ python -m pytest -q -m "not slow and not external and not llm"
 
 Current local regression baseline:
 
-- full suite: `446 passed, 31 skipped`;
-- security suite: `47 passed`;
-- non-slow / non-external / non-LLM suite: `446 passed, 31 skipped`.
+- full suite: `447 passed, 31 skipped`;
+- security suite: `48 passed`;
+- non-slow / non-external / non-LLM suite: `447 passed, 31 skipped`.
 
 These numbers may change as the project evolves.
+
+`ruff check belief tests` covers first-party code and test fixtures. Bundled
+compatibility assets, third-party rule data, and real-world snippets are kept
+outside that lint target so upstream syntax and provenance remain intact.
 
 ---
 
@@ -608,6 +628,7 @@ pyproject.toml
 
 - [`docs/PDX_BELIEF_INTEGRATION.md`](docs/PDX_BELIEF_INTEGRATION.md)
 - [`docs/TOOL_BRIDGES.md`](docs/TOOL_BRIDGES.md)
+- [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md)
 - [`benchmark_reportability/README.md`](benchmark_reportability/README.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md)

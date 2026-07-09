@@ -29,9 +29,9 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set
 
-from .belief_graph import CognitiveGraph, Contradiction, RelationType
+from .belief_graph import CognitiveGraph, Contradiction
 from .hydra_agent import HydraAgent, Goal, Verdict, VerdictStatus
 from .memory_engine import MemoryEngine, AnalysisRecord
 
@@ -222,7 +222,7 @@ class CognitiveLoop:
         t_phase = time.time()
         self._learn(beliefs, verdicts)
         report.phases["learn"] = time.time() - t_phase
-        logger.info(f"[cognitive] LEARN: memory updated")
+        logger.info("[cognitive] LEARN: memory updated")
 
         # ═══════════════════════════════════════════════════════
         # Assemble report

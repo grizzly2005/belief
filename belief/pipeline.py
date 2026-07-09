@@ -32,7 +32,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("belief.pipeline")
 

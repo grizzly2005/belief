@@ -25,7 +25,7 @@ import logging
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger("belief.bridges.semgrep_indexer")
 

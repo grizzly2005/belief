@@ -22,9 +22,9 @@ Design:
 from __future__ import annotations
 
 import logging
-import os
 import sys
 import time
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -40,12 +40,13 @@ def _try_import_pyt():
     if bundled.exists():
         sys.path.insert(0, str(bundled.parent))
     try:
-        from pyt import (
-            analyser,
-            cfg_builder,
-            lattice,
-            vulnerability_helper,
-        )
+        for module_name in (
+            "pyt.analyser",
+            "pyt.cfg_builder",
+            "pyt.lattice",
+            "pyt.vulnerability_helper",
+        ):
+            import_module(module_name)
         return True
     except ImportError:
         pass

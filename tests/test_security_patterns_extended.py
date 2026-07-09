@@ -90,6 +90,50 @@ def test_detects_requests_verify_false():
     assert "verification disabled" in findings[0].predicate.natural_language
 
 
+def test_detects_user_controlled_ssrf_url_and_ignores_fixed_request_destination():
+    vulnerable = _by_cwe(
+        """
+        import urllib.request
+
+        def fetch(user_url):
+            request = urllib.request.Request(user_url)
+            return urllib.request.urlopen(request)
+        """,
+        "CWE-918",
+    )
+    fixed_destination = _by_cwe(
+        """
+        import json
+        import urllib.request
+
+        def query_catalog(package, version):
+            payload = json.dumps({"package": package, "version": version}).encode("utf-8")
+            request = urllib.request.Request(
+                "https://catalog.example.test/v1/query",
+                data=payload,
+            )
+            return urllib.request.urlopen(request)
+        """,
+        "CWE-918",
+    )
+    reassigned_destination = _by_cwe(
+        """
+        import urllib.request
+
+        def fetch(user_url):
+            request = urllib.request.Request("https://catalog.example.test/v1/query")
+            request = urllib.request.Request(user_url)
+            return urllib.request.urlopen(request)
+        """,
+        "CWE-918",
+    )
+
+    assert len(vulnerable) == 1
+    assert "user-controlled URL" in vulnerable[0].predicate.natural_language
+    assert fixed_destination == []
+    assert len(reassigned_destination) == 1
+
+
 def test_detects_sql_fstring_and_unsafe_deserialization():
     findings = _extract(
         """

@@ -6,8 +6,6 @@ Bug 3: CLI missing --exclude argument
 Bug 4: cmd_scan and hunter not filtering examples/tests directories
 """
 
-import ast
-import os
 import tempfile
 import unittest
 from pathlib import Path

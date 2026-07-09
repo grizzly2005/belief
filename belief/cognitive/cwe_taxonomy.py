@@ -11,7 +11,6 @@ MUST use `cwe_severity()`. Adding a new CWE pattern = edit one dict here.
 """
 from __future__ import annotations
 
-from typing import Optional
 
 # ─────────────────────────────────────────────────────────────────
 # Keyword → CWE map. ORDER MATTERS: first match wins.

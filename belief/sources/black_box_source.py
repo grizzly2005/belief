@@ -9,14 +9,13 @@ treats recorded HTTP observations consistently with white-box beliefs.
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from . import BeliefSource, SourceMetadata
-from .har_parser import parse_har, filter_entries, to_observations, HarEntry
+from .har_parser import parse_har, filter_entries, HarEntry
 
 try:
     from belief.models import (

@@ -32,7 +32,7 @@ import urllib.parse
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional
 
 logger = logging.getLogger("belief.sources.har")
 

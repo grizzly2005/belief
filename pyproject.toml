@@ -72,6 +72,11 @@ exclude = [
     "**/cache_adapted/**",
     "**/rules_data.py",
     "**/examples/**",
+    # Vendored/legacy runtime samples are retained as data, not first-party lint targets.
+    "belief/tools_bundled/**",
+    "belief/security_rules/**",
+    "belief/semgrep_db/**",
+    "tests/real_world_snippets/**",
 ]
 
 [tool.ruff.lint]

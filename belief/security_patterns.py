@@ -611,28 +611,84 @@ class SecurityPatternExtractor:
                     ))
         return beliefs
 
-    def _check_ssrf(self, node: ast.FunctionDef, scope: Scope) -> list[Belief]:
+    def _check_ssrf(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
+    ) -> list[Belief]:
         """Detect potential SSRF (CWE-918)."""
         beliefs = []
+        tainted_vars, constant_vars = self._simple_assignment_facts(node)
+        fixed_request_vars = self._fixed_request_destination_vars(node, constant_vars)
         http_funcs = {"requests.get", "requests.post", "requests.put",
                       "httpx.get", "httpx.post", "urllib.request.urlopen",
                       "urlopen", "fetch"}
 
         for child in ast.walk(node):
-            if isinstance(child, ast.Call):
-                name = self._get_call_name(child)
-                if not name or not any(h in name for h in http_funcs):
-                    continue
-
-                # Check if URL comes from a variable (not a constant)
-                if child.args and isinstance(child.args[0], ast.Name):
-                    beliefs.append(self._make_belief(
-                        "url_param.is_validated == True",
-                        f"HTTP request with variable URL at line {child.lineno} — "
-                        f"potential SSRF if URL is user-controlled (CWE-918).",
-                        scope, child.lineno, "high", "CWE-918",
-                    ))
+            if not isinstance(child, ast.Call):
+                continue
+            name = self._get_call_name(child)
+            if not name or not any(h in name for h in http_funcs) or not child.args:
+                continue
+            url_arg = child.args[0]
+            if self._is_fixed_request_destination(url_arg, fixed_request_vars):
+                continue
+            if not self._is_user_controlled_expr(url_arg, tainted_vars, constant_vars):
+                continue
+            beliefs.append(self._make_belief(
+                "url_param.is_validated == True",
+                f"HTTP request with user-controlled URL at line {child.lineno} — "
+                f"potential SSRF (CWE-918).",
+                scope, child.lineno, "high", "CWE-918",
+            ))
         return beliefs
+
+    def _fixed_request_destination_vars(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        constant_vars: dict[str, object],
+    ) -> set[str]:
+        """Return request variables assigned exactly once to a literal destination.
+
+        Treating a name as fixed after one literal assignment is unsound when it
+        can be reassigned on another path.  This deliberately recognizes only
+        a single local assignment, preferring a false positive to hiding a
+        possible user-controlled destination.
+        """
+        assignments: dict[str, list[ast.AST]] = {}
+        for statement in ast.walk(node):
+            if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = statement.value
+            if value is None:
+                continue
+            targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+            for target in targets:
+                target_name = self._get_name(target)
+                if not target_name:
+                    continue
+                assignments.setdefault(target_name, []).append(value)
+        return {
+            name
+            for name, values in assignments.items()
+            if len(values) == 1 and self._is_fixed_url_request(values[0], constant_vars)
+        }
+
+    def _is_fixed_url_request(
+        self,
+        node: ast.AST,
+        constant_vars: dict[str, object],
+    ) -> bool:
+        if not isinstance(node, ast.Call) or not node.args:
+            return False
+        call_name = self._get_call_name(node)
+        if call_name not in {"urllib.request.Request", "Request"}:
+            return False
+        return isinstance(self._literal_constant_value(node.args[0], constant_vars), str)
+
+    @staticmethod
+    def _is_fixed_request_destination(node: ast.AST, fixed_request_vars: set[str]) -> bool:
+        return isinstance(node, ast.Name) and node.id in fixed_request_vars
 
     def _check_path_traversal(
         self,

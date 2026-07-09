@@ -32,6 +32,7 @@ __all__ = [
     "CognitiveLoop", "CognitiveReport",
     # Agent
     "HydraAgent", "Goal", "Verdict", "VerdictStatus", "Evidence",
+    "AttackPlan", "AttackPhase",
     # Memory
     "MemoryEngine", "MemoryEntry", "AnalysisRecord",
 ]

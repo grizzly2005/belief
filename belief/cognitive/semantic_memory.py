@@ -29,9 +29,9 @@ import logging
 import math
 import re
 import hashlib
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("belief.cognitive.semantic_memory")
 

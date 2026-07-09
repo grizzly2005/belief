@@ -29,7 +29,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict
 
 logger = logging.getLogger("belief.cognitive.bp_inference")
 

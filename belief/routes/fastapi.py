@@ -8,7 +8,6 @@ from ._ast import (
     auth_guarantees_from_names,
     call_name,
     decorator_names,
-    keyword,
     literal_string,
     params_from_route,
     source_segment,

@@ -12,6 +12,7 @@ build/
 *.egg-info/
 
 .venv/
+.venv-*/
 venv/
 env/
 .wheelhouse/

@@ -18,11 +18,9 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import BridgeResult

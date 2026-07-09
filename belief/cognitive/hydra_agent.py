@@ -31,7 +31,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List
 
 logger = logging.getLogger("belief.cognitive.hydra_agent")
 
@@ -287,7 +287,7 @@ class HydraAgent:
 
             # Early stop: if 2+ independent sources confirm, high confidence
             if len(confirmed_evidence) >= 2:
-                logger.info(f"[hydra] Early stop: 2+ sources confirmed")
+                logger.info("[hydra] Early stop: 2+ sources confirmed")
                 break
 
         # 4. Filter known false positives
@@ -415,7 +415,7 @@ class HydraAgent:
 
             if phase.name == "recon" and not supporting:
                 # Recon found nothing → still continue but lower expectations
-                logger.info(f"[hydra] Recon clean — continuing with lower priority")
+                logger.info("[hydra] Recon clean — continuing with lower priority")
 
             if phase.stop_on_confirm and len(supporting) >= 2:
                 logger.info(f"[hydra] Phase '{phase.name}' confirmed by "

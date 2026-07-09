@@ -22,10 +22,9 @@ but runs inline and doesn't need semgrep installed.
 from __future__ import annotations
 
 import ast
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Set
 
 from .belief_adapter import BridgeResult
 
