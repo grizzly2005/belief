@@ -11,6 +11,7 @@ from the network.
 validated Windows CPython 3.12 x64 stack. It includes BELIEF's local runtime,
 pytest, Ruff, and the optional Z3 package used by the test suite. It is not a
 cross-platform release lock: `ruff` and `z3-solver` wheels are platform-specific.
+The bootstrap refuses another interpreter, platform, or bitness.
 
 The wheel bundle belongs in `.wheelhouse/`, which is intentionally ignored by
 Git. It can be preserved as a reviewed build artifact or copied from a trusted
@@ -23,26 +24,39 @@ From the repository root, with a matching local wheelhouse present:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap_offline.ps1 \
-  -VenvDir .venv-repro
+  -VenvDir .venv-repro-fresh
 ```
+
+`-VenvDir` must not exist. The script deliberately refuses to reuse a venv,
+because an already-installed package could otherwise satisfy a requirement
+without its wheel being checked against the lock.
 
 The script:
 
-1. creates the requested virtual environment if it does not exist;
-2. installs only from `.wheelhouse/` with `--no-index` and `--require-hashes`;
-3. installs BELIEF from the current checkout without dependency resolution or a persistent pip cache;
-4. runs `pip check`.
+1. verifies Windows, CPython 3.12 x64, and a strict `name==version` SHA-256 lock;
+2. checks that every locked package has a matching wheel whose hash matches the lock;
+3. creates a fresh venv and verifies that system site-packages are disabled;
+4. installs dependency wheels only with `--isolated`, `--no-index`,
+   `--find-links`, `--require-hashes`, and `--only-binary=:all:`;
+5. installs BELIEF from the current checkout with `--no-deps` and
+   `--no-build-isolation`, then runs `pip check`.
 
-It does not call a package index, use global site-packages, or write outside the
-selected virtual environment, the current checkout's editable metadata, and the
-existing local wheelhouse.
+A missing wheel, malformed lock entry, wrong hash, existing venv, or unsupported
+Python fails before any package can be installed from another source. Pip runs in
+isolated mode, so user pip configuration and `PIP_*` environment settings cannot
+add an index or an extra package location.
+
+Third-party dependencies are installed only as locked wheels; their setup scripts
+are not built or run. The only source build is the explicit editable BELIEF
+checkout, using its declared PEP 517 backend. The bootstrap does not start BELIEF,
+run tests, contact services, or invoke any project runtime script.
 
 ## Verification
 
 ```powershell
-.\.venv-repro\Scripts\python -m pip check
-.\.venv-repro\Scripts\python -m pytest -q
-.\.venv-repro\Scripts\ruff check belief tests
+.\.venv-repro-fresh\Scripts\python -m pip check
+.\.venv-repro-fresh\Scripts\python -m pytest -q
+.\.venv-repro-fresh\Scripts\ruff check belief tests
 ```
 
 For a new platform, produce a separately reviewed wheelhouse and lock update.

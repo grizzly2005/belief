@@ -1,0 +1,2 @@
+# Negative integration fixture: syntactically valid lock with no matching wheel hash.
+anyio==4.12.1 --hash=sha256:0000000000000000000000000000000000000000000000000000000000000000

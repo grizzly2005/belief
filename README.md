@@ -425,12 +425,13 @@ environment without contacting a package index:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap_offline.ps1 \
-  -VenvDir .venv-repro
+  -VenvDir .venv-repro-fresh
 ```
 
 The bootstrap only reads the local wheelhouse, installs BELIEF from the current
-checkout, and finishes with `pip check`. It never falls back to the network or
-to globally installed packages. See
+checkout, and finishes with `pip check`. The target venv must be new so hashes
+are checked before any package can be reused. It never falls back to the network
+or to globally installed packages. See
 [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md) for the
 platform boundary and verification commands.
 
@@ -469,9 +470,9 @@ python -m pytest -q -m "not slow and not external and not llm"
 
 Current local regression baseline:
 
-- full suite: `447 passed, 31 skipped`;
+- full suite: `451 passed, 31 skipped`;
 - security suite: `48 passed`;
-- non-slow / non-external / non-LLM suite: `447 passed, 31 skipped`.
+- non-slow / non-external / non-LLM suite: `451 passed, 31 skipped`.
 
 These numbers may change as the project evolves.
 
