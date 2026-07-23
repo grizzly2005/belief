@@ -564,6 +564,101 @@ def test_explicit_escape_before_html_sink_is_not_patch_boundary_xss():
     )
 
 
+def test_escaped_regex_callback_with_abortive_http_scheme_guard_is_safe():
+    source = """
+        def render_description(description):
+            def build_link(match):
+                text = match.group(1)
+                url = match.group(2)
+                parsed_url = urlparse(url)
+                if not (
+                    parsed_url.scheme == "http"
+                    or parsed_url.scheme == "https"
+                ):
+                    return escape(match.group(0))
+                return Markup(f'<a href="{url}">{text}</a>')
+
+            escaped = escape(description)
+            escaped = re2.sub(PATTERN, build_link, escaped)
+            return Markup(escaped)
+    """
+
+    findings = _cwe_findings(source, "CWE-79")
+
+    assert findings
+    assert all(
+        finding.source_metadata.get("analysis_profile") != "patch_review"
+        for finding in findings
+    )
+
+
+def test_escaped_regex_callback_without_url_scheme_guard_remains_unsafe():
+    source = """
+        def render_description(description):
+            def build_link(match):
+                text = match.group(1)
+                url = match.group(2)
+                return Markup(f'<a href="{url}">{text}</a>')
+
+            escaped = escape(description)
+            escaped = re2.sub(PATTERN, build_link, escaped)
+            return Markup(escaped)
+    """
+
+    findings = _cwe_findings(source, "CWE-79")
+
+    assert any(
+        finding.source_metadata.get("analysis_profile") == "patch_review"
+        for finding in findings
+    )
+
+
+def test_unsafe_scheme_allowlist_does_not_suppress_callback_finding():
+    source = """
+        def render_description(description):
+            def build_link(match):
+                text = match.group(1)
+                url = match.group(2)
+                parsed_url = urlparse(url)
+                if parsed_url.scheme not in {"https", "javascript"}:
+                    return escape(match.group(0))
+                return Markup(f'<a href="{url}">{text}</a>')
+
+            escaped = escape(description)
+            escaped = re2.sub(PATTERN, build_link, escaped)
+            return Markup(escaped)
+    """
+
+    findings = _cwe_findings(source, "CWE-79")
+
+    assert any(
+        finding.source_metadata.get("analysis_profile") == "patch_review"
+        for finding in findings
+    )
+
+
+def test_url_scheme_guard_does_not_sanitize_unescaped_callback_text():
+    source = """
+        def render_description(description):
+            def build_link(match):
+                text = match.group(1)
+                url = match.group(2)
+                parsed_url = urlparse(url)
+                if parsed_url.scheme not in {"http", "https"}:
+                    return match.group(0)
+                return Markup(f'<a href="{url}">{text}</a>')
+
+            return re2.sub(PATTERN, build_link, description)
+    """
+
+    findings = _cwe_findings(source, "CWE-79")
+
+    assert any(
+        finding.source_metadata.get("analysis_profile") == "patch_review"
+        for finding in findings
+    )
+
+
 def test_pipeline_exposes_patch_review_profile_without_changing_default(tmp_path):
     target = tmp_path / "changed.py"
     target.write_text(

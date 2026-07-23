@@ -619,6 +619,15 @@ def _finding_is_focused(finding: Any, focus: Mapping[str, FocusContext]) -> bool
     return any(start <= int(line) <= end for start, end in context.line_ranges)
 
 
+def finding_is_focused(
+    finding: Any,
+    focus: Mapping[str, FocusContext],
+) -> bool:
+    """Return whether a finding belongs to the functions or lines changed by a diff."""
+
+    return _finding_is_focused(finding, focus)
+
+
 def _focus_context(
     source: str,
     hunks: Iterable[DiffHunk],
@@ -689,6 +698,18 @@ def _focus_context(
         line_ranges,
         frozenset(qualified_functions),
     )
+
+
+def build_focus_context(
+    source: str,
+    hunks: Iterable[DiffHunk],
+    state: str,
+) -> FocusContext:
+    """Build deterministic function and line focus for one side of a parsed diff."""
+
+    if state not in {"vulnerable", "fixed"}:
+        raise ValueError("state must be one of: vulnerable, fixed")
+    return _focus_context(source, hunks, state)
 
 
 def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1000,7 +1021,9 @@ __all__ = [
     "FocusContext",
     "LocalGitCorpus",
     "SusVibesThresholds",
+    "build_focus_context",
     "evaluate_susvibes_paired_benchmark",
+    "finding_is_focused",
     "load_susvibes_cases",
     "parse_security_diff",
     "write_susvibes_paired_benchmark_json",

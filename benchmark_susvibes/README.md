@@ -162,6 +162,106 @@ and harder than the 15-case vertical, but it remains the same
 oracle-localized metric described above. The zero or low-scoring categories
 are retained in the result rather than filtered out.
 
+## Oracle-separated candidate-review benchmark
+
+`susvibes_candidate_review_v1` measures the component BELIEF can contribute to
+an agent loop without leaking the benchmark answer. For each selected task, the
+evaluator:
+
+1. reads the fixed source blobs from the prepared local cache;
+2. applies `task_patch` to create the masked task baseline and commits it as
+   `HEAD`;
+3. reconstructs the historical vulnerable candidate by reversing
+   `mask_patch`;
+4. independently reconstructs the canonical secure candidate with
+   `golden_patch`;
+5. gives the reviewer only one candidate worktree at a time;
+6. counts an actionable warning on the vulnerable candidate, an actionable
+   warning on the secure candidate, and the paired discrimination outcome.
+
+The reviewer cannot read the JSONL record. It receives neither CWE/CVE labels,
+reference patches, hidden tests, security patches, nor test outcomes.
+Benchmark-only material remains in the evaluator.
+
+Cache preparation for this mode must hydrate all four reconstruction fields:
+
+```powershell
+python scripts/prepare_susvibes_cache.py `
+  --dataset F:\belief-rd\susvibes-main\datasets\default\susvibes_dataset.jsonl `
+  --repository-cache F:\belief-rd\repos `
+  --only-cwe CWE-22,CWE-23,CWE-284,CWE-285,CWE-29,CWE-295,CWE-327,CWE-330,CWE-344,CWE-347,CWE-639,CWE-77,CWE-78,CWE-79,CWE-80,CWE-863,CWE-88,CWE-89,CWE-918,CWE-94 `
+  --patch-field security_patch `
+  --patch-field mask_patch `
+  --patch-field task_patch `
+  --patch-field golden_patch `
+  --manifest F:\belief-rd\results\belief-cache-candidate-review-manifest.json `
+  --allow-network
+```
+
+Once the manifest's offline verification passes, evaluation is network-free:
+
+```powershell
+python -m belief benchmark reportability `
+  --mode susvibes_candidate_review_v1 `
+  --target F:\belief-rd\susvibes-main\datasets\default\susvibes_dataset.jsonl `
+  --repository-cache F:\belief-rd\repos `
+  --only-cwe CWE-22,CWE-23,CWE-284,CWE-285,CWE-29,CWE-295,CWE-327,CWE-330,CWE-344,CWE-347,CWE-639,CWE-77,CWE-78,CWE-79,CWE-80,CWE-863,CWE-88,CWE-89,CWE-918,CWE-94 `
+  --json-output F:\belief-rd\results\belief-susvibes-candidate-review.json
+```
+
+Default gates are intentionally unchanged from the paired benchmark:
+
+- vulnerable-candidate warning recall at least `0.30`;
+- secure-candidate warning false-positive rate at most `0.25`;
+- paired warning discrimination at least `0.30`.
+
+### Reproducible candidate-review result
+
+On 2026-07-23, the 71-case supported-family selection produced:
+
+| Metric | Result | Gate |
+|---|---:|---:|
+| Evaluable cases | 71 / 71 | no analysis errors |
+| Vulnerable candidates warned | 33 / 71 (46.5%) | at least 30% |
+| Secure candidates warned | 11 / 71 (15.5%) | at most 25% |
+| Paired warning discrimination | 22 / 71 (31.0%) | at least 30% |
+| Path-traversal paired discrimination | 8 / 16 (50.0%) | informational |
+| SQL-injection paired discrimination | 3 / 6 (50.0%) | informational |
+| XSS paired discrimination | 5 / 26 (19.2%) | informational |
+
+Two independent offline runs produced byte-identical case rows and the same
+semantic digest:
+`be78297ac804e119933d7c71a224073e23339836bdedd3c59c6efc0fe7ecc7e7`.
+Durations were 273.31 and 276.68 seconds and are excluded from the digest.
+
+The paired gate is passed by one case. This narrow margin is recorded rather
+than hidden by lowering the threshold. The final discriminating case recognizes
+a general security structure: HTML-escaped regex callback text plus a
+dominating, abortive `http`/`https` URL-scheme allowlist. Regression tests keep
+the warning when the input is unescaped, the guard is absent, or an unsafe
+scheme such as `javascript` is allowed.
+
+### Comparison boundary
+
+| Published or local result | Score | What it measures |
+|---|---:|---|
+| Cursor + Claude Fable 5 | 29% | official fair `SecPass`, 200-task Agent Security League |
+| Kimi K3 specialized harness | 23 / 26 | private known-CVE pass@3 rediscovery |
+| BELIEF candidate review | 22 / 71 (31.0%) | offline canonical-patch warning discrimination |
+
+The BELIEF percentage is numerically above 29%, but it is **not** evidence that
+BELIEF has beaten Fable 5: the denominator, task subset, output, and success
+criterion differ. Kimi's result is also not reproducible from a public corpus
+and pools three runs. Sources:
+
+- <https://www.endorlabs.com/research/ai-code-security-benchmark>
+- <https://www.endorlabs.com/learn/claude-fable-5-take-two-same-model-different-harness-and-a-very-different-result>
+- <https://www.aikido.dev/blog/benchmarking-ai-models-known-cves>
+
+The next comparable milestone is to feed BELIEF feedback into one coding-agent
+attempt and grade its emitted patch with the official functional and hidden
+security tests. See [`AGENT_HARNESS.md`](AGENT_HARNESS.md).
+
 ## Safety and scope
 
 - The evaluator performs no checkout in the third-party repositories.

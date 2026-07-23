@@ -913,6 +913,10 @@ def cmd_benchmark(args):
             SUSVIBES_PAIRED_MODE,
             write_susvibes_paired_benchmark_json,
         )
+        from .benchmark.susvibes_candidate_review import (
+            SUSVIBES_CANDIDATE_REVIEW_MODE,
+            write_susvibes_candidate_review_json,
+        )
 
         try:
             mode = str(getattr(args, "benchmark_mode", REPORTABILITY_MODE) or REPORTABILITY_MODE)
@@ -989,6 +993,32 @@ def cmd_benchmark(args):
                     only_cwes=only_cwes,
                     max_cases=int(getattr(args, "max_cases", 0)),
                 )
+            elif mode == SUSVIBES_CANDIDATE_REVIEW_MODE:
+                target = args.reportability_target
+                repository_cache = str(
+                    getattr(args, "repository_cache", "") or ""
+                )
+                if not target:
+                    raise ValueError(
+                        "--target must name a pinned SusVibes JSONL dataset"
+                    )
+                if not repository_cache:
+                    raise ValueError(
+                        "--repository-cache must name the prepared local Git cache"
+                    )
+                only_cwes = tuple(
+                    item.strip()
+                    for value in (getattr(args, "only_cwe", ()) or ())
+                    for item in str(value).split(",")
+                    if item.strip()
+                )
+                payload = write_susvibes_candidate_review_json(
+                    target,
+                    repository_cache,
+                    args.json_output,
+                    only_cwes=only_cwes,
+                    max_cases=int(getattr(args, "max_cases", 0)),
+                )
             else:
                 raise ValueError(f"unsupported benchmark mode: {mode}")
         except ValueError as exc:
@@ -1001,7 +1031,11 @@ def cmd_benchmark(args):
             "case_count": payload["case_count"],
             "mode": payload["mode"],
         }
-        measured_modes = {STATIC_ANALYSIS_MODE, SUSVIBES_PAIRED_MODE}
+        measured_modes = {
+            STATIC_ANALYSIS_MODE,
+            SUSVIBES_PAIRED_MODE,
+            SUSVIBES_CANDIDATE_REVIEW_MODE,
+        }
         if mode in measured_modes:
             summary.update({
                 "status": payload["status"],
@@ -1027,6 +1061,57 @@ def cmd_benchmark(args):
         print(suite.summary_table())
         print()
         print(suite.engine_comparison())
+
+
+def cmd_review_patch(args):
+    """Run oracle-free security review over a candidate Git worktree diff."""
+    from .patch_review import review_candidate_patch
+
+    try:
+        patch = None
+        if args.patch:
+            patch = Path(args.patch).read_text(encoding="utf-8")
+        payload = review_candidate_patch(
+            args.target,
+            patch,
+            include_tests=bool(args.include_tests),
+            max_files=int(args.max_files),
+        )
+        if args.json_output:
+            output = Path(args.json_output)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(
+                json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        if args.feedback_output:
+            feedback_output = Path(args.feedback_output)
+            feedback_output.parent.mkdir(parents=True, exist_ok=True)
+            feedback_output.write_text(
+                str(payload["feedback"]).rstrip() + "\n",
+                encoding="utf-8",
+            )
+    except (OSError, UnicodeError, ValueError) as exc:
+        safe_print(
+            f"ERROR: candidate patch review failed: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    safe_print(json.dumps({
+        "schema_version": payload["schema_version"],
+        "status": payload["status"],
+        "changed_python_files": payload["counts"]["changed_python_files"],
+        "excluded_test_files": payload["counts"]["excluded_test_files"],
+        "introduced_actionable": payload["counts"]["introduced_actionable"],
+        "residual_actionable": payload["counts"]["residual_actionable"],
+        "candidate_actionable": payload["counts"]["candidate_actionable"],
+        "deterministic_digest": payload["deterministic_digest"],
+        "feedback": payload["feedback"],
+        "json_output": str(args.json_output or ""),
+    }, indent=2, sort_keys=True))
+    if args.fail_on_findings and payload["status"] == "review_required":
+        sys.exit(1)
 
 
 def cmd_scope(args):
@@ -1770,6 +1855,51 @@ def main():
         help="Prefer actionable and needs-review audit evidence over protected/likely false-positive cases",
     )
 
+    # candidate patch review
+    p_review_patch = sub.add_parser(
+        "review-patch",
+        help="Review candidate Git changes for security regressions without an oracle",
+    )
+    p_review_patch.add_argument(
+        "--target",
+        required=True,
+        help="Candidate Git repository root",
+    )
+    p_review_patch.add_argument(
+        "--patch",
+        default="",
+        help=(
+            "Optional unified diff file (default: collect tracked and "
+            "untracked worktree changes)"
+        ),
+    )
+    p_review_patch.add_argument(
+        "--max-files",
+        type=int,
+        default=100,
+        help="Maximum changed Python files accepted",
+    )
+    p_review_patch.add_argument(
+        "--include-tests",
+        action="store_true",
+        help="Include changed Python test files in review",
+    )
+    p_review_patch.add_argument(
+        "--json-output",
+        default="",
+        help="Write the full review report as JSON",
+    )
+    p_review_patch.add_argument(
+        "--feedback-output",
+        default="",
+        help="Write concise repair feedback for an agent",
+    )
+    p_review_patch.add_argument(
+        "--fail-on-findings",
+        action="store_true",
+        help="Exit 1 when actionable candidate findings require review",
+    )
+
     # hunt (aggressive, no LLM)
     p_hunt = sub.add_parser("hunt", help="Aggressive zero-day hunt (all engines, no LLM)")
     p_hunt.add_argument("target_path", help="Directory to hunt in")
@@ -1807,11 +1937,12 @@ def main():
             "metadata_ground_truth_mvp",
             "static_analysis_ground_truth_v1",
             "susvibes_paired_static_v1",
+            "susvibes_candidate_review_v1",
         ],
         default="metadata_ground_truth_mvp",
         help=(
-            "Metadata compatibility, local ground truth, or offline SusVibes "
-            "paired-revision analysis"
+            "Metadata compatibility, local ground truth, offline SusVibes "
+            "paired revisions, or oracle-separated candidate review"
         ),
     )
     p_bench_reportability.add_argument(
@@ -2014,6 +2145,7 @@ def main():
         "scope": cmd_scope,
         "target": cmd_target,
         "scan": cmd_scan,
+        "review-patch": cmd_review_patch,
         "hunt": cmd_hunt,
         "self-check": cmd_self_check,
         "serve": cmd_serve,

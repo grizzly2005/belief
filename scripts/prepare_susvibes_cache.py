@@ -1,8 +1,9 @@
-"""Prepare the minimal Git object cache used by BELIEF's SusVibes adapter.
+"""Prepare the minimal Git object cache used by BELIEF's SusVibes adapters.
 
 Network access is opt-in. The script fetches fixed commits and their first
-parents, hydrates only Python blobs named by the security patches, performs an
-offline verification pass, and never checks out or executes third-party code.
+parents, hydrates only Python blobs named by explicitly selected patch fields,
+performs an offline verification pass, and never checks out or executes
+third-party code.
 """
 
 from __future__ import annotations
@@ -53,6 +54,21 @@ def _arguments() -> argparse.Namespace:
         type=int,
         default=0,
         help="Maximum cases after deterministic sorting (0 means all)",
+    )
+    parser.add_argument(
+        "--patch-field",
+        action="append",
+        choices=[
+            "security_patch",
+            "mask_patch",
+            "task_patch",
+            "golden_patch",
+        ],
+        default=[],
+        help=(
+            "Dataset patch field whose Python blobs must be hydrated "
+            "(repeatable; default: security_patch)"
+        ),
     )
     parser.add_argument(
         "--manifest",
@@ -172,7 +188,11 @@ def _ensure_origin(repository: Path, project: str) -> str:
     return observed
 
 
-def _hydrate_case(repository: Path, case: dict[str, object]) -> dict[str, object]:
+def _hydrate_case(
+    repository: Path,
+    case: dict[str, object],
+    patch_fields: Iterable[str],
+) -> dict[str, object]:
     commit = str(case["base_commit"])
     _git(
         repository,
@@ -192,21 +212,39 @@ def _hydrate_case(repository: Path, case: dict[str, object]) -> dict[str, object
         allow_network=False,
     ).stdout.decode("utf-8", errors="replace").strip()
 
-    hydrated: set[tuple[str, str]] = set()
-    for diff_file in parse_security_diff(str(case["security_patch"])):
-        for revision, path in (
-            (parent, diff_file.old_path),
-            (commit, diff_file.new_path),
-        ):
-            if not path:
+    wanted: set[tuple[str, str]] = set()
+    for field in patch_fields:
+        for diff_file in parse_security_diff(str(case.get(field, ""))):
+            if field == "security_patch":
+                wanted.update({
+                    (parent, diff_file.old_path),
+                    (commit, diff_file.new_path),
+                })
                 continue
-            _git(
-                repository,
-                "show",
-                f"{revision}:{path}",
-                allow_network=True,
-                discard_stdout=True,
+            paths = {
+                path
+                for path in (diff_file.old_path, diff_file.new_path)
+                if path
+            }
+            wanted.update(
+                (revision, path)
+                for revision in (parent, commit)
+                for path in paths
             )
+
+    hydrated: set[tuple[str, str]] = set()
+    for revision, path in sorted(wanted):
+        if not path:
+            continue
+        completed = _git(
+            repository,
+            "show",
+            f"{revision}:{path}",
+            allow_network=True,
+            discard_stdout=True,
+            check=False,
+        )
+        if completed.returncode == 0:
             hydrated.add((revision, path))
     return {
         "instance_id": str(case["instance_id"]),
@@ -225,6 +263,7 @@ def prepare_cache(
     *,
     only_cwes: Iterable[str] = (),
     max_cases: int = 0,
+    patch_fields: Iterable[str] = ("security_patch",),
     allow_network: bool = False,
 ) -> dict[str, object]:
     if not allow_network:
@@ -236,6 +275,20 @@ def prepare_cache(
         only_cwes=only_cwes,
         max_cases=max_cases,
     )
+    selected_fields = tuple(dict.fromkeys(patch_fields))
+    allowed_fields = {
+        "security_patch",
+        "mask_patch",
+        "task_patch",
+        "golden_patch",
+    }
+    if not selected_fields:
+        selected_fields = ("security_patch",)
+    unknown_fields = sorted(set(selected_fields) - allowed_fields)
+    if unknown_fields:
+        raise ValueError(
+            "unsupported patch fields: " + ", ".join(unknown_fields)
+        )
     cache_root.mkdir(parents=True, exist_ok=True)
     grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
     for case in cases:
@@ -250,7 +303,10 @@ def prepare_cache(
         )
         repository = _ensure_repository(cache_root, project)
         origin = _ensure_origin(repository, project)
-        case_rows = [_hydrate_case(repository, case) for case in project_cases]
+        case_rows = [
+            _hydrate_case(repository, case, selected_fields)
+            for case in project_cases
+        ]
         project_rows.append(
             {
                 "project": project,
@@ -282,6 +338,7 @@ def prepare_cache(
         "case_count": len(cases),
         "project_count": len(project_rows),
         "only_cwes": sorted(set(only_cwes)),
+        "patch_fields": list(selected_fields),
         "projects": project_rows,
         "offline_verification_passed": True,
     }
@@ -302,6 +359,7 @@ def main() -> int:
             cache_root,
             only_cwes=_cwe_values(args.only_cwe),
             max_cases=int(args.max_cases),
+            patch_fields=tuple(args.patch_field or ("security_patch",)),
             allow_network=bool(args.allow_network),
         )
         manifest_path.parent.mkdir(parents=True, exist_ok=True)

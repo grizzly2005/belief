@@ -137,7 +137,7 @@ See [`benchmark_reportability/README.md`](benchmark_reportability/README.md).
 
 ---
 
-## SusVibes Paired-Revision Benchmark
+## SusVibes Security Benchmarks
 
 `susvibes_paired_static_v1` evaluates BELIEF against pinned vulnerable/fixed
 revision pairs from the public SusVibes corpus without importing or executing
@@ -157,6 +157,25 @@ This is an oracle-localized static discrimination metric, not SusVibes
 [`benchmark_susvibes/README.md`](benchmark_susvibes/README.md) for provenance,
 safety boundaries, exact semantics, and the reproducible 15- and 71-case
 baselines.
+
+`susvibes_candidate_review_v1` provides a stricter offline measurement: the
+reviewer sees only a candidate Git diff against a masked task baseline, while
+the evaluator separately compares its behavior on canonical vulnerable and
+secure candidates. The same reviewer is available for any local Git worktree:
+
+```powershell
+python -m belief review-patch `
+  --target . `
+  --json-output out\candidate-review.json `
+  --feedback-output out\candidate-feedback.txt `
+  --fail-on-findings
+```
+
+For an end-to-end `FuncPass` / `SecPass` experiment, the Claude Code adapter
+adds a bounded BELIEF Stop hook to the official SusVibes Docker harness. It is
+dry-run only unless both execution and network acknowledgement flags are
+provided. See
+[`benchmark_susvibes/AGENT_HARNESS.md`](benchmark_susvibes/AGENT_HARNESS.md).
 
 ---
 
@@ -493,9 +512,9 @@ python -m pytest -q -m "not slow and not external and not llm"
 
 Current local regression baseline:
 
-- full suite: `451 passed, 31 skipped`;
-- security suite: `48 passed`;
-- non-slow / non-external / non-LLM suite: `451 passed, 31 skipped`.
+- full suite: `637 passed, 31 skipped`;
+- security suite: `183 passed`;
+- non-slow / non-external / non-LLM suite: `637 passed, 31 skipped`.
 
 These numbers may change as the project evolves.
 
@@ -531,6 +550,8 @@ See [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md) for the current asset inventory and
 - Static and imported evidence can produce candidates, not guaranteed vulnerabilities.
 - The reportability benchmark is currently `metadata_ground_truth_mvp` and does not run scanners or prove real-world discovery.
 - The SusVibes paired benchmark uses patch locations as an oracle and is not an end-to-end agent security score.
+- The SusVibes candidate-review score is oracle-separated static feedback discrimination, not official `SecPass`.
+- The agent harness produces a comparable score only after official functional and hidden security tests evaluate its predictions.
 - The reasoning engine is deterministic and local; it is not an LLM agent.
 - Dynamic validation is intentionally not enabled by default.
 - External tools are not vendored as full runtimes.
@@ -620,7 +641,7 @@ benchmark_reportability/
   Synthetic offline reportability benchmark corpus.
 
 benchmark_susvibes/
-  Pinned provenance and protocol for offline vulnerable/fixed revision pairs.
+  Pinned provenance and protocols for static pairs, candidate review, and the agent harness.
 
 schemas/
   Documentation-only JSON schemas for BELIEF data formats.
@@ -659,6 +680,7 @@ pyproject.toml
 - [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md)
 - [`benchmark_reportability/README.md`](benchmark_reportability/README.md)
 - [`benchmark_susvibes/README.md`](benchmark_susvibes/README.md)
+- [`benchmark_susvibes/AGENT_HARNESS.md`](benchmark_susvibes/AGENT_HARNESS.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md)
 

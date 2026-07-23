@@ -103,13 +103,21 @@ class TestBug2_ExcludeDirs(unittest.TestCase):
         from belief.parser import CodeParser
         p = CodeParser(str(belief_dir))
         files = p._collect_python_files()
-        # Should be ~88 files, not 1800+
-        self.assertLess(len(files), 200,
-                        f"Too many files ({len(files)}): examples likely not excluded")
-        # Should not contain any examples/ files
-        examples_leaked = [f for f in files if "examples" in f.parts]
-        self.assertEqual(len(examples_leaked), 0,
-                        f"Examples leaked: {examples_leaked[:5]}")
+        # The exact first-party count grows with the project. Assert the actual
+        # safety boundary instead of freezing that count below an arbitrary
+        # threshold.
+        excluded_parts = {"examples", "symbolic", "tools_bundled"}
+        leaked = [
+            file
+            for file in files
+            if excluded_parts.intersection(file.parts)
+        ]
+        self.assertTrue(files)
+        self.assertEqual(
+            leaked,
+            [],
+            f"Excluded corpus files leaked: {leaked[:5]}",
+        )
 
 
 class TestBug3_CLIExcludeArg(unittest.TestCase):

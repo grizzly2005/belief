@@ -125,6 +125,11 @@ _PATCH_XSS_SANITIZERS = {
     "sanitize",
     "sanitize_html",
 }
+_PATCH_SAFE_URL_SCHEMES = frozenset({"http", "https"})
+_PATCH_URL_ATTRIBUTE_PREFIX = re.compile(
+    r"(?:action|formaction|href|src)\s*=\s*([\"'])[^\"']*$",
+    re.IGNORECASE,
+)
 
 
 class SecurityPatternExtractor:
@@ -165,6 +170,11 @@ class SecurityPatternExtractor:
             for child in class_node.body:
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     class_names[id(child)] = class_node.name
+        escaped_substitution_callbacks = (
+            _escaped_regex_substitution_callbacks(tree)
+            if self.analysis_profile == "patch_review"
+            else {}
+        )
         if self.analysis_profile == "patch_review":
             beliefs.extend(
                 self._check_patch_boundary_view_access(tree, module_scope)
@@ -198,7 +208,13 @@ class SecurityPatternExtractor:
                         self._check_patch_boundary_interpreter_fragment(node, scope)
                     )
                     beliefs.extend(
-                        self._check_patch_boundary_reflected_output(node, scope)
+                        self._check_patch_boundary_reflected_output(
+                            node,
+                            scope,
+                            escaped_boundary_sources=(
+                                escaped_substitution_callbacks.get(id(node), set())
+                            ),
+                        )
                     )
                     beliefs.extend(
                         self._check_patch_boundary_tls_context(node, scope)
@@ -1406,12 +1422,15 @@ class SecurityPatternExtractor:
         self,
         node: ast.FunctionDef | ast.AsyncFunctionDef,
         scope: Scope,
+        *,
+        escaped_boundary_sources: set[str] | None = None,
     ) -> list[Belief]:
         """Trace boundary values into explicit HTML/HTTP output operations."""
 
         function_name = node.name.lower()
         if any(token in function_name for token in ("escape", "safe", "sanitiz")):
             return []
+        escaped_boundary_sources = set(escaped_boundary_sources or ())
         boundary_sources = _function_parameter_names(node) - {"self", "cls"}
         if not boundary_sources:
             return []
@@ -1420,6 +1439,7 @@ class SecurityPatternExtractor:
         lineage = {name: {name} for name in tainted}
         sanitized_containers: set[str] = set()
         direct_statement_ids = {id(statement) for statement in node.body}
+        guarded_url_sources: set[str] = set()
 
         for event in _ordered_function_events(node):
             if isinstance(event, (ast.For, ast.AsyncFor)):
@@ -1488,6 +1508,14 @@ class SecurityPatternExtractor:
                 continue
 
             if not isinstance(event, ast.Call):
+                if isinstance(event, ast.If):
+                    guarded_url_sources.update(
+                        _rejected_url_scheme_sources(
+                            event,
+                            node=node,
+                            before_line=event.lineno,
+                        )
+                    )
                 continue
             sink = _ast_call_name(event)
             short_sink = sink.rsplit(".", 1)[-1].lower()
@@ -1532,7 +1560,23 @@ class SecurityPatternExtractor:
                     continue
                 referenced = _referenced_names(value) & tainted
                 referenced -= sanitized_containers
-                sources.update(referenced)
+                url_attribute_sources = (
+                    _url_attribute_interpolation_names(value)
+                )
+                for source_name in referenced:
+                    origins = lineage.get(source_name, {source_name})
+                    from_escaped_callback_input = bool(
+                        origins
+                        and origins.issubset(escaped_boundary_sources)
+                    )
+                    if not from_escaped_callback_input:
+                        sources.add(source_name)
+                        continue
+                    if (
+                        source_name in url_attribute_sources
+                        and source_name not in guarded_url_sources
+                    ):
+                        sources.add(source_name)
             if not sources:
                 continue
             origins = {
@@ -2623,6 +2667,366 @@ def _expression_references_alias(node: ast.AST, aliases: set[str]) -> bool:
         if dotted and dotted.rsplit(".", 1)[-1] in normalized:
             return True
     return False
+
+
+def _escaped_regex_substitution_callbacks(
+    tree: ast.AST,
+) -> dict[int, set[str]]:
+    """Map regex callbacks whose match text comes from an escaped string."""
+
+    callbacks: dict[int, set[str]] = {}
+    for function in ast.walk(tree):
+        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        nested = {
+            statement.name: statement
+            for statement in function.body
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        if not nested:
+            continue
+
+        sanitized_aliases: set[str] = set()
+        for event in _ordered_function_events(function):
+            if isinstance(event, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                targets, value = _assignment_parts(event)
+                if value is None:
+                    continue
+                for call in ast.walk(value):
+                    if isinstance(call, ast.Call):
+                        _record_escaped_regex_callback(
+                            call,
+                            nested=nested,
+                            sanitized_aliases=sanitized_aliases,
+                            callbacks=callbacks,
+                        )
+                if _expression_has_xss_sanitizer(value):
+                    sanitized_aliases.update(targets)
+                elif (
+                    isinstance(value, (ast.Name, ast.Attribute, ast.Subscript))
+                    and _referenced_names(value)
+                    and _referenced_names(value).issubset(sanitized_aliases)
+                ):
+                    sanitized_aliases.update(targets)
+                else:
+                    sanitized_aliases.difference_update(targets)
+                continue
+            if isinstance(event, ast.Call):
+                _record_escaped_regex_callback(
+                    event,
+                    nested=nested,
+                    sanitized_aliases=sanitized_aliases,
+                    callbacks=callbacks,
+                )
+    return callbacks
+
+
+def _record_escaped_regex_callback(
+    call: ast.Call,
+    *,
+    nested: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    sanitized_aliases: set[str],
+    callbacks: dict[int, set[str]],
+) -> None:
+    parts = _regex_substitution_parts(call)
+    if parts is None:
+        return
+    callback_expression, subject = parts
+    if not isinstance(callback_expression, ast.Name):
+        return
+    callback = nested.get(callback_expression.id)
+    if callback is None:
+        return
+    subject_names = _referenced_names(subject)
+    if not (
+        _expression_has_xss_sanitizer(subject)
+        or (
+            subject_names
+            and subject_names.issubset(sanitized_aliases)
+        )
+    ):
+        return
+    parameters = [
+        argument.arg
+        for argument in [
+            *callback.args.posonlyargs,
+            *callback.args.args,
+        ]
+        if argument.arg not in {"self", "cls"}
+    ]
+    if parameters:
+        callbacks.setdefault(id(callback), set()).add(parameters[0])
+
+
+def _regex_substitution_parts(
+    call: ast.Call,
+) -> tuple[ast.AST, ast.AST] | None:
+    call_name = _ast_call_name(call).lower()
+    if call_name.rsplit(".", 1)[-1] not in {"sub", "subn"}:
+        return None
+    keywords = {
+        keyword.arg: keyword.value
+        for keyword in call.keywords
+        if keyword.arg
+    }
+    callback = keywords.get("repl")
+    subject = keywords.get("string")
+    module_form = call_name.split(".", 1)[0] in {"re", "re2", "regex"}
+    if module_form:
+        if callback is None and len(call.args) >= 2:
+            callback = call.args[1]
+        if subject is None and len(call.args) >= 3:
+            subject = call.args[2]
+    else:
+        if callback is None and call.args:
+            callback = call.args[0]
+        if subject is None and len(call.args) >= 2:
+            subject = call.args[1]
+    if callback is None or subject is None:
+        return None
+    return callback, subject
+
+
+def _url_attribute_interpolation_names(node: ast.AST) -> set[str]:
+    """Return names interpolated directly into a security-sensitive URL attribute."""
+
+    names: set[str] = set()
+    for joined in ast.walk(node):
+        if not isinstance(joined, ast.JoinedStr):
+            continue
+        for index, part in enumerate(joined.values):
+            if not isinstance(part, ast.FormattedValue) or index == 0:
+                continue
+            prefix = joined.values[index - 1]
+            if not (
+                isinstance(prefix, ast.Constant)
+                and isinstance(prefix.value, str)
+                and _PATCH_URL_ATTRIBUTE_PREFIX.search(prefix.value)
+            ):
+                continue
+            names.update(_referenced_names(part.value))
+    return names
+
+
+def _rejected_url_scheme_sources(
+    guard: ast.If,
+    *,
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    before_line: int,
+) -> set[str]:
+    """Return URL inputs protected by a top-level abortive HTTP(S) allowlist."""
+
+    if guard not in node.body or not _branch_terminates(guard.body):
+        return set()
+
+    parsed_aliases: dict[str, str] = {}
+    scheme_aliases: dict[str, str] = {}
+    for statement in node.body:
+        if getattr(statement, "lineno", before_line) >= before_line:
+            break
+        if not isinstance(statement, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            continue
+        targets, value = _assignment_parts(statement)
+        if value is None:
+            continue
+        parsed_source = _parsed_url_source(value)
+        if parsed_source:
+            for target in targets:
+                parsed_aliases[target] = parsed_source
+            continue
+        scheme_source = _url_scheme_source(
+            value,
+            parsed_aliases=parsed_aliases,
+            scheme_aliases=scheme_aliases,
+        )
+        if scheme_source:
+            for target in targets:
+                scheme_aliases[target] = scheme_source
+
+    source = _rejected_safe_scheme_predicate(
+        guard.test,
+        parsed_aliases=parsed_aliases,
+        scheme_aliases=scheme_aliases,
+    )
+    return {source} if source else set()
+
+
+def _parsed_url_source(node: ast.AST) -> str:
+    if not isinstance(node, ast.Call):
+        return ""
+    if _ast_call_name(node).rsplit(".", 1)[-1].lower() not in {
+        "urlparse",
+        "urlsplit",
+    }:
+        return ""
+    if not node.args:
+        return ""
+    names = _referenced_names(node.args[0])
+    return next(iter(names)) if len(names) == 1 else ""
+
+
+def _url_scheme_source(
+    node: ast.AST,
+    *,
+    parsed_aliases: dict[str, str],
+    scheme_aliases: dict[str, str],
+) -> str:
+    if isinstance(node, ast.Name):
+        return scheme_aliases.get(node.id, "")
+    if not isinstance(node, ast.Attribute) or node.attr.lower() != "scheme":
+        return ""
+    base = _ast_dotted_name(node.value).rsplit(".", 1)[-1]
+    return parsed_aliases.get(base, "")
+
+
+def _rejected_safe_scheme_predicate(
+    node: ast.AST,
+    *,
+    parsed_aliases: dict[str, str],
+    scheme_aliases: dict[str, str],
+) -> str:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return _accepted_safe_scheme_predicate(
+            node.operand,
+            parsed_aliases=parsed_aliases,
+            scheme_aliases=scheme_aliases,
+        )
+    if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And):
+        sources = [
+            source
+            for value in node.values
+            if (
+                source := _negative_safe_scheme_comparison(
+                    value,
+                    parsed_aliases=parsed_aliases,
+                    scheme_aliases=scheme_aliases,
+                )
+            )
+        ]
+        if (
+            len(sources) == len(node.values)
+            and sources
+            and len(set(sources)) == 1
+        ):
+            return sources[0]
+        return ""
+    return _negative_safe_scheme_comparison(
+        node,
+        parsed_aliases=parsed_aliases,
+        scheme_aliases=scheme_aliases,
+    )
+
+
+def _accepted_safe_scheme_predicate(
+    node: ast.AST,
+    *,
+    parsed_aliases: dict[str, str],
+    scheme_aliases: dict[str, str],
+) -> str:
+    if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+        sources = [
+            _accepted_safe_scheme_predicate(
+                value,
+                parsed_aliases=parsed_aliases,
+                scheme_aliases=scheme_aliases,
+            )
+            for value in node.values
+        ]
+        if sources and all(sources) and len(set(sources)) == 1:
+            return sources[0]
+        return ""
+    if not isinstance(node, ast.Compare) or len(node.ops) != 1:
+        return ""
+    operator = node.ops[0]
+    left = node.left
+    right = node.comparators[0]
+    if isinstance(operator, ast.Eq):
+        return _safe_scheme_equality_source(
+            left,
+            right,
+            parsed_aliases=parsed_aliases,
+            scheme_aliases=scheme_aliases,
+        )
+    if isinstance(operator, ast.In):
+        source = _url_scheme_source(
+            left,
+            parsed_aliases=parsed_aliases,
+            scheme_aliases=scheme_aliases,
+        )
+        schemes = _literal_scheme_values(right)
+        if source and _schemes_are_safe(schemes):
+            return source
+    return ""
+
+
+def _negative_safe_scheme_comparison(
+    node: ast.AST,
+    *,
+    parsed_aliases: dict[str, str],
+    scheme_aliases: dict[str, str],
+) -> str:
+    if not isinstance(node, ast.Compare) or len(node.ops) != 1:
+        return ""
+    operator = node.ops[0]
+    left = node.left
+    right = node.comparators[0]
+    if isinstance(operator, ast.NotEq):
+        return _safe_scheme_equality_source(
+            left,
+            right,
+            parsed_aliases=parsed_aliases,
+            scheme_aliases=scheme_aliases,
+        )
+    if isinstance(operator, ast.NotIn):
+        source = _url_scheme_source(
+            left,
+            parsed_aliases=parsed_aliases,
+            scheme_aliases=scheme_aliases,
+        )
+        schemes = _literal_scheme_values(right)
+        if source and _schemes_are_safe(schemes):
+            return source
+    return ""
+
+
+def _safe_scheme_equality_source(
+    left: ast.AST,
+    right: ast.AST,
+    *,
+    parsed_aliases: dict[str, str],
+    scheme_aliases: dict[str, str],
+) -> str:
+    source = _url_scheme_source(
+        left,
+        parsed_aliases=parsed_aliases,
+        scheme_aliases=scheme_aliases,
+    )
+    schemes = _literal_scheme_values(right)
+    if not source:
+        source = _url_scheme_source(
+            right,
+            parsed_aliases=parsed_aliases,
+            scheme_aliases=scheme_aliases,
+        )
+        schemes = _literal_scheme_values(left)
+    return source if source and _schemes_are_safe(schemes) else ""
+
+
+def _literal_scheme_values(node: ast.AST) -> set[str]:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return {node.value.strip().lower()}
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        values = {
+            item.value.strip().lower()
+            for item in node.elts
+            if isinstance(item, ast.Constant) and isinstance(item.value, str)
+        }
+        return values if len(values) == len(node.elts) else set()
+    return set()
+
+
+def _schemes_are_safe(values: set[str]) -> bool:
+    return bool(values) and values.issubset(_PATCH_SAFE_URL_SCHEMES)
 
 
 def _expression_has_xss_sanitizer(node: ast.AST) -> bool:
