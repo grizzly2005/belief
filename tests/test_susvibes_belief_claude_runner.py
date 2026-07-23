@@ -10,6 +10,13 @@ from pathlib import Path
 
 import pytest
 
+import scripts.run_susvibes_belief_claude as runner_module
+from belief.benchmark.susvibes_experiment import (
+    write_susvibes_experiment_manifest,
+)
+from belief.benchmark.susvibes_preflight import (
+    write_susvibes_agent_preflight,
+)
 from scripts.run_susvibes_belief_claude import (
     _sanitize_candidate_workspace,
     load_agent_tasks,
@@ -57,6 +64,9 @@ def _fake_susvibes(tmp_path: Path) -> tuple[Path, Path]:
         json.dumps(
             {
                 "instance_id": "example__project_deadbeef",
+                "project": "example/project",
+                "base_commit": "a" * 40,
+                "language": "python",
                 "image_name": "example/susvibes:fixture",
                 "problem_statement": "Implement a safe asset reader.",
                 "security_patch": "SECRET SECURITY ORACLE",
@@ -92,6 +102,37 @@ def test_task_loader_strips_all_benchmark_oracle_fields(tmp_path):
     assert "HIDDEN TEST" not in serialized
     assert "REFERENCE PATCH" not in serialized
     assert "cwe_ids" not in serialized
+
+
+def test_task_loader_preserves_verified_selection_order(tmp_path):
+    _root, dataset = _fake_susvibes(tmp_path)
+    first = json.loads(dataset.read_text(encoding="utf-8"))
+    second = {
+        **first,
+        "instance_id": "example__second_cafebabe",
+        "image_name": "example/susvibes:second",
+    }
+    dataset.write_text(
+        json.dumps(first, sort_keys=True)
+        + "\n"
+        + json.dumps(second, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+
+    tasks = load_agent_tasks(
+        dataset,
+        instance_ids=[
+            "example__second_cafebabe",
+            "example__project_deadbeef",
+        ],
+        num_instances=2,
+    )
+
+    assert [task["instance_id"] for task in tasks] == [
+        "example__second_cafebabe",
+        "example__project_deadbeef",
+    ]
 
 
 def test_runner_dry_run_emits_hashed_sanitized_plan_only(tmp_path):
@@ -192,6 +233,217 @@ def test_runner_refuses_to_overwrite_existing_plan(tmp_path):
     assert completed.returncode == 2
     assert "refusing to overwrite output file" in completed.stderr
     assert plan_path.read_text(encoding="utf-8") == "keep me\n"
+
+
+def test_runner_uses_verified_manifest_cohort_for_selection(tmp_path):
+    susvibes_root, dataset = _fake_susvibes(tmp_path)
+    manifest = tmp_path / "experiment.json"
+    commit = subprocess.run(
+        ["git", "-C", str(susvibes_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    write_susvibes_experiment_manifest(
+        dataset,
+        manifest,
+        susvibes_commit=commit,
+        smoke_size=1,
+        canary_size=1,
+        batch_size=1,
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_susvibes_belief_claude.py",
+            "--susvibes-root",
+            str(susvibes_root),
+            "--results-dir",
+            str(tmp_path / "results"),
+            "--experiment-manifest",
+            str(manifest),
+            "--cohort",
+            "smoke",
+        ],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    plan = json.loads(completed.stdout)
+    assert plan["task_count"] == 1
+    assert plan["tasks"][0]["instance_id"] == "example__project_deadbeef"
+    assert plan["selection"]["cohort"] == "smoke"
+    assert plan["selection"]["susvibes_commit"] == commit
+    assert len(plan["selection"]["manifest_sha256"]) == 64
+    serialized = json.dumps(plan)
+    assert "CWE-22" not in serialized
+    assert "SECRET" not in serialized
+
+
+def test_runner_refuses_manifest_checkout_commit_mismatch(tmp_path):
+    susvibes_root, dataset = _fake_susvibes(tmp_path)
+    manifest = tmp_path / "experiment.json"
+    commit = subprocess.run(
+        ["git", "-C", str(susvibes_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    write_susvibes_experiment_manifest(
+        dataset,
+        manifest,
+        susvibes_commit=commit,
+        smoke_size=1,
+        canary_size=1,
+        batch_size=1,
+    )
+    (susvibes_root / "new-commit.txt").write_text(
+        "changes checkout identity\n",
+        encoding="utf-8",
+    )
+    _git(susvibes_root, "add", ".")
+    _git(susvibes_root, "commit", "--quiet", "-m", "different checkout")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_susvibes_belief_claude.py",
+            "--susvibes-root",
+            str(susvibes_root),
+            "--results-dir",
+            str(tmp_path / "results"),
+            "--experiment-manifest",
+            str(manifest),
+            "--cohort",
+            "smoke",
+        ],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert "commit does not match" in completed.stderr
+
+
+def test_execute_requires_and_records_matching_ready_preflight(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    susvibes_root, dataset = _fake_susvibes(tmp_path)
+    manifest = tmp_path / "experiment.json"
+    commit = subprocess.run(
+        ["git", "-C", str(susvibes_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    write_susvibes_experiment_manifest(
+        dataset,
+        manifest,
+        susvibes_commit=commit,
+        smoke_size=1,
+        canary_size=1,
+        batch_size=1,
+    )
+    results = tmp_path / "isolated-results"
+    report = tmp_path / "ready-preflight.json"
+    write_susvibes_agent_preflight(
+        report,
+        susvibes_root=susvibes_root,
+        dataset=dataset,
+        experiment_manifest=manifest,
+        cohort="smoke",
+        results_dir=results,
+        model="claude-fable-5",
+        claude_version="2.1.83",
+        minimum_free_gib=1.0,
+        acknowledge_agent_network=True,
+        environment={"ANTHROPIC_API_KEY": "test-only-secret"},
+        docker_probe=lambda: (True, "fixture|x86_64"),
+        disk_free_probe=lambda _path: 500 * 1024 ** 3,
+        runner_path=ROOT / "scripts" / "run_susvibes_belief_claude.py",
+    )
+
+    def fake_run_task(task, **_kwargs):
+        return {
+            "instance_id": task["instance_id"],
+            "agent_success": True,
+            "policy_violation_suspected": False,
+            "prediction": {
+                "instance_id": task["instance_id"],
+                "model_name_or_path": "belief-test",
+                "model_patch": "",
+            },
+        }
+
+    monkeypatch.setattr(runner_module, "_docker_available", lambda: True)
+    monkeypatch.setattr(runner_module, "_run_task", fake_run_task)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-only-secret")
+    monkeypatch.setattr(sys, "argv", [
+        "run_susvibes_belief_claude.py",
+        "--susvibes-root",
+        str(susvibes_root),
+        "--results-dir",
+        str(results),
+        "--experiment-manifest",
+        str(manifest),
+        "--cohort",
+        "smoke",
+        "--preflight-report",
+        str(report),
+        "--model",
+        "claude-fable-5",
+        "--execute",
+        "--allow-agent-network",
+    ])
+
+    assert runner_module.main() == 0
+    plan = json.loads((results / "plan.json").read_text(encoding="utf-8"))
+    assert plan["preflight"]["status"] == "verified_ready"
+    assert len(plan["preflight"]["report_digest"]) == 64
+    assert plan["selection"]["cohort"] == "smoke"
+    assert "test-only-secret" not in json.dumps(plan)
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["successful_agent_runs"] == 1
+
+
+def test_execute_refuses_unmanifested_selection(tmp_path):
+    susvibes_root, _dataset = _fake_susvibes(tmp_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_susvibes_belief_claude.py",
+            "--susvibes-root",
+            str(susvibes_root),
+            "--results-dir",
+            str(tmp_path / "results"),
+            "--model",
+            "claude-fable-5",
+            "--execute",
+            "--allow-agent-network",
+        ],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert "requires --experiment-manifest and --cohort" in completed.stderr
 
 
 def test_workspace_sanitization_removes_recoverable_git_history(tmp_path):

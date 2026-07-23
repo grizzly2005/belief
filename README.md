@@ -173,8 +173,9 @@ python -m belief review-patch `
 
 For an end-to-end `FuncPass` / `SecPass` experiment, the Claude Code adapter
 adds a bounded BELIEF Stop hook to the official SusVibes Docker harness. It is
-dry-run only unless both execution and network acknowledgement flags are
-provided. See
+dry-run only unless a deterministic public experiment manifest and matching
+ready preflight report are provided together with both execution and network
+acknowledgement flags. The preflight never starts Docker or calls a model. See
 [`benchmark_susvibes/AGENT_HARNESS.md`](benchmark_susvibes/AGENT_HARNESS.md).
 
 ---

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Run Claude Code on SusVibes with bounded BELIEF security Stop hooks.
 
-The default is a no-network dry run. Real execution requires both
-``--execute`` and ``--allow-agent-network`` and never starts Docker itself.
-Only ``instance_id``, ``image_name``, and ``problem_statement`` cross the
-dataset/agent boundary.
+The default is a no-network dry run. Real execution additionally requires a
+verified experiment cohort, a matching ready preflight report, and explicit
+network acknowledgement; it never starts Docker itself. Only ``instance_id``,
+``image_name``, and ``problem_statement`` cross the dataset/agent boundary.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +31,12 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from belief.claude_hooks import build_claude_hook_settings  # noqa: E402
+from belief.benchmark.susvibes_experiment import (  # noqa: E402
+    load_experiment_cohort,
+)
+from belief.benchmark.susvibes_preflight import (  # noqa: E402
+    load_ready_susvibes_agent_preflight,
+)
 
 
 ALLOWED_AGENT_FIELDS = frozenset({
@@ -77,6 +83,27 @@ def _arguments() -> argparse.Namespace:
         "--results-dir",
         required=True,
         help="New isolated output directory",
+    )
+    parser.add_argument(
+        "--experiment-manifest",
+        default="",
+        help=(
+            "Verified evaluator-side experiment manifest used only to "
+            "select instance IDs"
+        ),
+    )
+    parser.add_argument(
+        "--cohort",
+        default="",
+        help="Manifest cohort name, for example smoke, canary, or full",
+    )
+    parser.add_argument(
+        "--preflight-report",
+        default="",
+        help=(
+            "Matching ready report from preflight_susvibes_agent.py; "
+            "required for real execution"
+        ),
     )
     parser.add_argument(
         "--workspace-root",
@@ -149,7 +176,10 @@ def load_agent_tasks(
         raise ValueError("start_index must be non-negative")
     if num_instances <= 0:
         raise ValueError("num_instances must be positive")
-    wanted = set(instance_ids)
+    wanted_order = [str(value) for value in instance_ids]
+    if len(wanted_order) != len(set(wanted_order)):
+        raise ValueError("duplicate requested instance IDs")
+    wanted = set(wanted_order)
     tasks = []
     for line_number, line in enumerate(
         dataset.read_text(encoding="utf-8").splitlines(),
@@ -187,6 +217,14 @@ def load_agent_tasks(
             raise ValueError(
                 "unknown instance IDs: " + ", ".join(missing_ids)
             )
+        tasks_by_id = {
+            task["instance_id"]: task
+            for task in tasks
+        }
+        tasks = [
+            tasks_by_id[instance_id]
+            for instance_id in wanted_order
+        ]
     return tasks[start_index:start_index + num_instances]
 
 
@@ -200,6 +238,8 @@ def build_sanitized_plan(
     max_stop_blocks: int,
     results_dir: Path,
     workspace_root: Path,
+    selection: Mapping[str, str] | None = None,
+    preflight: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build a provenance plan with hashes, not benchmark oracle fields."""
 
@@ -215,6 +255,12 @@ def build_sanitized_plan(
         "results_dir": str(results_dir),
         "workspace_root": str(workspace_root),
         "task_count": len(tasks),
+        "selection": dict(selection or {
+            "cohort": "direct_or_dataset_order",
+        }),
+        "preflight": dict(preflight or {
+            "status": "not_required_for_dry_run",
+        }),
         "tasks": [
             {
                 "instance_id": task["instance_id"],
@@ -809,24 +855,103 @@ def main() -> int:
             if args.workspace_root
             else results_dir / "workspaces"
         )
+        selection: dict[str, str] = {
+            "cohort": "direct_or_dataset_order",
+        }
+        selected_ids = list(args.instance_id)
+        if args.experiment_manifest:
+            if args.instance_id:
+                raise ValueError(
+                    "--instance-id cannot be combined with "
+                    "--experiment-manifest"
+                )
+            if not args.cohort:
+                raise ValueError(
+                    "--cohort is required with --experiment-manifest"
+                )
+            selected_ids, selection = load_experiment_cohort(
+                Path(args.experiment_manifest).resolve(),
+                str(args.cohort),
+                dataset=dataset,
+            )
+        elif args.cohort:
+            raise ValueError(
+                "--cohort requires --experiment-manifest"
+            )
+        susvibes_commit = _git_head(susvibes_root)
+        selected_commit = selection.get("susvibes_commit", "")
+        if selected_commit and selected_commit != susvibes_commit:
+            raise ValueError(
+                "SusVibes checkout commit does not match "
+                "the experiment manifest"
+            )
         tasks = load_agent_tasks(
             dataset,
-            instance_ids=args.instance_id,
+            instance_ids=selected_ids,
             start_index=int(args.start_index),
             num_instances=int(args.num_instances),
         )
         if not tasks:
             raise ValueError("task selection is empty")
-        model = str(args.model or os.environ.get("ANTHROPIC_MODEL") or "")
+        model = str(
+            args.model or os.environ.get("ANTHROPIC_MODEL") or ""
+        ).strip()
+        claude_version = str(args.claude_version).strip()
+        preflight: dict[str, str] = {
+            "status": "not_required_for_dry_run",
+        }
+        if args.execute:
+            if not args.experiment_manifest:
+                raise ValueError(
+                    "execution requires --experiment-manifest and --cohort"
+                )
+            if not args.preflight_report:
+                raise ValueError(
+                    "execution requires --preflight-report"
+                )
+            if not args.allow_agent_network:
+                raise ValueError(
+                    "execution requires --allow-agent-network explicitly"
+                )
+            if not model:
+                raise ValueError("--model is required for execution")
+            if not (
+                str(os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+                or str(
+                    os.environ.get("ANTHROPIC_AUTH_TOKEN") or ""
+                ).strip()
+            ):
+                raise ValueError(
+                    "execution requires ANTHROPIC_API_KEY or "
+                    "ANTHROPIC_AUTH_TOKEN"
+                )
+            preflight = {
+                "status": "verified_ready",
+                **load_ready_susvibes_agent_preflight(
+                    Path(args.preflight_report).resolve(),
+                    susvibes_root=susvibes_root,
+                    dataset=dataset,
+                    experiment_manifest=Path(
+                        args.experiment_manifest
+                    ).resolve(),
+                    cohort=str(args.cohort),
+                    results_dir=results_dir,
+                    model=model,
+                    claude_version=claude_version,
+                    runner_path=Path(__file__).resolve(),
+                ),
+            }
         plan = build_sanitized_plan(
             dataset,
             tasks,
-            susvibes_commit=_git_head(susvibes_root),
+            susvibes_commit=susvibes_commit,
             model=model,
-            claude_version=str(args.claude_version),
+            claude_version=claude_version,
             max_stop_blocks=int(args.max_stop_blocks),
             results_dir=results_dir,
             workspace_root=workspace_root,
+            selection=selection,
+            preflight=preflight,
         )
         if not args.execute:
             if args.plan_output:
@@ -836,12 +961,6 @@ def main() -> int:
                 )
             print(json.dumps(plan, indent=2, sort_keys=True))
             return 0
-        if not args.allow_agent_network:
-            raise ValueError(
-                "execution requires --allow-agent-network explicitly"
-            )
-        if not model:
-            raise ValueError("--model is required for execution")
         if not _docker_available():
             raise ValueError(
                 "Docker daemon is not running; this script will not start it"
@@ -866,7 +985,7 @@ def main() -> int:
                 results_dir=results_dir,
                 workspace_root=workspace_root,
                 model=model,
-                claude_version=str(args.claude_version),
+                claude_version=claude_version,
                 max_stop_blocks=int(args.max_stop_blocks),
                 keep_workspace=bool(args.keep_workspace),
             ))

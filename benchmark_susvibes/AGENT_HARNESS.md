@@ -81,26 +81,89 @@ python scripts/run_susvibes_belief_claude.py `
 The plan output is create-only: an existing file is rejected rather than
 overwritten.
 
+For a score-bearing experiment, first freeze the public corpus into
+deterministic smoke, canary, and full cohorts:
+
+```powershell
+python scripts/prepare_susvibes_experiment.py `
+  --susvibes-root F:\belief-rd\susvibes-main `
+  --output F:\belief-rd\results\susvibes-experiment-001.json `
+  --smoke-size 3 `
+  --canary-size 24 `
+  --batch-size 12
+```
+
+The create-only evaluator manifest is ordered by a dataset-hash-seeded,
+primary-CWE round robin. It records coverage metadata for analysis, but the
+runner verifies the manifest and dataset hashes and reads only the selected
+instance IDs. Neither the CWE strata nor project metadata cross the agent
+boundary.
+
+Use the frozen selection even for the dry run:
+
+```powershell
+python scripts/run_susvibes_belief_claude.py `
+  --susvibes-root F:\belief-rd\susvibes-main `
+  --experiment-manifest F:\belief-rd\results\susvibes-experiment-001.json `
+  --cohort smoke `
+  --num-instances 3 `
+  --results-dir F:\belief-rd\agent-runs\smoke-001 `
+  --model <exact-anthropic-model-id> `
+  --plan-output F:\belief-rd\results\smoke-plan-001.json
+```
+
 The dry-run contract was exercised on 2026-07-23 against SusVibes commit
 `66d305a7a8541f4faa245171b359a6b0d141941e`. The plan retained the v1.0 dataset
 hash, exposed exactly the three allowed fields, recorded a one-block feedback
 budget, and left the requested results directory absent. No Docker or model
 execution was performed.
 
+## Read-only execution preflight
+
+Before execution, create a report bound to the exact checkout, dataset,
+experiment manifest, cohort, results directory, model, Claude Code version,
+and runner SHA-256:
+
+```powershell
+python scripts/preflight_susvibes_agent.py `
+  --susvibes-root F:\belief-rd\susvibes-main `
+  --experiment-manifest F:\belief-rd\results\susvibes-experiment-001.json `
+  --cohort smoke `
+  --results-dir F:\belief-rd\agent-runs\smoke-001 `
+  --model <exact-anthropic-model-id> `
+  --claude-version 2.1.83 `
+  --acknowledge-agent-network `
+  --output F:\belief-rd\results\smoke-preflight-001.json
+```
+
+The preflight never starts Docker, pulls an image, calls a model, or reports a
+credential value. It checks an already-running Docker daemon read-only and
+records only the names of available credential variables. It exits `1` and
+still creates an evidence report when readiness checks fail; that report is
+not a benchmark result. Reports are create-only and self-digest-checked. A
+runner accepts a ready report for 15 minutes and rechecks the dataset, Git
+state, runner hash, output directory, free space, credentials, and Docker
+availability before execution.
+
 ## Explicit execution
 
-Real execution requires both acknowledgement flags, an exact model identifier,
-an API credential in `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, and an
-already-running Docker daemon:
+Real execution requires the verified manifest/cohort, a matching ready
+preflight report, both explicit flags (`--execute` and
+`--allow-agent-network`), an exact model identifier, an API credential in
+`ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, and an already-running Docker
+daemon:
 
 ```powershell
 python scripts/run_susvibes_belief_claude.py `
   --susvibes-root F:\belief-rd\susvibes-main `
-  --results-dir F:\belief-rd\agent-runs\trial-001 `
+  --experiment-manifest F:\belief-rd\results\susvibes-experiment-001.json `
+  --cohort smoke `
+  --preflight-report F:\belief-rd\results\smoke-preflight-001.json `
+  --results-dir F:\belief-rd\agent-runs\smoke-001 `
   --model <exact-anthropic-model-id> `
   --claude-version 2.1.83 `
   --max-stop-blocks 1 `
-  --num-instances 1 `
+  --num-instances 3 `
   --execute `
   --allow-agent-network
 ```
@@ -108,6 +171,8 @@ python scripts/run_susvibes_belief_claude.py `
 The runner:
 
 - never starts or reconfigures Docker;
+- rejects unmanifested execution and stale, modified, or mismatched preflight
+  evidence;
 - refuses a non-empty results directory;
 - executes tasks sequentially;
 - injects credentials through container stdin into a mode-`0600` environment
@@ -138,6 +203,11 @@ model ID, Claude Code version, feedback budget, prediction file, and evaluator
 summary together. Use at least two independent full runs before interpreting a
 small score difference; the public methodology reports meaningful run-to-run
 variance.
+
+The 24-case canary deliberately maximizes breadth across CWE strata and
+projects; it is an engineering signal, not a prevalence-weighted leaderboard
+estimate. Only the complete pinned public cohort evaluated with official
+`FuncPass` and `SecPass` tests is score-bearing.
 
 ## Comparability rules
 
