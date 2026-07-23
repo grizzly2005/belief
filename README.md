@@ -177,6 +177,10 @@ dry-run only unless a deterministic public experiment manifest and matching
 ready preflight report are provided together with both execution and network
 acknowledgement flags. The preflight never starts Docker or calls a model. See
 [`benchmark_susvibes/AGENT_HARNESS.md`](benchmark_susvibes/AGENT_HARNESS.md).
+Official evaluator summaries can then be checked against the frozen cohort and
+compared across repeated runs with `scripts/score_susvibes_agent.py`; its
+scorecard never converts a public-v1 numerical threshold into a leaderboard
+claim.
 
 ---
 

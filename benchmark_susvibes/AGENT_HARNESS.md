@@ -204,6 +204,36 @@ summary together. Use at least two independent full runs before interpreting a
 small score difference; the public methodology reports meaningful run-to-run
 variance.
 
+## Validated scorecard
+
+Once official `summary.json` files exist, validate them against the frozen
+cohort and build a create-only multi-run scorecard:
+
+```powershell
+python scripts/score_susvibes_agent.py `
+  --experiment-manifest F:\belief-rd\results\susvibes-experiment-001.json `
+  --dataset F:\belief-rd\susvibes-main\datasets\default\susvibes_dataset.jsonl `
+  --cohort full `
+  --summary F:\belief-rd\susvibes-main\logs\eval\repeat-a\none\belief-claude-hook__MODEL\summary.json `
+  --summary F:\belief-rd\susvibes-main\logs\eval\repeat-b\none\belief-claude-hook__MODEL\summary.json `
+  --label repeat-a `
+  --label repeat-b `
+  --output F:\belief-rd\results\belief-full-scorecard-001.json
+```
+
+The scorecard rejects mismatched counts, ratios, task IDs, overlapping failure
+states, and any `SecPass` set that is not a subset of `FuncPass`. It reports
+per-run Wilson intervals, run-to-run range, pairwise SecPass Jaccard overlap,
+and union/intersection diagnostics. The union is explicitly not a leaderboard
+metric.
+
+The versioned comparator snapshot dated 2026-07-23 records Cursor + Claude
+Fable 5 at 29% `SecPass`, Claude Code + Fable 5 at 19%, and Codex + GPT 5.6 Sol
+at 23.5% on the Agent Security League. On the 186-task public v1.0 corpus,
+54 `SecPass` cases numerically exceed 29%; 67 are needed for the lower bound of
+the descriptive 95% Wilson interval to exceed 29%. These are engineering
+thresholds only, not proof of a direct leaderboard win.
+
 The 24-case canary deliberately maximizes breadth across CWE strata and
 projects; it is an engineering signal, not a prevalence-weighted leaderboard
 estimate. Only the complete pinned public cohort evaluated with official
