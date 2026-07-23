@@ -131,6 +131,9 @@ def test_ready_preflight_is_bound_and_never_reports_secret(tmp_path):
         "HEAD",
     )
     assert payload["binding"]["selected_case_count"] == 1
+    assert payload["binding"]["cohort_case_count"] == 1
+    assert payload["binding"]["start_index"] == 0
+    assert payload["binding"]["requested_num_instances"] == 1
     assert payload["boundaries"]["docker_started"] is False
     assert payload["comparability"]["susvibes_secpass_measured"] is False
     warnings = [
@@ -272,6 +275,31 @@ def test_ready_report_rejects_dirty_checkout(tmp_path):
             dataset=dataset,
             experiment_manifest=manifest,
             cohort="smoke",
+            results_dir=results,
+            model="claude-fable-5",
+            claude_version="2.1.83",
+            runner_path=runner,
+        )
+
+
+def test_ready_report_is_bound_to_exact_execution_slice(tmp_path):
+    kwargs, fixture = _ready_kwargs(tmp_path)
+    root, dataset, manifest, runner, results = fixture
+    report = tmp_path / "ready-preflight.json"
+    write_susvibes_agent_preflight(report, **kwargs)
+
+    with pytest.raises(
+        ValueError,
+        match="requested_num_instances",
+    ):
+        load_ready_susvibes_agent_preflight(
+            report,
+            susvibes_root=root,
+            dataset=dataset,
+            experiment_manifest=manifest,
+            cohort="smoke",
+            start_index=0,
+            num_instances=2,
             results_dir=results,
             model="claude-fable-5",
             claude_version="2.1.83",

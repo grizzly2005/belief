@@ -139,8 +139,10 @@ def main() -> int:
         "dataset_case_count": payload["dataset"]["case_count"],
         "smoke_case_count": payload["cohorts"]["smoke"]["case_count"],
         "canary_case_count": payload["cohorts"]["canary"]["case_count"],
+        "holdout_case_count": payload["cohorts"]["holdout"]["case_count"],
         "full_case_count": payload["cohorts"]["full"]["case_count"],
         "batch_count": len(payload["batches"]),
+        "holdout_batch_count": len(payload["holdout_batches"]),
         "deterministic_digest": payload["deterministic_digest"],
     }, indent=2, sort_keys=True))
     return 0

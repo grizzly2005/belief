@@ -28,6 +28,7 @@ _MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
 _DEFAULT_MINIMUM_FREE_GIB = {
     "smoke": 20.0,
     "canary": 100.0,
+    "holdout": 250.0,
     "full": 300.0,
 }
 _DEFAULT_MAX_REPORT_AGE_SECONDS = 15 * 60
@@ -39,6 +40,8 @@ def run_susvibes_agent_preflight(
     dataset: str | Path,
     experiment_manifest: str | Path,
     cohort: str,
+    start_index: int = 0,
+    num_instances: int = 1,
     results_dir: str | Path,
     model: str,
     claude_version: str = "2.1.83",
@@ -105,6 +108,7 @@ def run_susvibes_agent_preflight(
     )
 
     selected_ids: list[str] = []
+    execution_ids: list[str] = []
     selection: dict[str, str] = {}
     selection_error = ""
     try:
@@ -112,6 +116,11 @@ def run_susvibes_agent_preflight(
             manifest_path,
             cohort,
             dataset=dataset_path,
+        )
+        execution_ids = _execution_slice(
+            selected_ids,
+            start_index=start_index,
+            num_instances=num_instances,
         )
     except ValueError as exc:
         selection_error = str(exc)
@@ -122,7 +131,8 @@ def run_susvibes_agent_preflight(
         evidence=(
             {
                 "cohort": cohort,
-                "selected_case_count": len(selected_ids),
+                "cohort_case_count": len(selected_ids),
+                "execution_case_count": len(execution_ids),
                 **selection,
             }
             if not selection_error
@@ -139,7 +149,7 @@ def run_susvibes_agent_preflight(
         }
         missing_ids = [
             instance_id
-            for instance_id in selected_ids
+            for instance_id in execution_ids
             if instance_id not in cases
         ]
         if missing_ids:
@@ -147,7 +157,7 @@ def run_susvibes_agent_preflight(
                 "selected IDs missing from dataset: "
                 + ", ".join(missing_ids[:3])
             )
-        selected_cases = [cases[value] for value in selected_ids]
+        selected_cases = [cases[value] for value in execution_ids]
         incomplete = [
             str(case["instance_id"])
             for case in selected_cases
@@ -396,9 +406,12 @@ def run_susvibes_agent_preflight(
                 "",
             ),
             "cohort": cohort,
-            "selected_case_count": len(selected_ids),
+            "cohort_case_count": len(selected_ids),
+            "start_index": int(start_index),
+            "requested_num_instances": int(num_instances),
+            "selected_case_count": len(execution_ids),
             "selected_instance_ids_sha256": _instance_ids_digest(
-                selected_ids
+                execution_ids
             ),
             "results_dir": str(output_root),
             "minimum_free_gib": threshold,
@@ -456,6 +469,8 @@ def load_ready_susvibes_agent_preflight(
     dataset: str | Path,
     experiment_manifest: str | Path,
     cohort: str,
+    start_index: int = 0,
+    num_instances: int = 1,
     results_dir: str | Path,
     model: str,
     claude_version: str,
@@ -546,6 +561,11 @@ def load_ready_susvibes_agent_preflight(
         cohort,
         dataset=dataset_path,
     )
+    execution_ids = _execution_slice(
+        selected_ids,
+        start_index=start_index,
+        num_instances=num_instances,
+    )
     current_head = _git(root, "rev-parse", "HEAD").strip()
     if _git(root, "status", "--porcelain").strip():
         raise ValueError(
@@ -567,8 +587,11 @@ def load_ready_susvibes_agent_preflight(
         "experiment_manifest_sha256": selection["manifest_sha256"],
         "experiment_manifest_digest": selection["manifest_digest"],
         "cohort": cohort,
-        "selected_case_count": len(selected_ids),
-        "selected_instance_ids_sha256": _instance_ids_digest(selected_ids),
+        "cohort_case_count": len(selected_ids),
+        "start_index": int(start_index),
+        "requested_num_instances": int(num_instances),
+        "selected_case_count": len(execution_ids),
+        "selected_instance_ids_sha256": _instance_ids_digest(execution_ids),
         "results_dir": str(output_root),
         "model": str(model).strip(),
         "claude_code_version": str(claude_version),
@@ -753,6 +776,22 @@ def _instance_ids_digest(instance_ids: list[str]) -> str:
         ensure_ascii=True,
     )
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _execution_slice(
+    instance_ids: list[str],
+    *,
+    start_index: int,
+    num_instances: int,
+) -> list[str]:
+    if start_index < 0:
+        raise ValueError("start_index must be non-negative")
+    if num_instances <= 0:
+        raise ValueError("num_instances must be positive")
+    selected = instance_ids[start_index:start_index + num_instances]
+    if not selected:
+        raise ValueError("preflight execution selection is empty")
+    return selected
 
 
 def _report_digest(payload: Mapping[str, Any]) -> str:

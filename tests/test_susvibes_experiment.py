@@ -70,6 +70,7 @@ def test_manifest_is_deterministic_and_breadth_first(tmp_path):
     assert first["selection_algorithm"] == SUSVIBES_EXPERIMENT_ALGORITHM
     assert first["cohorts"]["smoke"]["case_count"] == 3
     assert first["cohorts"]["canary"]["case_count"] == 12
+    assert first["cohorts"]["holdout"]["case_count"] == 18
     assert first["cohorts"]["full"]["case_count"] == 30
     assert (
         first["cohorts"]["canary"]["coverage"][
@@ -80,7 +81,13 @@ def test_manifest_is_deterministic_and_breadth_first(tmp_path):
     assert first["cohorts"]["canary"]["coverage"]["project_count"] == 12
     assert len(first["batches"]) == 5
     full_ids = first["cohorts"]["full"]["instance_ids"]
+    canary_ids = set(first["cohorts"]["canary"]["instance_ids"])
+    holdout_ids = set(first["cohorts"]["holdout"]["instance_ids"])
+    assert not canary_ids & holdout_ids
+    assert canary_ids | holdout_ids == set(full_ids)
     assert len(full_ids) == len(set(full_ids)) == 30
+    assert len(first["holdout_batches"]) == 3
+    assert first["boundaries"]["holdout_excludes_canary"] is True
     assert first["boundaries"]["canary_is_leaderboard_comparable"] is False
 
 

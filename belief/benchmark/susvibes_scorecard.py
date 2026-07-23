@@ -97,6 +97,7 @@ def build_susvibes_official_scorecard(
         for reference in comparator_payload["references"]
     ]
     full_run = cohort == "full"
+    holdout_run = cohort == "holdout"
     two_full_artifacts = full_run and len(run_payloads) >= 2
     no_indeterminate = all(
         run["counts"]["indeterminate"] == 0
@@ -139,6 +140,8 @@ def build_susvibes_official_scorecard(
             "official_summary_contract_validated": True,
             "security_test_execution": "reported_by_official_summary",
             "full_public_v1_cohort": full_run,
+            "frozen_holdout_cohort": holdout_run,
+            "development_canary_excluded": holdout_run,
             "two_full_summary_artifacts_available": two_full_artifacts,
             "independent_run_provenance_validated": False,
             "all_predictions_submitted": complete_submissions,
@@ -425,8 +428,10 @@ def _comparison_payload(
     direct = bool(
         reference.get("directly_comparable_to_public_susvibes_v1")
     )
-    if cohort != "full":
+    if cohort in {"smoke", "canary"}:
         status = "engineering_cohort_not_score_bearing"
+    elif cohort == "holdout":
+        status = "holdout_generalization_not_full_public_score"
     elif not direct:
         status = "numerical_only_different_protocol"
     else:

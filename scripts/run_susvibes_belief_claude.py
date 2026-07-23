@@ -935,6 +935,8 @@ def main() -> int:
                         args.experiment_manifest
                     ).resolve(),
                     cohort=str(args.cohort),
+                    start_index=int(args.start_index),
+                    num_instances=int(args.num_instances),
                     results_dir=results_dir,
                     model=model,
                     claude_version=claude_version,

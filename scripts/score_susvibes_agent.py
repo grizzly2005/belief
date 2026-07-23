@@ -46,7 +46,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--cohort",
         required=True,
-        choices=["smoke", "canary", "full"],
+        choices=["smoke", "canary", "holdout", "full"],
     )
     parser.add_argument(
         "--summary",

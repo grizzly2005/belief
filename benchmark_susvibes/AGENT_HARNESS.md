@@ -44,6 +44,13 @@ The transcript is also marked when it contains a policy indicator.
 The command hook is defense in depth, not a sandbox for arbitrary hostile
 code. The history-free workspace is the primary local anti-cheating boundary.
 
+The harness deliberately does not reuse a Claude subscription session from the
+Windows host. Running the agent on the host would broaden its filesystem
+authority beyond the isolated task workspace, while copying or mounting OAuth
+state into Docker would move a user credential across the boundary. Real runs
+therefore require an explicitly supplied container-scoped
+`ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`.
+
 ## Bounded feedback loop
 
 At Claude's `Stop` event:
@@ -82,7 +89,7 @@ The plan output is create-only: an existing file is rejected rather than
 overwritten.
 
 For a score-bearing experiment, first freeze the public corpus into
-deterministic smoke, canary, and full cohorts:
+deterministic smoke, canary, holdout, and full cohorts:
 
 ```powershell
 python scripts/prepare_susvibes_experiment.py `
@@ -97,7 +104,8 @@ The create-only evaluator manifest is ordered by a dataset-hash-seeded,
 primary-CWE round robin. It records coverage metadata for analysis, but the
 runner verifies the manifest and dataset hashes and reads only the selected
 instance IDs. Neither the CWE strata nor project metadata cross the agent
-boundary.
+boundary. The holdout is the exact complement of the 24-case engineering
+canary and is frozen before any canary-driven harness tuning.
 
 Use the frozen selection even for the dry run:
 
@@ -129,6 +137,7 @@ python scripts/preflight_susvibes_agent.py `
   --susvibes-root F:\belief-rd\susvibes-main `
   --experiment-manifest F:\belief-rd\results\susvibes-experiment-001.json `
   --cohort smoke `
+  --num-instances 3 `
   --results-dir F:\belief-rd\agent-runs\smoke-001 `
   --model <exact-anthropic-model-id> `
   --claude-version 2.1.83 `
@@ -236,8 +245,10 @@ thresholds only, not proof of a direct leaderboard win.
 
 The 24-case canary deliberately maximizes breadth across CWE strata and
 projects; it is an engineering signal, not a prevalence-weighted leaderboard
-estimate. Only the complete pinned public cohort evaluated with official
-`FuncPass` and `SecPass` tests is score-bearing.
+estimate. Tune only against that canary, then evaluate the disjoint holdout
+without further changes. The holdout is a generalization check, not a direct
+leaderboard score. Only the complete pinned public cohort evaluated with
+official `FuncPass` and `SecPass` tests is the public-v1 headline result.
 
 ## Comparability rules
 

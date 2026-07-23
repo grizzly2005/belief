@@ -46,12 +46,19 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--cohort",
         required=True,
-        choices=["smoke", "canary", "full"],
+        choices=["smoke", "canary", "holdout", "full"],
     )
     parser.add_argument(
         "--results-dir",
         required=True,
         help="Absent or empty isolated output directory for the future run",
+    )
+    parser.add_argument("--start-index", type=int, default=0)
+    parser.add_argument(
+        "--num-instances",
+        type=int,
+        default=1,
+        help="Exact number of cohort tasks bound to the future run",
     )
     parser.add_argument(
         "--model",
@@ -117,6 +124,8 @@ def main() -> int:
                 args.experiment_manifest
             ).resolve(),
             cohort=str(args.cohort),
+            start_index=int(args.start_index),
+            num_instances=int(args.num_instances),
             results_dir=Path(args.results_dir).resolve(),
             model=str(args.model),
             claude_version=str(args.claude_version),

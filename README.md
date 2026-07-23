@@ -181,6 +181,9 @@ Official evaluator summaries can then be checked against the frozen cohort and
 compared across repeated runs with `scripts/score_susvibes_agent.py`; its
 scorecard never converts a public-v1 numerical threshold into a leaderboard
 claim.
+The experiment manifest also freezes a 24-case development canary and its
+disjoint holdout complement, so harness tuning and generalization measurement
+cannot silently use the same tasks.
 
 ---
 

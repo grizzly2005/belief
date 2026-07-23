@@ -206,6 +206,35 @@ def test_canary_is_explicitly_not_score_bearing(tmp_path):
     assert statuses == {"engineering_cohort_not_score_bearing"}
 
 
+def test_holdout_is_disjoint_generalization_not_full_score(tmp_path):
+    dataset, manifest, experiment = _experiment(tmp_path)
+    ids = experiment["cohorts"]["holdout"]["instance_ids"]
+    summary = _write_summary(
+        tmp_path / "summary.json",
+        _summary_payload(ids, func=ids, sec=ids),
+    )
+
+    payload = build_susvibes_official_scorecard(
+        experiment_manifest=manifest,
+        dataset=dataset,
+        cohort="holdout",
+        summaries=[summary],
+        comparators=COMPARATORS,
+    )
+
+    boundary = payload["claim_boundary"]
+    assert boundary["full_public_v1_cohort"] is False
+    assert boundary["frozen_holdout_cohort"] is True
+    assert boundary["development_canary_excluded"] is True
+    statuses = {
+        value["comparison_status"]
+        for value in payload["comparators"][
+            "numerical_secpass_references"
+        ]
+    }
+    assert statuses == {"holdout_generalization_not_full_public_score"}
+
+
 def test_public_v1_fable_thresholds_are_explicit(tmp_path):
     dataset, manifest, experiment = _experiment(
         tmp_path,

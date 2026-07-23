@@ -56,6 +56,7 @@ def build_susvibes_experiment_manifest(
     ordered = _breadth_first_order(cases, dataset_sha256)
     smoke = ordered[:smoke_size]
     canary = ordered[:canary_size]
+    holdout = ordered[canary_size:]
     full = ordered
     manifest: dict[str, Any] = {
         "schema_version": SUSVIBES_EXPERIMENT_SCHEMA_VERSION,
@@ -91,6 +92,13 @@ def build_susvibes_experiment_manifest(
                     "and not a leaderboard score"
                 ),
             ),
+            "holdout": _cohort_payload(
+                holdout,
+                purpose=(
+                    "frozen complement of the engineering canary; reserved "
+                    "for untuned generalization evaluation"
+                ),
+            ),
             "full": _cohort_payload(
                 full,
                 purpose=(
@@ -113,6 +121,20 @@ def build_susvibes_experiment_manifest(
                 _chunks(full, batch_size)
             )
         ],
+        "holdout_batches": [
+            {
+                "batch_id": f"holdout-batch-{index + 1:03d}",
+                "start_index": index * batch_size,
+                "case_count": len(batch),
+                "instance_ids": [
+                    str(case["instance_id"])
+                    for case in batch
+                ],
+            }
+            for index, batch in enumerate(
+                _chunks(holdout, batch_size)
+            )
+        ],
         "evaluator_metadata": {
             str(case["instance_id"]): {
                 "project": str(case["project"]),
@@ -130,6 +152,8 @@ def build_susvibes_experiment_manifest(
             "cwe_labels_forwarded_to_agent": False,
             "benchmark_oracle_forwarded_to_agent": False,
             "canary_is_leaderboard_comparable": False,
+            "holdout_excludes_canary": True,
+            "holdout_is_leaderboard_comparable": False,
             "full_requires_official_security_tests": True,
         },
     }
