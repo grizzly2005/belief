@@ -184,6 +184,9 @@ claim.
 The experiment manifest also freezes a 24-case development canary and its
 disjoint holdout complement, so harness tuning and generalization measurement
 cannot silently use the same tasks.
+Completed batch directories are assembled with
+`scripts/merge_susvibes_predictions.py`, which verifies their ready-preflight
+binding and refuses duplicate, missing, mixed-model, or tampered results.
 
 ---
 

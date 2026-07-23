@@ -476,7 +476,7 @@ def load_ready_susvibes_agent_preflight(
     claude_version: str,
     runner_path: str | Path,
     max_report_age_seconds: int = _DEFAULT_MAX_REPORT_AGE_SECONDS,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Verify a ready report and bind it to the current execution inputs."""
 
     report_path = Path(preflight_report).resolve()
@@ -640,6 +640,10 @@ def load_ready_susvibes_agent_preflight(
         "report_digest": expected_digest,
         "created_at_utc": str(payload.get("created_at_utc") or ""),
         "cohort": cohort,
+        "cohort_case_count": len(selected_ids),
+        "start_index": int(start_index),
+        "num_instances": int(num_instances),
+        "selected_instance_ids_sha256": _instance_ids_digest(execution_ids),
     }
 
 

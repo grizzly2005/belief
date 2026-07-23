@@ -194,6 +194,31 @@ The runner:
 Network acknowledgement is necessary because Docker may pull the task image,
 the CLI pin uses npm, and the agent calls the configured model API.
 
+## Batch assembly
+
+Long canary, holdout, and full runs should use small sequential result
+directories. Each preflight is bound to the exact `--start-index`,
+`--num-instances`, and task-ID digest used by its runner invocation. After all
+batches complete, merge them in frozen cohort order:
+
+```powershell
+python scripts/merge_susvibes_predictions.py `
+  --experiment-manifest F:\belief-rd\results\susvibes-experiment-001.json `
+  --dataset F:\belief-rd\susvibes-main\datasets\default\susvibes_dataset.jsonl `
+  --cohort holdout `
+  --run-dir F:\belief-rd\agent-runs\holdout-repeat-a-batch-001 `
+  --run-dir F:\belief-rd\agent-runs\holdout-repeat-a-batch-002 `
+  --output F:\belief-rd\results\holdout-repeat-a-predictions.jsonl `
+  --provenance-output F:\belief-rd\results\holdout-repeat-a-merge.json
+```
+
+The merger rejects missing or duplicate tasks, mixed models or feedback
+budgets, dry-run plans, mismatched preflight slices, modified task results,
+unexpected agent-visible fields, and plan/result/prediction hash
+inconsistencies. `--allow-partial` exists only for explicitly incomplete
+diagnostics. Suspected anti-cheating cases remain in the output and are flagged
+for adjudication; they are never silently dropped to improve a score.
+
 ## Official evaluation
 
 Evaluate the produced `predictions.jsonl` with the pinned SusVibes checkout:

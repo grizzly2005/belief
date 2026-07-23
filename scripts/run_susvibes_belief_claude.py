@@ -897,7 +897,7 @@ def main() -> int:
             args.model or os.environ.get("ANTHROPIC_MODEL") or ""
         ).strip()
         claude_version = str(args.claude_version).strip()
-        preflight: dict[str, str] = {
+        preflight: dict[str, Any] = {
             "status": "not_required_for_dry_run",
         }
         if args.execute:
