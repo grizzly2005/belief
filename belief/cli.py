@@ -909,6 +909,10 @@ def cmd_benchmark(args):
             STATIC_ANALYSIS_MODE,
             write_static_analysis_benchmark_json,
         )
+        from .benchmark.susvibes import (
+            SUSVIBES_PAIRED_MODE,
+            write_susvibes_paired_benchmark_json,
+        )
 
         try:
             mode = str(getattr(args, "benchmark_mode", REPORTABILITY_MODE) or REPORTABILITY_MODE)
@@ -940,6 +944,51 @@ def cmd_benchmark(args):
                     pipeline,
                     thresholds=(getattr(args, "thresholds", "") or None),
                 )
+            elif mode == SUSVIBES_PAIRED_MODE:
+                from .static_analysis_pipeline import StaticAnalysisOptions, analyze_static_target
+
+                target = args.reportability_target
+                repository_cache = str(
+                    getattr(args, "repository_cache", "") or ""
+                )
+                if not target:
+                    raise ValueError(
+                        "--target must name a pinned SusVibes JSONL dataset"
+                    )
+                if not repository_cache:
+                    raise ValueError(
+                        "--repository-cache must name the prepared local Git cache"
+                    )
+                analysis_options = StaticAnalysisOptions(
+                    max_files=max(1, int(getattr(args, "max_files", 100))),
+                    selected_categories=frozenset({"security", "taint"}),
+                    include_hypotheses=True,
+                    include_guarantees=True,
+                    include_dataflow=True,
+                    include_audit_cases=True,
+                    audit_mode=True,
+                    reportability=True,
+                    dedup_audit_cases=True,
+                    security_analysis_profile="patch_review",
+                )
+
+                def susvibes_pipeline(revision: Path):
+                    return analyze_static_target(revision, analysis_options)
+
+                only_cwes = tuple(
+                    item.strip()
+                    for value in (getattr(args, "only_cwe", ()) or ())
+                    for item in str(value).split(",")
+                    if item.strip()
+                )
+                payload = write_susvibes_paired_benchmark_json(
+                    target,
+                    repository_cache,
+                    args.json_output,
+                    susvibes_pipeline,
+                    only_cwes=only_cwes,
+                    max_cases=int(getattr(args, "max_cases", 0)),
+                )
             else:
                 raise ValueError(f"unsupported benchmark mode: {mode}")
         except ValueError as exc:
@@ -952,14 +1001,15 @@ def cmd_benchmark(args):
             "case_count": payload["case_count"],
             "mode": payload["mode"],
         }
-        if mode == STATIC_ANALYSIS_MODE:
+        measured_modes = {STATIC_ANALYSIS_MODE, SUSVIBES_PAIRED_MODE}
+        if mode in measured_modes:
             summary.update({
                 "status": payload["status"],
                 "thresholds_passed": payload["thresholds_passed"],
                 "deterministic_digest": payload["deterministic_digest"],
             })
         safe_print(json.dumps(summary, indent=2, sort_keys=True))
-        if mode == STATIC_ANALYSIS_MODE and int(payload.get("exit_code", 0)):
+        if mode in measured_modes and int(payload.get("exit_code", 0)):
             sys.exit(int(payload["exit_code"]))
         return
 
@@ -1753,14 +1803,38 @@ def main():
     p_bench_reportability.add_argument(
         "--mode",
         dest="benchmark_mode",
-        choices=["metadata_ground_truth_mvp", "static_analysis_ground_truth_v1"],
+        choices=[
+            "metadata_ground_truth_mvp",
+            "static_analysis_ground_truth_v1",
+            "susvibes_paired_static_v1",
+        ],
         default="metadata_ground_truth_mvp",
-        help="Metadata compatibility benchmark or real static-analysis ground truth",
+        help=(
+            "Metadata compatibility, local ground truth, or offline SusVibes "
+            "paired-revision analysis"
+        ),
     )
     p_bench_reportability.add_argument(
         "--thresholds",
         default="",
         help="Optional threshold YAML for static_analysis_ground_truth_v1",
+    )
+    p_bench_reportability.add_argument(
+        "--repository-cache",
+        default="",
+        help="Prepared local Git object cache for susvibes_paired_static_v1",
+    )
+    p_bench_reportability.add_argument(
+        "--only-cwe",
+        action="append",
+        default=[],
+        help="Limit SusVibes cases to a CWE (repeat or use comma-separated values)",
+    )
+    p_bench_reportability.add_argument(
+        "--max-cases",
+        type=int,
+        default=0,
+        help="Maximum SusVibes cases after deterministic sorting (0 means all)",
     )
     p_bench_reportability.add_argument(
         "--json-output",

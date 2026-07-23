@@ -77,6 +77,7 @@ class StaticAnalysisOptions:
     max_dataflow_depth: int = 32
     max_dataflow_nodes: int = 10_000
     dataflow_cycle_detection: bool = True
+    security_analysis_profile: str = "default"
     legacy_single_file_path_projection: bool = False
     include_audit_cases: bool = False
     audit_mode: bool = False
@@ -218,7 +219,9 @@ def analyze_static_target(
         routes = extract_routes_from_files(files, target_root=route_root)
 
     structural = StructuralExtractor()
-    security = SecurityPatternExtractor()
+    security = SecurityPatternExtractor(
+        analysis_profile=opts.security_analysis_profile,
+    )
     taint = TaintEngine(
         max_depth=opts.max_dataflow_depth,
         max_nodes=opts.max_dataflow_nodes,
@@ -474,6 +477,10 @@ def _validate_options(options: StaticAnalysisOptions) -> None:
         raise ValueError("max_dataflow_depth must be non-negative")
     if options.max_dataflow_nodes < 0:
         raise ValueError("max_dataflow_nodes must be non-negative")
+    if options.security_analysis_profile not in {"default", "patch_review"}:
+        raise ValueError(
+            "security_analysis_profile must be one of: default, patch_review"
+        )
     if not 0.0 <= options.min_confidence <= 1.0:
         raise ValueError("min_confidence must be between 0 and 1")
     if options.only_hypotheses not in {

@@ -24,6 +24,107 @@ from .models import (
 logger = logging.getLogger("belief.structural.security")
 
 _UNKNOWN = object()
+SECURITY_ANALYSIS_PROFILES = ("default", "patch_review")
+
+_PATCH_PATH_STRONG_SANITIZERS = {
+    "basename",
+    "cleanup_path",
+    "secure_filename",
+}
+_PATCH_PATH_GUARD_CALLS = {
+    "_is_valid_path",
+    "clean_path",
+    "is_path_child_of",
+    "is_safe_path",
+    "safe_join",
+    "validate_path",
+}
+_PATCH_PATH_CANONICALIZERS = {
+    "unquote",
+    "unquote_plus",
+}
+_PATCH_PATH_CANONICALIZER_FUNCTIONS = {
+    "abspath",
+    "normpath",
+    "realpath",
+    "resolve",
+}
+_PATCH_PATH_SINK_SUFFIXES = {
+    "exists",
+    "fopen",
+    "isdir",
+    "isfile",
+    "lstat",
+    "open",
+    "remove",
+    "rmtree",
+    "send_file",
+    "send_from_directory",
+    "serve_file",
+    "stat",
+    "staticdir",
+    "staticfile",
+    "unlink",
+}
+_PATCH_AUTHORIZATION_CALLS = {
+    "authorize",
+    "can_access",
+    "check_authorization",
+    "check_permission",
+    "has_object_permission",
+    "has_perm",
+    "has_permission",
+    "is_authorized",
+    "user_allowed",
+}
+_PATCH_ACCESS_REJECTION_CALLS = {
+    "abort",
+    "deny",
+    "forbidden",
+    "handle_no_permission",
+}
+_PATCH_SQL_FRAGMENT_NAMES = {
+    "alias",
+    "aliases",
+    "field",
+    "fields",
+    "kind",
+    "lookup_name",
+    "options",
+    "ordering",
+    "savepoint_name",
+}
+_PATCH_SQL_VALIDATORS = {
+    "check_alias",
+    "escape",
+    "fullmatch",
+    "isidentifier",
+    "issubset",
+    "match",
+    "quote",
+    "quote_name",
+    "search",
+    "validate_identifier",
+    "validate_savepoint_name",
+    "validate_sql_identifier",
+}
+_PATCH_XSS_SINKS = {
+    "finish",
+    "httpresponse",
+    "markup",
+    "mark_safe",
+    "render_template_string",
+    "write",
+}
+_PATCH_XSS_SANITIZERS = {
+    "clean",
+    "conditional_escape",
+    "escape",
+    "format_html",
+    "html_escape",
+    "sanitize",
+    "sanitize_html",
+}
 
 
 class SecurityPatternExtractor:
@@ -32,6 +133,16 @@ class SecurityPatternExtractor:
     Each pattern corresponds to a class of vulnerability and generates
     beliefs about what the developer assumes regarding security.
     """
+
+    def __init__(self, analysis_profile: str = "default") -> None:
+        normalized = str(analysis_profile or "default").strip().lower()
+        if normalized not in SECURITY_ANALYSIS_PROFILES:
+            accepted = ", ".join(SECURITY_ANALYSIS_PROFILES)
+            raise ValueError(
+                f"invalid security analysis profile: {analysis_profile}. "
+                f"Accepted: {accepted}"
+            )
+        self.analysis_profile = normalized
 
     def extract(self, source_code: str, file_path: str = "",
                 module: str = "") -> list[Belief]:
@@ -54,6 +165,10 @@ class SecurityPatternExtractor:
             for child in class_node.body:
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     class_names[id(child)] = class_node.name
+        if self.analysis_profile == "patch_review":
+            beliefs.extend(
+                self._check_patch_boundary_view_access(tree, module_scope)
+            )
 
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -69,7 +184,33 @@ class SecurityPatternExtractor:
                 beliefs.extend(self._check_deserialization(node, scope))
                 beliefs.extend(self._check_weak_crypto(node, scope))
                 beliefs.extend(self._check_ssrf(node, scope))
-                beliefs.extend(self._check_path_traversal(node, scope))
+                if self.analysis_profile == "patch_review":
+                    beliefs.extend(
+                        self._check_patch_boundary_path_traversal(node, scope)
+                    )
+                    beliefs.extend(
+                        self._check_patch_boundary_authorization_context(node, scope)
+                    )
+                    beliefs.extend(
+                        self._check_patch_boundary_sql_fragments(node, scope)
+                    )
+                    beliefs.extend(
+                        self._check_patch_boundary_interpreter_fragment(node, scope)
+                    )
+                    beliefs.extend(
+                        self._check_patch_boundary_reflected_output(node, scope)
+                    )
+                    beliefs.extend(
+                        self._check_patch_boundary_tls_context(node, scope)
+                    )
+                    beliefs.extend(
+                        self._check_patch_boundary_crypto_size(node, scope)
+                    )
+                    beliefs.extend(
+                        self._check_patch_boundary_signature_configuration(node, scope)
+                    )
+                else:
+                    beliefs.extend(self._check_path_traversal(node, scope))
                 beliefs.extend(self._check_xss(node, scope, source_code))
                 beliefs.extend(self._check_hardcoded_credentials(node, scope, source_code))
                 beliefs.extend(self._check_insecure_random(node, scope))
@@ -92,6 +233,11 @@ class SecurityPatternExtractor:
                 name = self._get_call_name(child)
                 if name and any(x in name.lower() for x in ["execute", "raw", "query"]):
                     for arg in child.args:
+                        if (
+                            self.analysis_profile == "patch_review"
+                            and _sql_expression_has_validated_fragments(node, arg)
+                        ):
+                            continue
                         if isinstance(arg, ast.JoinedStr):  # f-string
                             beliefs.append(self._make_belief(
                                 "sql_query.is_parameterized == True",
@@ -113,6 +259,11 @@ class SecurityPatternExtractor:
         """Detect user-controlled shell command execution (CWE-78)."""
         beliefs = []
         tainted_vars, constant_vars = self._simple_assignment_facts(node)
+        boundary_parameters = (
+            _function_parameter_names(node) - {"self", "cls"}
+            if self.analysis_profile == "patch_review"
+            else set()
+        )
         for child in ast.walk(node):
             if isinstance(child, ast.Call):
                 name = self._get_call_name(child)
@@ -125,11 +276,25 @@ class SecurityPatternExtractor:
                         child.args[0], tainted_vars, constant_vars,
                     ):
                         continue
+                    if _command_boundary_is_validated(
+                        node,
+                        boundary_parameters,
+                    ):
+                        continue
+                    variables, metadata = _patch_command_evidence(
+                        self.analysis_profile,
+                        boundary_parameters,
+                        name,
+                        child.lineno,
+                        scope.line_start,
+                    )
                     beliefs.append(self._make_belief(
                         "command.input.is_sanitized == True",
                         f"os.system/popen at line {child.lineno} — "
                         f"vulnerable to command injection (CWE-78).",
                         scope, child.lineno, "critical", "CWE-78",
+                        variables=variables,
+                        metadata=metadata,
                     ))
 
                 # subprocess with shell=True
@@ -140,11 +305,25 @@ class SecurityPatternExtractor:
                                 child.args[0], tainted_vars, constant_vars,
                             ):
                                 continue
+                            if _command_boundary_is_validated(
+                                node,
+                                boundary_parameters,
+                            ):
+                                continue
+                            variables, metadata = _patch_command_evidence(
+                                self.analysis_profile,
+                                boundary_parameters,
+                                name,
+                                child.lineno,
+                                scope.line_start,
+                            )
                             beliefs.append(self._make_belief(
                                 "command.shell_disabled == True",
                                 f"subprocess with shell=True at line {child.lineno} — "
                                 f"vulnerable to command injection (CWE-78).",
                                 scope, child.lineno, "high", "CWE-78",
+                                variables=variables,
+                                metadata=metadata,
                             ))
         return beliefs
 
@@ -153,6 +332,10 @@ class SecurityPatternExtractor:
         node: ast.FunctionDef | ast.AsyncFunctionDef,
     ) -> tuple[set[str], dict[str, object]]:
         tainted_vars = self._initial_user_controlled_vars(node)
+        if self.analysis_profile == "patch_review":
+            tainted_vars.update(
+                _function_parameter_names(node) - {"self", "cls"}
+            )
         constant_vars: dict[str, object] = {}
         for stmt in ast.walk(node):
             if not isinstance(stmt, (ast.Assign, ast.AnnAssign)):
@@ -835,12 +1018,847 @@ class SecurityPatternExtractor:
             for child in ast.iter_child_nodes(node)
         )
 
+    def _check_patch_boundary_path_traversal(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
+    ) -> list[Belief]:
+        """Trace path-like boundary parameters during an explicit patch review.
+
+        The default scanner deliberately avoids treating every ``path`` or
+        ``name`` parameter as hostile. A changed function is a narrower trust
+        boundary: patch review may conservatively follow path-like parameters,
+        while still requiring a concrete filesystem use or returned path.
+        """
+
+        boundary_sources = {
+            name
+            for name in _function_parameter_names(node)
+            if _is_patch_path_parameter(name)
+        }
+        if not boundary_sources:
+            return []
+        normalized_function = node.name.lower().lstrip("_")
+        if normalized_function in {
+            *_PATCH_PATH_STRONG_SANITIZERS,
+            *_PATCH_PATH_GUARD_CALLS,
+            *_PATCH_PATH_CANONICALIZER_FUNCTIONS,
+        }:
+            return []
+        tainted = set(boundary_sources)
+
+        guarded: set[str] = set()
+        canonicalized: set[str] = set()
+        containment_aliases: dict[str, set[str]] = {}
+        lineage = {name: {name} for name in tainted}
+        direct_statement_ids = {id(statement) for statement in node.body}
+        validation_line = _incomplete_path_validation_line(node, tainted)
+        beliefs: list[Belief] = []
+        emitted: set[tuple[int, tuple[str, ...]]] = set()
+
+        if validation_line is not None:
+            beliefs.append(
+                self._patch_path_belief(
+                    scope,
+                    line=validation_line,
+                    sources=tainted,
+                    sink="path validation",
+                    reason=(
+                        "Path validation inspects traversal syntax before URL "
+                        "canonicalization"
+                    ),
+                )
+            )
+            emitted.add((validation_line, tuple(sorted(tainted))))
+
+        for event in _ordered_function_events(node):
+            if isinstance(event, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                targets, value = _assignment_parts(event)
+                if not targets or value is None:
+                    continue
+                source_names = _referenced_names(value) & tainted
+                call_name = _expression_call_name(value)
+                short_call = call_name.rsplit(".", 1)[-1].lower()
+                definitely_assigned = (
+                    targets
+                    if id(event) in direct_statement_ids
+                    else targets - boundary_sources
+                )
+
+                if short_call in _PATCH_PATH_STRONG_SANITIZERS and source_names:
+                    tainted.difference_update(definitely_assigned)
+                    guarded.difference_update(definitely_assigned)
+                    canonicalized.difference_update(definitely_assigned)
+                    for target in definitely_assigned:
+                        containment_aliases.pop(target, None)
+                        lineage.pop(target, None)
+                    continue
+
+                if source_names:
+                    origins = {
+                        origin
+                        for source_name in source_names
+                        for origin in lineage.get(source_name, {source_name})
+                    }
+                    tainted.update(targets)
+                    for target in targets:
+                        lineage[target] = set(origins)
+                    if source_names <= guarded:
+                        guarded.update(targets)
+                    else:
+                        guarded.difference_update(targets)
+                    if short_call in _PATCH_PATH_CANONICALIZERS:
+                        canonicalized.update(targets)
+                    elif source_names <= canonicalized:
+                        canonicalized.update(targets)
+                    else:
+                        canonicalized.difference_update(targets)
+                else:
+                    tainted.difference_update(definitely_assigned)
+                    guarded.difference_update(definitely_assigned)
+                    canonicalized.difference_update(definitely_assigned)
+                    for target in definitely_assigned:
+                        lineage.pop(target, None)
+
+                if short_call == "commonpath" and source_names:
+                    for target in targets:
+                        containment_aliases[target] = set(source_names)
+                else:
+                    for target in targets:
+                        containment_aliases.pop(target, None)
+                continue
+
+            if isinstance(event, ast.If):
+                newly_guarded = _rejected_path_guard_sources(
+                    event,
+                    tainted=tainted,
+                    containment_aliases=containment_aliases,
+                )
+                guarded.update(newly_guarded)
+                continue
+
+            if isinstance(event, ast.Assert):
+                guarded.update(
+                    _asserted_path_guard_sources(
+                        event.test,
+                        tainted=tainted,
+                        containment_aliases=containment_aliases,
+                    )
+                )
+                continue
+
+            if isinstance(event, ast.Call):
+                call_name = (self._get_call_name(event) or "").lower()
+                short_call = call_name.rsplit(".", 1)[-1]
+                sources = _call_path_sources(event, tainted)
+
+                if short_call == "commonprefix" and sources:
+                    origins = _origin_path_sources(sources, lineage)
+                    key = (event.lineno, tuple(sorted(origins)))
+                    if key not in emitted:
+                        emitted.add(key)
+                        beliefs.append(
+                            self._patch_path_belief(
+                                scope,
+                                line=event.lineno,
+                                sources=origins,
+                                sink=call_name or "commonprefix",
+                                reason=(
+                                    "commonprefix compares strings and does not "
+                                    "prove path containment"
+                                ),
+                            )
+                        )
+                    continue
+
+                if not _is_patch_path_sink(call_name) or not sources:
+                    continue
+                unguarded = sources - guarded
+                if not unguarded:
+                    continue
+                origins = _origin_path_sources(unguarded, lineage)
+                key = (event.lineno, tuple(sorted(origins)))
+                if key in emitted:
+                    continue
+                emitted.add(key)
+                beliefs.append(
+                    self._patch_path_belief(
+                        scope,
+                        line=event.lineno,
+                        sources=origins,
+                        sink=call_name or "filesystem operation",
+                        reason="Path-like boundary input reaches a filesystem operation",
+                    )
+                )
+                continue
+
+            if isinstance(event, ast.Return) and event.value is not None:
+                if not _function_returns_path_value(node, event.value):
+                    continue
+                sources = _referenced_names(event.value) & tainted
+                unguarded = sources - guarded
+                if not unguarded:
+                    continue
+                origins = _origin_path_sources(unguarded, lineage)
+                key = (event.lineno, tuple(sorted(origins)))
+                if key in emitted:
+                    continue
+                emitted.add(key)
+                beliefs.append(
+                    self._patch_path_belief(
+                        scope,
+                        line=event.lineno,
+                        sources=origins,
+                        sink=f"return from {node.name}",
+                        reason="Path-like boundary input is returned as an OS path",
+                    )
+                )
+
+        return beliefs
+
+    def _check_patch_boundary_authorization_context(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
+    ) -> list[Belief]:
+        """Detect wrappers that authorize a different resource than they invoke."""
+
+        if node.args.kwarg is None:
+            return []
+        kwargs_name = node.args.kwarg.arg
+        if not _forwards_keyword_arguments(node, kwargs_name):
+            return []
+
+        assignments = _named_assignments(node)
+        for call in ast.walk(node):
+            if not isinstance(call, ast.Call) or not _is_authorization_call(call):
+                continue
+            for resource_name in _authorization_resource_names(call):
+                value = assignments.get(resource_name)
+                if value is None or not _references_request_context(value):
+                    continue
+                if kwargs_name in _referenced_names(value):
+                    continue
+                return [
+                    self._make_belief(
+                        "authorization.resource_context_complete == true",
+                        (
+                            f"Authorization at line {call.lineno} derives "
+                            f"'{resource_name}' from request state but omits forwarded "
+                            "route arguments — potential authorization bypass "
+                            "(CWE-863)."
+                        ),
+                        scope,
+                        call.lineno,
+                        "high",
+                        "CWE-863",
+                        variables=(resource_name, kwargs_name),
+                        metadata={
+                            "analysis_profile": "patch_review",
+                            "dataflow": {
+                                "source": kwargs_name,
+                                "source_line": scope.line_start,
+                                "sink": _ast_call_name(call) or "authorization check",
+                                "sink_line": call.lineno,
+                                "path": [kwargs_name, resource_name, "authorization"],
+                                "missing_guarantees": [
+                                    "authorized_resource == invoked_resource"
+                                ],
+                            },
+                        },
+                    )
+                ]
+        return []
+
+    def _check_patch_boundary_sql_fragments(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
+    ) -> list[Belief]:
+        """Detect unvalidated identifier-like inputs entering SQL builders."""
+
+        context = " ".join(
+            (
+                scope.file_path,
+                scope.class_name or "",
+                node.name,
+            )
+        ).lower()
+        if not any(
+            token in context
+            for token in (
+                "database",
+                "engine",
+                "postgres",
+                "query",
+                "savepoint",
+                "sql",
+                "sqlite",
+            )
+        ):
+            return []
+        if any(token in node.name.lower() for token in ("check_", "validate_")):
+            return []
+
+        parameters = _function_parameter_names(node) - {"self", "cls"}
+        fragments = parameters & _PATCH_SQL_FRAGMENT_NAMES
+        if "name" in parameters and "savepoint" in context:
+            fragments.add("name")
+        if not fragments:
+            return []
+
+        aliases = _flow_aliases(node, fragments)
+        if _sql_fragments_are_validated(node, aliases):
+            return []
+
+        source = sorted(fragments)[0]
+        sink = (
+            f"{scope.class_name}.{node.name}"
+            if scope.class_name
+            else node.name
+        )
+        return [
+            self._make_belief(
+                "sql.fragment_is_validated == true",
+                (
+                    f"Identifier-like SQL fragment '{source}' enters '{sink}' "
+                    "without an allowlist, quoting operation, or full-match "
+                    "validation (CWE-89)."
+                ),
+                scope,
+                node.lineno,
+                "high",
+                "CWE-89",
+                variables=tuple(sorted(fragments)),
+                metadata={
+                    "analysis_profile": "patch_review",
+                    "dataflow": {
+                        "source": source,
+                        "source_line": node.lineno,
+                        "sink": sink,
+                        "sink_line": node.lineno,
+                        "path": [source, sink],
+                        "missing_guarantees": [
+                            "sql.identifier_matches_allowlist == true"
+                        ],
+                    },
+                },
+            )
+        ]
+
+    def _check_patch_boundary_interpreter_fragment(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
+    ) -> list[Belief]:
+        """Detect boundary values embedded in CLI/interpreter script fragments."""
+
+        context = f"{scope.file_path} {scope.class_name or ''} {node.name}".lower()
+        if not any(
+            token in context
+            for token in ("cli", "command", "console", "hive", "script", "shell")
+        ):
+            return []
+        boundary_parameters = _function_parameter_names(node) - {"self", "cls"}
+        if not boundary_parameters or _command_boundary_is_validated(
+            node,
+            boundary_parameters,
+        ):
+            return []
+        for candidate in ast.walk(node):
+            if not isinstance(candidate, (ast.JoinedStr, ast.BinOp, ast.Call)):
+                continue
+            referenced = _referenced_names(candidate) & boundary_parameters
+            if not referenced or not _contains_interpreter_delimiter(candidate):
+                continue
+            source = sorted(referenced)[0]
+            return [
+                self._make_belief(
+                    "interpreter.fragment_is_validated == true",
+                    (
+                        f"Boundary value '{source}' is embedded in an "
+                        f"interpreter/CLI fragment at line {candidate.lineno} "
+                        "without abortive delimiter validation (CWE-78)."
+                    ),
+                    scope,
+                    candidate.lineno,
+                    "high",
+                    "CWE-78",
+                    variables=tuple(sorted(referenced)),
+                    metadata={
+                        "analysis_profile": "patch_review",
+                        "dataflow": {
+                            "source": source,
+                            "source_line": node.lineno,
+                            "sink": "interpreter command fragment",
+                            "sink_line": candidate.lineno,
+                            "path": [source, "interpreter command fragment"],
+                            "missing_guarantees": [
+                                "command.argument_is_validated == true"
+                            ],
+                        },
+                    },
+                )
+            ]
+        return []
+
+    def _check_patch_boundary_reflected_output(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
+    ) -> list[Belief]:
+        """Trace boundary values into explicit HTML/HTTP output operations."""
+
+        function_name = node.name.lower()
+        if any(token in function_name for token in ("escape", "safe", "sanitiz")):
+            return []
+        boundary_sources = _function_parameter_names(node) - {"self", "cls"}
+        if not boundary_sources:
+            return []
+
+        tainted = _flow_aliases(node, boundary_sources)
+        lineage = {name: {name} for name in tainted}
+        sanitized_containers: set[str] = set()
+        direct_statement_ids = {id(statement) for statement in node.body}
+
+        for event in _ordered_function_events(node):
+            if isinstance(event, (ast.For, ast.AsyncFor)):
+                source_names = _referenced_names(event.iter) & tainted
+                if source_names:
+                    origins = {
+                        origin
+                        for source_name in source_names
+                        for origin in lineage.get(source_name, {source_name})
+                    }
+                    for target in _target_names(event.target):
+                        tainted.add(target)
+                        lineage[target] = set(origins)
+                continue
+
+            if isinstance(event, ast.AugAssign):
+                targets = _target_names(event.target)
+                source_names = _referenced_names(event.value) & tainted
+                if source_names or _expression_is_xss_boundary_source(event.value):
+                    origins = {
+                        origin
+                        for source_name in source_names
+                        for origin in lineage.get(source_name, {source_name})
+                    }
+                    if not origins:
+                        origins = {"request"}
+                    tainted.update(targets)
+                    for target in targets:
+                        lineage[target] = set(origins)
+                continue
+
+            if isinstance(event, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                targets, value = _assignment_parts(event)
+                if value is None:
+                    continue
+                _record_sanitized_container(
+                    event,
+                    value,
+                    sanitized_containers,
+                )
+                source_names = _referenced_names(value) & tainted
+                definitely_assigned = (
+                    targets
+                    if id(event) in direct_statement_ids
+                    else targets - boundary_sources
+                )
+                if _expression_has_xss_sanitizer(value):
+                    tainted.difference_update(definitely_assigned)
+                    for target in definitely_assigned:
+                        lineage.pop(target, None)
+                elif source_names or _expression_is_xss_boundary_source(value):
+                    origins = {
+                        origin
+                        for source_name in source_names
+                        for origin in lineage.get(source_name, {source_name})
+                    }
+                    if not origins:
+                        origins = {"request"}
+                    tainted.update(targets)
+                    for target in targets:
+                        lineage[target] = set(origins)
+                else:
+                    tainted.difference_update(definitely_assigned)
+                    for target in definitely_assigned:
+                        lineage.pop(target, None)
+                continue
+
+            if not isinstance(event, ast.Call):
+                continue
+            sink = _ast_call_name(event)
+            short_sink = sink.rsplit(".", 1)[-1].lower()
+            if short_sink in {"add", "append", "extend", "insert", "update"}:
+                receiver = (
+                    _ast_dotted_name(event.func.value)
+                    if isinstance(event.func, ast.Attribute)
+                    else ""
+                )
+                receiver_name = receiver.rsplit(".", 1)[-1]
+                source_names = {
+                    name
+                    for value in [
+                        *event.args,
+                        *(keyword.value for keyword in event.keywords),
+                    ]
+                    for name in (_referenced_names(value) & tainted)
+                }
+                if receiver_name and source_names:
+                    tainted.add(receiver_name)
+                    lineage[receiver_name] = {
+                        origin
+                        for source_name in source_names
+                        for origin in lineage.get(source_name, {source_name})
+                    }
+                continue
+            if short_sink not in _PATCH_XSS_SINKS:
+                continue
+            if short_sink in {"write", "finish"} and not _is_http_output_context(
+                scope
+            ):
+                continue
+            values = [
+                *event.args,
+                *(keyword.value for keyword in event.keywords),
+            ]
+            if not values:
+                continue
+            sources: set[str] = set()
+            for value in values:
+                if _expression_has_xss_sanitizer(value):
+                    continue
+                referenced = _referenced_names(value) & tainted
+                referenced -= sanitized_containers
+                sources.update(referenced)
+            if not sources:
+                continue
+            origins = {
+                origin
+                for source_name in sources
+                for origin in lineage.get(source_name, {source_name})
+            }
+            source = sorted(origins)[0]
+            return [
+                self._make_belief(
+                    "html_output.is_escaped == true",
+                    (
+                        f"Boundary value '{source}' reaches HTML/HTTP output "
+                        f"'{sink}' at line {event.lineno} without a recognized "
+                        "escaping or sanitization step (CWE-79)."
+                    ),
+                    scope,
+                    event.lineno,
+                    "high",
+                    "CWE-79",
+                    variables=tuple(sorted(origins)),
+                    metadata={
+                        "analysis_profile": "patch_review",
+                        "dataflow": {
+                            "source": source,
+                            "source_line": node.lineno,
+                            "sink": sink,
+                            "sink_line": event.lineno,
+                            "path": [source, sink],
+                            "missing_guarantees": [
+                                "html_output.is_escaped == true"
+                            ],
+                        },
+                    },
+                )
+            ]
+        return []
+
+    def _check_patch_boundary_tls_context(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
+    ) -> list[Belief]:
+        """Detect a client TLS context used without hostname verification."""
+
+        context = f"{scope.file_path} {scope.class_name or ''} {node.name}".lower()
+        if not any(token in context for token in ("connect", "proxy", "ssl", "tls")):
+            return []
+        tls_calls = [
+            candidate
+            for candidate in ast.walk(node)
+            if isinstance(candidate, ast.Call)
+            and _ast_call_name(candidate).rsplit(".", 1)[-1].lower()
+            in {
+                "create_default_context",
+                "create_urllib3_context",
+                "ssl_wrap_socket",
+                "wrap_socket",
+            }
+        ]
+        if not tls_calls:
+            return []
+        context_referenced = any(
+            any(
+                name.lower() in {"context", "ssl_context", "tls_context"}
+                for name in _referenced_names(call)
+            )
+            for call in tls_calls
+        )
+        if not context_referenced:
+            return []
+        if _enables_tls_hostname_check(node):
+            return []
+        sink = _ast_call_name(tls_calls[-1])
+        return [
+            self._make_belief(
+                "tls.hostname_verified == true",
+                (
+                    f"TLS context reaches '{sink}' at line "
+                    f"{tls_calls[-1].lineno} without enabling hostname "
+                    "verification (CWE-295)."
+                ),
+                scope,
+                tls_calls[-1].lineno,
+                "high",
+                "CWE-295",
+                variables=("ssl_context",),
+                metadata={
+                    "analysis_profile": "patch_review",
+                    "dataflow": {
+                        "source": "ssl_context",
+                        "source_line": node.lineno,
+                        "sink": sink,
+                        "sink_line": tls_calls[-1].lineno,
+                        "path": ["ssl_context", sink],
+                        "missing_guarantees": [
+                            "tls.hostname_verified == true"
+                        ],
+                    },
+                },
+            )
+        ]
+
+    def _check_patch_boundary_crypto_size(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
+    ) -> list[Belief]:
+        """Detect cryptographic blocks processed without canonical length checks."""
+
+        context = f"{scope.file_path} {scope.class_name or ''} {node.name}".lower()
+        if not any(
+            token in context
+            for token in ("crypto", "decrypt", "pkcs", "rsa", "signature", "verify")
+        ):
+            return []
+        parameters = _function_parameter_names(node) - {"self", "cls"}
+        blocks = parameters & {
+            "ciphertext",
+            "crypto",
+            "digest",
+            "signature",
+            "signedtext",
+        }
+        if not blocks or not _has_crypto_block_operation(node, blocks):
+            return []
+        if _has_abortive_length_guard(node, blocks):
+            return []
+        source = sorted(blocks)[0]
+        return [
+            self._make_belief(
+                "crypto.block_length_is_canonical == true",
+                (
+                    f"Cryptographic block '{source}' is processed by "
+                    f"'{node.name}' without an abortive length check (CWE-327)."
+                ),
+                scope,
+                node.lineno,
+                "high",
+                "CWE-327",
+                variables=tuple(sorted(blocks)),
+                metadata={
+                    "analysis_profile": "patch_review",
+                    "dataflow": {
+                        "source": source,
+                        "source_line": node.lineno,
+                        "sink": node.name,
+                        "sink_line": node.lineno,
+                        "path": [source, node.name],
+                        "missing_guarantees": [
+                            "crypto.block_length_is_canonical == true"
+                        ],
+                    },
+                },
+            )
+        ]
+
+    def _check_patch_boundary_signature_configuration(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
+    ) -> list[Belief]:
+        """Detect salt-like signer configuration passed as a positional key."""
+
+        context = f"{scope.file_path} {scope.class_name or ''} {node.name}".lower()
+        if not any(token in context for token in ("sign", "token", "verification")):
+            return []
+        for call in ast.walk(node):
+            if not isinstance(call, ast.Call):
+                continue
+            short_name = _ast_call_name(call).rsplit(".", 1)[-1]
+            if short_name not in {"Signer", "TimestampSigner"} or not call.args:
+                continue
+            if any(keyword.arg == "salt" for keyword in call.keywords):
+                continue
+            salt_names = {
+                _ast_dotted_name(candidate).lower()
+                for candidate in ast.walk(call.args[0])
+                if _ast_dotted_name(candidate)
+                and "salt" in _ast_dotted_name(candidate).lower()
+            }
+            if not salt_names:
+                continue
+            source = sorted(salt_names)[0]
+            return [
+                self._make_belief(
+                    "signature.salt_is_bound_to_salt_parameter == true",
+                    (
+                        f"Salt-like value '{source}' is passed positionally to "
+                        f"'{short_name}' at line {call.lineno}; it may bind as "
+                        "key material instead of domain-separation salt (CWE-347)."
+                    ),
+                    scope,
+                    call.lineno,
+                    "high",
+                    "CWE-347",
+                    variables=(source,),
+                    metadata={
+                        "analysis_profile": "patch_review",
+                        "dataflow": {
+                            "source": source,
+                            "source_line": node.lineno,
+                            "sink": short_name,
+                            "sink_line": call.lineno,
+                            "path": [source, short_name],
+                            "missing_guarantees": [
+                                "signature.salt_parameter_is_explicit == true"
+                            ],
+                        },
+                    },
+                )
+            ]
+        return []
+
+    def _check_patch_boundary_view_access(
+        self,
+        tree: ast.Module,
+        module_scope: Scope,
+    ) -> list[Belief]:
+        """Detect route-selected object access without an object-level guard."""
+
+        beliefs: list[Belief] = []
+        for class_node in (
+            candidate
+            for candidate in ast.walk(tree)
+            if isinstance(candidate, ast.ClassDef)
+        ):
+            if not _is_web_view_class(class_node):
+                continue
+            methods = [
+                child
+                for child in class_node.body
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ]
+            if any(_has_object_authorization_guard(method) for method in methods):
+                continue
+            for method in methods:
+                lookup = _route_selected_object_lookup(method)
+                if lookup is None:
+                    continue
+                scope = Scope(
+                    file_path=module_scope.file_path,
+                    function_name=method.name,
+                    class_name=class_node.name,
+                    module=module_scope.module,
+                    line_start=method.lineno,
+                    line_end=method.end_lineno,
+                )
+                sink = _ast_call_name(lookup) or "object lookup"
+                beliefs.append(
+                    self._make_belief(
+                        "resource.object_authorized == true",
+                        (
+                            f"Route-selected object reaches '{sink}' at line "
+                            f"{lookup.lineno} without an object-level ownership or "
+                            "permission guard (CWE-863)."
+                        ),
+                        scope,
+                        lookup.lineno,
+                        "high",
+                        "CWE-863",
+                        variables=("route_selector", "authenticated_user"),
+                        metadata={
+                            "analysis_profile": "patch_review",
+                            "dataflow": {
+                                "source": "route_selector",
+                                "source_line": method.lineno,
+                                "sink": sink,
+                                "sink_line": lookup.lineno,
+                                "path": ["route_selector", sink],
+                                "missing_guarantees": [
+                                    (
+                                        "resource.owner == authenticated_user OR "
+                                        "user.has_object_permission"
+                                    )
+                                ],
+                            },
+                        },
+                    )
+                )
+                break
+        return beliefs
+
+    def _patch_path_belief(
+        self,
+        scope: Scope,
+        *,
+        line: int,
+        sources: set[str],
+        sink: str,
+        reason: str,
+    ) -> Belief:
+        ordered_sources = tuple(sorted(sources))
+        source = ordered_sources[0] if ordered_sources else "path input"
+        return self._make_belief(
+            "path.boundary_guarded == true",
+            f"{reason} at line {line} — potential path traversal (CWE-22).",
+            scope,
+            line,
+            "high",
+            "CWE-22",
+            variables=ordered_sources,
+            metadata={
+                "analysis_profile": "patch_review",
+                "dataflow": {
+                    "source": source,
+                    "source_line": scope.line_start,
+                    "sink": sink,
+                    "sink_line": line,
+                    "path": [source, sink],
+                    "missing_guarantees": ["path.is_within_store == true"],
+                },
+            },
+        )
+
     def _check_xss(self, node: ast.FunctionDef, scope: Scope,
                    source: str) -> list[Belief]:
         """Detect potential XSS (CWE-79)."""
         beliefs = []
-        xss_sinks = {"render_template_string", "Markup", "mark_safe",
-                     "format_html", "innerHTML", "document.write"}
+        xss_sinks = {
+            "render_template_string",
+            "Markup",
+            "mark_safe",
+            "innerHTML",
+            "document.write",
+        }
 
         for child in ast.walk(node):
             if isinstance(child, ast.Call):
@@ -984,8 +2002,16 @@ class SecurityPatternExtractor:
 
     def _make_belief(self, expr: str, desc: str, scope: Scope,
                      lineno: int, severity: str, cwe: str,
-                     variables: tuple[str, ...] = ()) -> Belief:
+                     variables: tuple[str, ...] = (),
+                     metadata: dict | None = None) -> Belief:
         confidence = {"critical": 0.95, "high": 0.88, "medium": 0.78}.get(severity, 0.7)
+        source_metadata = {
+            "source": "security_patterns",
+            "rule_id": cwe,
+            "severity": severity,
+        }
+        if metadata:
+            source_metadata.update(metadata)
         return Belief(
             predicate=Predicate(
                 expression=expr, variables=variables,
@@ -998,11 +2024,7 @@ class SecurityPatternExtractor:
             logic_type=LogicType.INFORMATION_FLOW,
             confidence_score=confidence,
             cwe=cwe,
-            source_metadata={
-                "source": "security_patterns",
-                "rule_id": cwe,
-                "severity": severity,
-            },
+            source_metadata=source_metadata,
         )
 
     def _get_call_name(self, node: ast.Call) -> str | None:
@@ -1028,3 +2050,935 @@ class SecurityPatternExtractor:
         start = node.lineno - 1
         end = node.end_lineno or (start + 1)
         return "\n".join(lines[start:end])
+
+
+def _function_parameter_names(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> set[str]:
+    names = {arg.arg for arg in node.args.posonlyargs}
+    names.update(arg.arg for arg in node.args.args)
+    names.update(arg.arg for arg in node.args.kwonlyargs)
+    if node.args.vararg:
+        names.add(node.args.vararg.arg)
+    if node.args.kwarg:
+        names.add(node.args.kwarg.arg)
+    return names
+
+
+def _is_patch_path_parameter(name: str) -> bool:
+    normalized = str(name or "").strip().lower().replace("-", "_")
+    if not normalized or normalized in {"self", "cls"}:
+        return False
+    trusted_tokens = {
+        "base",
+        "basedir",
+        "base_dir",
+        "directory",
+        "dir",
+        "root",
+        "rootdir",
+        "root_dir",
+        "root_path",
+        "store",
+        "storage",
+    }
+    if normalized in trusted_tokens:
+        return False
+    if normalized in {
+        "file",
+        "file_name",
+        "filename",
+        "filepath",
+        "key",
+        "name",
+        "path",
+        "request_path",
+        "tok",
+        "token",
+        "untrusted_path",
+        "user_path",
+        "vpath",
+    }:
+        return True
+    return normalized.endswith(("_file", "_filename", "_key", "_path"))
+
+
+def _ordered_function_events(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[ast.AST]:
+    events: list[ast.AST] = []
+    stack = list(reversed(node.body))
+    while stack:
+        current = stack.pop()
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if isinstance(
+            current,
+            (
+                ast.Assign,
+                ast.AnnAssign,
+                ast.NamedExpr,
+                ast.AugAssign,
+                ast.For,
+                ast.AsyncFor,
+                ast.If,
+                ast.Assert,
+                ast.Call,
+                ast.Return,
+            ),
+        ):
+            events.append(current)
+        stack.extend(reversed(list(ast.iter_child_nodes(current))))
+
+    priority = {
+        ast.Assign: 0,
+        ast.AnnAssign: 0,
+        ast.NamedExpr: 0,
+        ast.AugAssign: 0,
+        ast.For: 1,
+        ast.AsyncFor: 1,
+        ast.If: 1,
+        ast.Assert: 1,
+        ast.Call: 2,
+        ast.Return: 3,
+    }
+    return sorted(
+        events,
+        key=lambda item: (
+            getattr(item, "lineno", 0),
+            priority.get(type(item), 9),
+            getattr(item, "col_offset", 0),
+        ),
+    )
+
+
+def _assignment_parts(
+    node: ast.Assign | ast.AnnAssign | ast.NamedExpr,
+) -> tuple[set[str], ast.AST | None]:
+    if isinstance(node, ast.Assign):
+        targets = node.targets
+        value = node.value
+    elif isinstance(node, ast.AnnAssign):
+        targets = [node.target]
+        value = node.value
+    else:
+        targets = [node.target]
+        value = node.value
+    return {
+        name
+        for target in targets
+        for name in _target_names(target)
+    }, value
+
+
+def _target_names(node: ast.AST) -> set[str]:
+    if isinstance(node, ast.Name):
+        return {node.id}
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return {
+            name
+            for element in node.elts
+            for name in _target_names(element)
+        }
+    return set()
+
+
+def _referenced_names(node: ast.AST) -> set[str]:
+    return {
+        child.id
+        for child in ast.walk(node)
+        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load)
+    }
+
+
+def _expression_call_name(node: ast.AST) -> str:
+    if not isinstance(node, ast.Call):
+        return ""
+    return _ast_call_name(node)
+
+
+def _ast_call_name(node: ast.Call) -> str:
+    parts: list[str] = []
+    current: ast.AST = node.func
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if isinstance(current, ast.Name):
+        parts.append(current.id)
+    return ".".join(reversed(parts))
+
+
+def _call_path_sources(node: ast.Call, tainted: set[str]) -> set[str]:
+    values: list[ast.AST] = [
+        *node.args,
+        *(keyword.value for keyword in node.keywords),
+    ]
+    if isinstance(node.func, ast.Attribute):
+        values.append(node.func.value)
+    return {
+        name
+        for value in values
+        for name in (_referenced_names(value) & tainted)
+    }
+
+
+def _origin_path_sources(
+    sources: set[str],
+    lineage: dict[str, set[str]],
+) -> set[str]:
+    return {
+        origin
+        for source in sources
+        for origin in lineage.get(source, {source})
+    }
+
+
+def _is_patch_path_sink(call_name: str) -> bool:
+    normalized = str(call_name or "").strip().lower()
+    if not normalized:
+        return False
+    short = normalized.rsplit(".", 1)[-1]
+    return short in _PATCH_PATH_SINK_SUFFIXES
+
+
+def _branch_terminates(body: list[ast.stmt]) -> bool:
+    if not body:
+        return False
+    tail = body[-1]
+    return isinstance(tail, (ast.Return, ast.Raise, ast.Continue, ast.Break))
+
+
+def _rejected_path_guard_sources(
+    node: ast.If,
+    *,
+    tainted: set[str],
+    containment_aliases: dict[str, set[str]],
+) -> set[str]:
+    if not _branch_terminates(node.body):
+        return set()
+    test = node.test
+    sources = _referenced_names(test) & tainted
+    for alias in _referenced_names(test):
+        sources.update(containment_aliases.get(alias, set()))
+
+    if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+        if _contains_path_guard_call(test.operand) or _contains_normalized_startswith(
+            test.operand
+        ):
+            return sources
+
+    if isinstance(test, ast.Compare):
+        if _comparison_rejects_containment(test, containment_aliases):
+            return sources
+    return set()
+
+
+def _asserted_path_guard_sources(
+    test: ast.AST,
+    *,
+    tainted: set[str],
+    containment_aliases: dict[str, set[str]],
+) -> set[str]:
+    sources = _referenced_names(test) & tainted
+    for alias in _referenced_names(test):
+        sources.update(containment_aliases.get(alias, set()))
+    if _contains_path_guard_call(test) or _contains_normalized_startswith(test):
+        return sources
+    if isinstance(test, ast.Compare) and _comparison_accepts_containment(
+        test, containment_aliases
+    ):
+        return sources
+    return set()
+
+
+def _contains_path_guard_call(node: ast.AST) -> bool:
+    return any(
+        (_ast_call_name(child).rsplit(".", 1)[-1].lower() in _PATCH_PATH_GUARD_CALLS)
+        for child in ast.walk(node)
+        if isinstance(child, ast.Call)
+    )
+
+
+def _contains_normalized_startswith(node: ast.AST) -> bool:
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        if _ast_call_name(child).rsplit(".", 1)[-1].lower() != "startswith":
+            continue
+        receiver = child.func.value if isinstance(child.func, ast.Attribute) else None
+        if receiver is None:
+            continue
+        names = {
+            _ast_call_name(call).rsplit(".", 1)[-1].lower()
+            for call in ast.walk(receiver)
+            if isinstance(call, ast.Call)
+        }
+        if names & {"abspath", "normpath", "realpath", "resolve"}:
+            return True
+    return False
+
+
+def _comparison_rejects_containment(
+    node: ast.Compare,
+    containment_aliases: dict[str, set[str]],
+) -> bool:
+    if not any(isinstance(operator, (ast.NotEq, ast.IsNot)) for operator in node.ops):
+        return False
+    if any(
+        _ast_call_name(call).rsplit(".", 1)[-1].lower() == "commonpath"
+        for call in ast.walk(node)
+        if isinstance(call, ast.Call)
+    ):
+        return True
+    return bool(_referenced_names(node) & set(containment_aliases))
+
+
+def _comparison_accepts_containment(
+    node: ast.Compare,
+    containment_aliases: dict[str, set[str]],
+) -> bool:
+    if not any(isinstance(operator, (ast.Eq, ast.Is)) for operator in node.ops):
+        return False
+    if any(
+        _ast_call_name(call).rsplit(".", 1)[-1].lower() == "commonpath"
+        for call in ast.walk(node)
+        if isinstance(call, ast.Call)
+    ):
+        return True
+    return bool(_referenced_names(node) & set(containment_aliases))
+
+
+def _function_returns_path_value(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    value: ast.AST,
+) -> bool:
+    if not _return_expression_can_be_path(value):
+        return False
+    name = node.name.lower()
+    if any(token in name for token in ("path", "file")):
+        return True
+    return any(
+        _ast_call_name(call).rsplit(".", 1)[-1].lower()
+        in {"abspath", "join", "normpath", "realpath", "resolve"}
+        for call in ast.walk(value)
+        if isinstance(call, ast.Call)
+    )
+
+
+def _return_expression_can_be_path(value: ast.AST) -> bool:
+    if isinstance(value, (ast.Name, ast.Attribute, ast.Subscript)):
+        return True
+    if isinstance(value, ast.BinOp) and isinstance(value.op, (ast.Add, ast.Div)):
+        return True
+    if isinstance(value, ast.IfExp):
+        return (
+            _return_expression_can_be_path(value.body)
+            or _return_expression_can_be_path(value.orelse)
+        )
+    if isinstance(value, ast.Call):
+        short = _ast_call_name(value).rsplit(".", 1)[-1].lower()
+        return short in {
+            "abspath",
+            "join",
+            "normpath",
+            "path",
+            "realpath",
+            "replace",
+            "resolve",
+            "strip",
+        }
+    return False
+
+
+def _incomplete_path_validation_line(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    tainted: set[str],
+) -> int | None:
+    name = node.name.lower()
+    if not any(token in name for token in ("safe", "validat")):
+        return None
+
+    canonicalizer_lines = [
+        call.lineno
+        for call in _ordered_function_events(node)
+        if isinstance(call, ast.Call)
+        and _ast_call_name(call).rsplit(".", 1)[-1].lower()
+        in _PATCH_PATH_CANONICALIZERS
+        and _call_path_sources(call, tainted)
+    ]
+    validation_lines = []
+    for child in _ordered_function_events(node):
+        if not isinstance(child, ast.If):
+            continue
+        text_literals = {
+            str(value.value)
+            for value in ast.walk(child.test)
+            if isinstance(value, ast.Constant) and isinstance(value.value, str)
+        }
+        call_names = {
+            _ast_call_name(call).rsplit(".", 1)[-1].lower()
+            for call in ast.walk(child.test)
+            if isinstance(call, ast.Call)
+        }
+        if (
+            ".." in text_literals
+            or call_names & {"is_absolute", "isabs"}
+        ) and (_referenced_names(child.test) & tainted):
+            validation_lines.append(child.lineno)
+
+    if not validation_lines:
+        return None
+    first_validation = min(validation_lines)
+    if any(line < first_validation for line in canonicalizer_lines):
+        return None
+    return first_validation
+
+
+def _flow_aliases(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    sources: set[str],
+) -> set[str]:
+    aliases = set(sources)
+    changed = True
+    while changed:
+        changed = False
+        for candidate in ast.walk(node):
+            targets: set[str] = set()
+            value: ast.AST | None = None
+            if isinstance(candidate, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                targets, value = _assignment_parts(candidate)
+            elif isinstance(candidate, (ast.For, ast.AsyncFor)):
+                targets = _target_names(candidate.target)
+                value = candidate.iter
+            if value is None or not (_referenced_names(value) & aliases):
+                continue
+            additions = targets - aliases
+            if additions:
+                aliases.update(additions)
+                changed = True
+    return aliases
+
+
+def _command_boundary_is_validated(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    boundary_parameters: set[str],
+) -> bool:
+    if not boundary_parameters:
+        return False
+    validator_names = {
+        "quote",
+        "sanitize_command",
+        "shlex.quote",
+        "validate_command",
+        "validate_target",
+    }
+    for candidate in ast.walk(node):
+        if isinstance(candidate, ast.Call):
+            call_name = _ast_call_name(candidate).lower()
+            short_name = call_name.rsplit(".", 1)[-1]
+            if (
+                call_name in validator_names
+                or short_name in validator_names
+                or short_name.startswith("validate_")
+            ) and (_referenced_names(candidate) & boundary_parameters):
+                return True
+        if not isinstance(candidate, ast.If) or not _branch_terminates(
+            candidate.body
+        ):
+            continue
+        if not (_referenced_names(candidate.test) & boundary_parameters):
+            continue
+        literals = {
+            value.value
+            for value in ast.walk(candidate.test)
+            if isinstance(value, ast.Constant) and isinstance(value.value, str)
+        }
+        if any(
+            any(character in literal for character in "!;&|`$<>\n\r")
+            for literal in literals
+        ):
+            return True
+    return False
+
+
+def _contains_interpreter_delimiter(node: ast.AST) -> bool:
+    literals = [
+        value.value
+        for value in ast.walk(node)
+        if isinstance(value, ast.Constant) and isinstance(value.value, str)
+    ]
+    return any(
+        any(delimiter in literal for delimiter in (";", "\n", "\r"))
+        for literal in literals
+    )
+
+
+def _patch_command_evidence(
+    analysis_profile: str,
+    boundary_parameters: set[str],
+    sink: str,
+    sink_line: int,
+    source_line: int,
+) -> tuple[tuple[str, ...], dict[str, object] | None]:
+    if analysis_profile != "patch_review" or not boundary_parameters:
+        return (), None
+    variables = tuple(sorted(boundary_parameters))
+    source = variables[0]
+    return variables, {
+        "analysis_profile": "patch_review",
+        "dataflow": {
+            "source": source,
+            "source_line": source_line,
+            "sink": sink,
+            "sink_line": sink_line,
+            "path": [source, sink],
+            "missing_guarantees": [
+                "command.argument_is_validated == true"
+            ],
+        },
+    }
+
+
+def _sql_fragments_are_validated(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    aliases: set[str],
+) -> bool:
+    for candidate in ast.walk(node):
+        if not isinstance(candidate, ast.Call):
+            continue
+        short_name = _ast_call_name(candidate).rsplit(".", 1)[-1].lower()
+        if not (
+            short_name in _PATCH_SQL_VALIDATORS
+            or short_name.startswith(("check_", "validate_"))
+        ):
+            continue
+        if _expression_references_alias(candidate, aliases):
+            return True
+
+    for candidate in ast.walk(node):
+        if not isinstance(candidate, (ast.For, ast.AsyncFor)):
+            continue
+        target_names = _target_names(candidate.target)
+        if not any(
+            token in name.lower()
+            for name in target_names
+            for token in ("allow", "valid", "whitelist")
+        ):
+            continue
+        if any(
+            _expression_references_alias(statement, aliases)
+            for statement in candidate.body
+        ):
+            return True
+
+    for candidate in ast.walk(node):
+        if not isinstance(candidate, ast.Compare):
+            continue
+        if not _expression_references_alias(candidate, aliases):
+            continue
+        dotted_names = {
+            _ast_dotted_name(value).lower()
+            for value in ast.walk(candidate)
+            if _ast_dotted_name(value)
+        }
+        if any(
+            token in dotted
+            for dotted in dotted_names
+            for token in ("allow", "valid", "whitelist")
+        ):
+            return True
+    return False
+
+
+def _sql_expression_has_validated_fragments(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    expression: ast.AST,
+) -> bool:
+    fragments = {
+        candidate.id
+        for candidate in ast.walk(expression)
+        if isinstance(candidate, ast.Name) and candidate.id not in {"self", "cls"}
+    }
+    fragments.update(
+        dotted.rsplit(".", 1)[-1]
+        for candidate in ast.walk(expression)
+        if (dotted := _ast_dotted_name(candidate))
+        and "." in dotted
+        and dotted.rsplit(".", 1)[-1] not in {"format", "join"}
+    )
+    fragments.update(
+        name
+        for name in _function_parameter_names(node)
+        if name in _PATCH_SQL_FRAGMENT_NAMES
+    )
+    return bool(fragments) and _sql_fragments_are_validated(node, fragments)
+
+
+def _expression_references_alias(node: ast.AST, aliases: set[str]) -> bool:
+    normalized = {alias.lower() for alias in aliases}
+    for candidate in ast.walk(node):
+        if isinstance(candidate, ast.Name) and candidate.id.lower() in normalized:
+            return True
+        dotted = _ast_dotted_name(candidate).lower()
+        if dotted and dotted.rsplit(".", 1)[-1] in normalized:
+            return True
+    return False
+
+
+def _expression_has_xss_sanitizer(node: ast.AST) -> bool:
+    for candidate in ast.walk(node):
+        if not isinstance(candidate, ast.Call):
+            continue
+        short_name = _ast_call_name(candidate).rsplit(".", 1)[-1].lower()
+        if (
+            short_name in _PATCH_XSS_SANITIZERS
+            or "sanitize" in short_name
+            or "escape" in short_name
+            or short_name.startswith(("_safe_", "safe_"))
+        ):
+            return True
+    return False
+
+
+def _expression_is_xss_boundary_source(node: ast.AST) -> bool:
+    if _references_request_context(node):
+        return True
+    source_calls = {
+        "form_data",
+        "get_params",
+        "get_query_params",
+        "query_parameters",
+        "url_parameters",
+    }
+    return any(
+        _ast_call_name(candidate).rsplit(".", 1)[-1].lower() in source_calls
+        for candidate in ast.walk(node)
+        if isinstance(candidate, ast.Call)
+    )
+
+
+def _record_sanitized_container(
+    event: ast.Assign | ast.AnnAssign | ast.NamedExpr,
+    value: ast.AST,
+    sanitized_containers: set[str],
+) -> None:
+    if not _expression_has_xss_sanitizer(value):
+        return
+    if isinstance(event, ast.Assign):
+        raw_targets = event.targets
+    else:
+        raw_targets = [event.target]
+    for target in raw_targets:
+        if not isinstance(target, ast.Subscript):
+            continue
+        dotted = _ast_dotted_name(target.value)
+        if dotted:
+            sanitized_containers.add(dotted.rsplit(".", 1)[-1])
+
+
+def _is_http_output_context(scope: Scope) -> bool:
+    context = f"{scope.file_path} {scope.class_name or ''}".lower()
+    return any(
+        token in context
+        for token in (
+            "component",
+            "controller",
+            "handler",
+            "http",
+            "route",
+            "view",
+            "web",
+        )
+    )
+
+
+def _enables_tls_hostname_check(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    for candidate in ast.walk(node):
+        if isinstance(candidate, (ast.Assign, ast.AnnAssign)):
+            targets = (
+                candidate.targets
+                if isinstance(candidate, ast.Assign)
+                else [candidate.target]
+            )
+            value = candidate.value
+            if not (
+                isinstance(value, ast.Constant)
+                and value.value is True
+            ):
+                continue
+            if any(
+                isinstance(target, ast.Attribute)
+                and target.attr == "check_hostname"
+                for target in targets
+            ):
+                return True
+        if not isinstance(candidate, ast.Call):
+            continue
+        if _ast_call_name(candidate).rsplit(".", 1)[-1].lower() != "setattr":
+            continue
+        if (
+            len(candidate.args) >= 3
+            and isinstance(candidate.args[1], ast.Constant)
+            and candidate.args[1].value == "check_hostname"
+            and isinstance(candidate.args[2], ast.Constant)
+            and candidate.args[2].value is True
+        ):
+            return True
+    return False
+
+
+def _has_crypto_block_operation(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    blocks: set[str],
+) -> bool:
+    operation_tokens = (
+        "bytes2int",
+        "decrypt",
+        "unpack",
+        "verify",
+    )
+    return any(
+        any(token in _ast_call_name(candidate).lower() for token in operation_tokens)
+        and bool(_referenced_names(candidate) & blocks)
+        for candidate in ast.walk(node)
+        if isinstance(candidate, ast.Call)
+    )
+
+
+def _has_abortive_length_guard(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    blocks: set[str],
+) -> bool:
+    for candidate in ast.walk(node):
+        if not isinstance(candidate, ast.If) or not _branch_terminates(
+            candidate.body
+        ):
+            continue
+        for call in ast.walk(candidate.test):
+            if not isinstance(call, ast.Call):
+                continue
+            if _ast_call_name(call).rsplit(".", 1)[-1].lower() != "len":
+                continue
+            if call.args and (_referenced_names(call.args[0]) & blocks):
+                return True
+    return False
+
+
+def _forwards_keyword_arguments(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    kwargs_name: str,
+) -> bool:
+    return any(
+        keyword.arg is None
+        and isinstance(keyword.value, ast.Name)
+        and keyword.value.id == kwargs_name
+        for call in ast.walk(node)
+        if isinstance(call, ast.Call)
+        for keyword in call.keywords
+    )
+
+
+def _named_assignments(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> dict[str, ast.AST]:
+    assignments: dict[str, ast.AST] = {}
+    for candidate in ast.walk(node):
+        if not isinstance(candidate, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            continue
+        targets, value = _assignment_parts(candidate)
+        if value is None:
+            continue
+        for target in targets:
+            assignments[target] = value
+    return assignments
+
+
+def _is_authorization_call(node: ast.Call) -> bool:
+    return (
+        _ast_call_name(node).rsplit(".", 1)[-1].lower()
+        in _PATCH_AUTHORIZATION_CALLS
+    )
+
+
+def _authorization_resource_names(node: ast.Call) -> tuple[str, ...]:
+    candidates: list[str] = []
+    for value in [
+        *node.args,
+        *(keyword.value for keyword in node.keywords),
+    ]:
+        if not isinstance(value, ast.Name):
+            continue
+        normalized = value.id.lower()
+        if (
+            normalized.endswith(("_id", "_key", "_name"))
+            or normalized
+            in {
+                "account",
+                "object",
+                "project",
+                "resource",
+                "tenant",
+            }
+        ):
+            candidates.append(value.id)
+    return tuple(dict.fromkeys(candidates))
+
+
+def _references_request_context(node: ast.AST) -> bool:
+    for candidate in ast.walk(node):
+        dotted = _ast_dotted_name(candidate)
+        if not dotted:
+            continue
+        normalized = dotted.lower()
+        if (
+            normalized == "request"
+            or normalized.startswith("request.")
+            or normalized.startswith("self.request.")
+        ):
+            return True
+    return False
+
+
+def _is_web_view_class(node: ast.ClassDef) -> bool:
+    if node.name.lower().endswith(("view", "controller", "handler")):
+        return True
+    return any(
+        _ast_dotted_name(base).lower().endswith(
+            ("view", "viewset", "controller", "handler")
+        )
+        for base in node.bases
+        if _ast_dotted_name(base)
+    )
+
+
+def _route_selected_object_lookup(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> ast.Call | None:
+    if node.name.lower() not in {
+        "delete",
+        "destroy",
+        "get_object",
+        "get_queryset",
+        "retrieve",
+        "update",
+    }:
+        return None
+    for call in ast.walk(node):
+        if not isinstance(call, ast.Call):
+            continue
+        call_name = _ast_call_name(call).lower()
+        if not (
+            ".objects." in call_name
+            or ".query." in call_name
+            or call_name.rsplit(".", 1)[-1]
+            in {"find_by_id", "get_object_or_404", "load_object"}
+        ):
+            continue
+        if _call_references_route_selector(call):
+            return call
+    return None
+
+
+def _call_references_route_selector(node: ast.Call) -> bool:
+    values = [
+        *node.args,
+        *(keyword.value for keyword in node.keywords),
+    ]
+    return any(_is_route_selector(candidate) for value in values for candidate in ast.walk(value))
+
+
+def _is_route_selector(node: ast.AST) -> bool:
+    dotted = _ast_dotted_name(node).lower()
+    if not dotted:
+        return False
+    route_containers = {
+        "kwargs",
+        "request.args",
+        "request.form",
+        "request.get",
+        "request.json",
+        "request.post",
+        "self.kwargs",
+        "self.request.args",
+        "self.request.get",
+        "self.request.post",
+    }
+    return any(
+        dotted == container or dotted.startswith(f"{container}.")
+        for container in route_containers
+    )
+
+
+def _has_object_authorization_guard(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    has_rejection = any(isinstance(candidate, ast.Raise) for candidate in ast.walk(node))
+    if not has_rejection:
+        has_rejection = any(
+            _ast_call_name(candidate).rsplit(".", 1)[-1].lower()
+            in _PATCH_ACCESS_REJECTION_CALLS
+            for candidate in ast.walk(node)
+            if isinstance(candidate, ast.Call)
+        )
+    if not has_rejection:
+        return False
+
+    has_permission_call = any(
+        _is_authorization_call(candidate)
+        for candidate in ast.walk(node)
+        if isinstance(candidate, ast.Call)
+    )
+    has_identity_comparison = any(
+        _comparison_has_identity_and_resource(candidate)
+        for candidate in ast.walk(node)
+        if isinstance(candidate, ast.Compare)
+    )
+    return has_permission_call or has_identity_comparison
+
+
+def _comparison_has_identity_and_resource(node: ast.Compare) -> bool:
+    dotted_names = {
+        _ast_dotted_name(candidate).lower()
+        for candidate in ast.walk(node)
+        if _ast_dotted_name(candidate)
+    }
+    identity_prefixes = (
+        "current_user",
+        "g.user",
+        "request.user",
+        "self.request.user",
+    )
+    has_identity = any(
+        value == prefix or value.startswith(f"{prefix}.")
+        for value in dotted_names
+        for prefix in identity_prefixes
+    )
+    has_resource = any(
+        value == "kwargs"
+        or value.startswith(("kwargs.", "self.kwargs."))
+        or (
+            not any(
+                value == prefix or value.startswith(f"{prefix}.")
+                for prefix in identity_prefixes
+            )
+            and any(
+                token in value.split(".")
+                for token in ("owner", "owner_id", "user", "user_id")
+            )
+        )
+        for value in dotted_names
+    )
+    return has_identity and has_resource
+
+
+def _ast_dotted_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _ast_dotted_name(node.value)
+        return f"{base}.{node.attr}" if base else node.attr
+    if isinstance(node, ast.Subscript):
+        return _ast_dotted_name(node.value)
+    return ""

@@ -137,6 +137,29 @@ See [`benchmark_reportability/README.md`](benchmark_reportability/README.md).
 
 ---
 
+## SusVibes Paired-Revision Benchmark
+
+`susvibes_paired_static_v1` evaluates BELIEF against pinned vulnerable/fixed
+revision pairs from the public SusVibes corpus without importing or executing
+third-party project code:
+
+```powershell
+python -m belief benchmark reportability `
+  --mode susvibes_paired_static_v1 `
+  --target F:\belief-rd\susvibes-v1.0\datasets\default\susvibes_dataset.jsonl `
+  --repository-cache F:\belief-rd\repos `
+  --only-cwe CWE-22,CWE-639,CWE-862,CWE-863 `
+  --json-output F:\belief-rd\results\belief-susvibes-paired.json
+```
+
+This is an oracle-localized static discrimination metric, not SusVibes
+`SecPass` and not a CVE pass@3 score. See
+[`benchmark_susvibes/README.md`](benchmark_susvibes/README.md) for provenance,
+safety boundaries, exact semantics, and the reproducible 15- and 71-case
+baselines.
+
+---
+
 ## Toolchain Manager / Orchestrator v1
 
 BELIEF can build a safe local run plan before executing anything:
@@ -507,6 +530,7 @@ See [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md) for the current asset inventory and
 - BELIEF is experimental.
 - Static and imported evidence can produce candidates, not guaranteed vulnerabilities.
 - The reportability benchmark is currently `metadata_ground_truth_mvp` and does not run scanners or prove real-world discovery.
+- The SusVibes paired benchmark uses patch locations as an oracle and is not an end-to-end agent security score.
 - The reasoning engine is deterministic and local; it is not an LLM agent.
 - Dynamic validation is intentionally not enabled by default.
 - External tools are not vendored as full runtimes.
@@ -595,6 +619,9 @@ benchmark_cve/
 benchmark_reportability/
   Synthetic offline reportability benchmark corpus.
 
+benchmark_susvibes/
+  Pinned provenance and protocol for offline vulnerable/fixed revision pairs.
+
 schemas/
   Documentation-only JSON schemas for BELIEF data formats.
 
@@ -631,6 +658,7 @@ pyproject.toml
 - [`docs/TOOL_BRIDGES.md`](docs/TOOL_BRIDGES.md)
 - [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md)
 - [`benchmark_reportability/README.md`](benchmark_reportability/README.md)
+- [`benchmark_susvibes/README.md`](benchmark_susvibes/README.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md)
 
