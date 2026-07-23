@@ -2532,6 +2532,13 @@ def _command_boundary_is_validated(
             continue
         if not (_referenced_names(candidate.test) & boundary_parameters):
             continue
+        if any(
+            _ast_call_name(call).rsplit(".", 1)[-1].lower() == "fullmatch"
+            and bool(_referenced_names(call) & boundary_parameters)
+            for call in ast.walk(candidate.test)
+            if isinstance(call, ast.Call)
+        ):
+            return True
         literals = {
             value.value
             for value in ast.walk(candidate.test)

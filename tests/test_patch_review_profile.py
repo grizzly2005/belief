@@ -395,6 +395,37 @@ def test_cli_script_fragment_rejects_command_delimiters_before_embedding():
     assert _cwe_findings(fixed, "CWE-78") == []
 
 
+def test_cli_fullmatch_must_be_abortive_to_validate_boundary():
+    vulnerable = """
+        import re
+        import subprocess
+
+        CONTAINER = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+        def run_cli(container):
+            CONTAINER.fullmatch(container)
+            subprocess.run(
+                ["docker", "exec", container, "bash", "-c", "true; exit"]
+            )
+    """
+    fixed = """
+        import re
+        import subprocess
+
+        CONTAINER = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+        def run_cli(container):
+            if not CONTAINER.fullmatch(container):
+                raise ValueError("invalid container")
+            subprocess.run(
+                ["docker", "exec", container, "bash", "-c", "true; exit"]
+            )
+    """
+
+    assert len(_cwe_findings(vulnerable, "CWE-78")) == 1
+    assert _cwe_findings(fixed, "CWE-78") == []
+
+
 def test_patch_profile_traces_boundary_value_into_unsafe_html_marker():
     vulnerable = """
         def label_from_instance(obj):
