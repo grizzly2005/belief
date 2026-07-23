@@ -25,6 +25,14 @@ DiskFreeProbe = Callable[[Path], int]
 
 _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9_.-]+)?$")
 _MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
+_FABLE_5_MODEL_ID = "claude-fable-5"
+_FABLE_5_MODEL_SOURCE = (
+    "https://platform.claude.com/docs/en/about-claude/models/overview"
+)
+_FABLE_5_MINIMUM_CLAUDE_CODE_VERSION = (2, 1, 170)
+_FABLE_5_CLAUDE_CODE_SOURCE = (
+    "https://github.com/anthropics/claude-code/releases/tag/v2.1.170"
+)
 _DEFAULT_MINIMUM_FREE_GIB = {
     "smoke": 20.0,
     "canary": 100.0,
@@ -44,7 +52,7 @@ def run_susvibes_agent_preflight(
     num_instances: int = 1,
     results_dir: str | Path,
     model: str,
-    claude_version: str = "2.1.83",
+    claude_version: str = "2.1.218",
     minimum_free_gib: float | None = None,
     acknowledge_agent_network: bool = False,
     environment: Mapping[str, str] | None = None,
@@ -335,9 +343,22 @@ def run_susvibes_agent_preflight(
         warning=True,
         evidence={
             "model": normalized_model,
-            "verified": False,
+            "published_model_id_verified": (
+                normalized_model == _FABLE_5_MODEL_ID
+            ),
+            "published_general_availability": (
+                normalized_model == _FABLE_5_MODEL_ID
+            ),
+            "published_source": (
+                _FABLE_5_MODEL_SOURCE
+                if normalized_model == _FABLE_5_MODEL_ID
+                else ""
+            ),
+            "live_credential_access_verified": False,
             "reason": (
-                "offline preflight does not call the model provider"
+                "official documentation can verify the published model ID, "
+                "but the offline preflight does not call the provider with "
+                "the container credential"
             ),
         },
     )
@@ -346,6 +367,22 @@ def run_susvibes_agent_preflight(
         bool(_VERSION_RE.fullmatch(normalized_claude_version)),
         required=True,
         evidence={"claude_code_version": normalized_claude_version},
+    )
+    fable_cli_compatible = (
+        normalized_model != _FABLE_5_MODEL_ID
+        or _version_core(normalized_claude_version)
+        >= _FABLE_5_MINIMUM_CLAUDE_CODE_VERSION
+    )
+    add(
+        "fable_5_claude_code_compatibility",
+        fable_cli_compatible,
+        required=True,
+        evidence={
+            "model": normalized_model,
+            "claude_code_version": normalized_claude_version,
+            "minimum_version": "2.1.170",
+            "source": _FABLE_5_CLAUDE_CODE_SOURCE,
+        },
     )
 
     add(
@@ -711,6 +748,17 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _version_core(value: str) -> tuple[int, int, int]:
+    match = re.match(r"^(\d+)\.(\d+)\.(\d+)", value)
+    if match is None:
+        return (0, 0, 0)
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3)),
+    )
 
 
 def _manifest_commit(path: Path) -> str:

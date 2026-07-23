@@ -20,6 +20,7 @@ from belief.benchmark.susvibes_preflight import (
 
 
 pytestmark = pytest.mark.security
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _git(repository: Path, *arguments: str) -> str:
@@ -43,6 +44,21 @@ def _git(repository: Path, *arguments: str) -> str:
         errors="replace",
     )
     return completed.stdout.decode("utf-8", errors="replace").strip()
+
+
+def test_fable_target_snapshot_pins_compatible_cli_release():
+    payload = json.loads(
+        (
+            ROOT
+            / "benchmark_susvibes"
+            / "claude_code_target_2026-07-23.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert payload["package"] == "@anthropic-ai/claude-code"
+    assert payload["version"] == "2.1.218"
+    assert payload["fable_5_minimum_version"] == "2.1.170"
+    assert payload["npm_dist_integrity"].startswith("sha512-")
 
 
 def _fixture(
@@ -104,7 +120,7 @@ def _ready_kwargs(
         "cohort": "smoke",
         "results_dir": results,
         "model": "claude-fable-5",
-        "claude_version": "2.1.83",
+        "claude_version": "2.1.218",
         "minimum_free_gib": 1.0,
         "acknowledge_agent_network": True,
         "environment": {
@@ -142,6 +158,16 @@ def test_ready_preflight_is_bound_and_never_reports_secret(tmp_path):
         if check["status"] == "warning"
     ]
     assert warnings == ["provider_model_availability"]
+    provider_check = next(
+        check
+        for check in payload["checks"]
+        if check["id"] == "provider_model_availability"
+    )
+    assert provider_check["evidence"]["published_model_id_verified"] is True
+    assert (
+        provider_check["evidence"]["live_credential_access_verified"]
+        is False
+    )
     serialized = json.dumps(payload)
     assert "never-write-this-secret" not in serialized
     assert "ANTHROPIC_API_KEY" in serialized
@@ -156,7 +182,7 @@ def test_ready_preflight_is_bound_and_never_reports_secret(tmp_path):
         cohort="smoke",
         results_dir=results,
         model="claude-fable-5",
-        claude_version="2.1.83",
+        claude_version="2.1.218",
         runner_path=runner,
     )
     assert provenance["report_digest"] == written["report_digest"]
@@ -208,6 +234,18 @@ def test_preflight_rejects_unsafe_model_identifier(tmp_path):
     assert "exact_model_identifier" in payload["required_failures"]
 
 
+def test_preflight_rejects_claude_code_too_old_for_fable_5(tmp_path):
+    kwargs, _fixture_paths = _ready_kwargs(tmp_path)
+    kwargs["claude_version"] = "2.1.83"
+
+    payload = run_susvibes_agent_preflight(**kwargs)
+
+    assert payload["ready_for_execution"] is False
+    assert "fable_5_claude_code_compatibility" in payload[
+        "required_failures"
+    ]
+
+
 def test_ready_report_rechecks_current_storage(tmp_path):
     kwargs, fixture = _ready_kwargs(tmp_path)
     root, dataset, manifest, runner, results = fixture
@@ -227,7 +265,7 @@ def test_ready_report_rechecks_current_storage(tmp_path):
             cohort="smoke",
             results_dir=results,
             model="claude-fable-5",
-            claude_version="2.1.83",
+            claude_version="2.1.218",
             runner_path=runner,
         )
 
@@ -253,7 +291,7 @@ def test_ready_report_rejects_tampering_and_input_drift(tmp_path):
             cohort="smoke",
             results_dir=results,
             model="claude-fable-5",
-            claude_version="2.1.83",
+            claude_version="2.1.218",
             runner_path=runner,
         )
 
@@ -277,7 +315,7 @@ def test_ready_report_rejects_dirty_checkout(tmp_path):
             cohort="smoke",
             results_dir=results,
             model="claude-fable-5",
-            claude_version="2.1.83",
+            claude_version="2.1.218",
             runner_path=runner,
         )
 
@@ -302,7 +340,7 @@ def test_ready_report_is_bound_to_exact_execution_slice(tmp_path):
             num_instances=2,
             results_dir=results,
             model="claude-fable-5",
-            claude_version="2.1.83",
+            claude_version="2.1.218",
             runner_path=runner,
         )
 

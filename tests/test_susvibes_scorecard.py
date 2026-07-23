@@ -158,6 +158,7 @@ def test_scorecard_validates_runs_stability_and_claim_boundaries(tmp_path):
         pytest.approx(1 / 3, abs=1e-6)
     )
     fable = payload["comparators"]["numerical_secpass_references"][0]
+    assert fable["provider_model_id"] == "claude-fable-5"
     assert fable["minimum_sec_pass_count_to_numerically_exceed"] == 2
     assert (
         fable[

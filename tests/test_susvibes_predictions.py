@@ -107,12 +107,27 @@ def _write_batch(
         patch_bytes = patch.encode("utf-8")
         (task_dir / "result.json").write_text(
             json.dumps({
-                "schema_version": "belief.susvibes_agent_result.v1",
+                "schema_version": "belief.susvibes_agent_result.v2",
                 "instance_id": instance_id,
                 "model": model,
-                "claude_code_version": "2.1.83",
+                "model_identity_status": "matched",
+                "automatic_model_fallback_configured": False,
+                "claude_code_version": "2.1.218",
+                "claude_code_version_observed": "2.1.218",
                 "agent_return_code": 0,
                 "agent_success": True,
+                "agent_stream": {
+                    "valid_json_event_count": 1,
+                    "invalid_json_line_count": 0,
+                    "assistant_models_observed": [model],
+                    "stop_reasons_observed": ["end_turn"],
+                    "model_refusal_observed": False,
+                    "refusal_categories_observed": [],
+                    "api_retry_event_count": 0,
+                    "result_event_count": 1,
+                    "result_subtypes_observed": ["success"],
+                    "result_error_observed": False,
+                },
                 "policy_violation_suspected": index < suspected,
                 "model_patch_sha256": hashlib.sha256(
                     patch_bytes
@@ -140,7 +155,7 @@ def _write_batch(
     ).hexdigest()
     (run_dir / "plan.json").write_text(
         json.dumps({
-            "schema_version": "belief.susvibes_agent_plan.v1",
+            "schema_version": "belief.susvibes_agent_plan.v2",
             "results_dir": str(run_dir.resolve()),
             "dataset_sha256": selection["dataset_sha256"],
             "susvibes_commit": selection["susvibes_commit"],
@@ -160,7 +175,12 @@ def _write_batch(
                 "selected_instance_ids_sha256": task_digest,
             },
             "model": model,
-            "claude_code_version": "2.1.83",
+            "model_selection": {
+                "requested_model": model,
+                "claude_cli_argument": "--model",
+                "automatic_fallback_configured": False,
+            },
+            "claude_code_version": "2.1.218",
             "max_stop_blocks": 1,
             "task_count": len(ids),
             "tasks": tasks,
@@ -171,6 +191,11 @@ def _write_batch(
                 "workspace_git_history_removed": True,
                 "git_history_lookup_blocked": True,
                 "web_tools_blocked": True,
+                "builtin_tool_allowlist_enforced": True,
+                "mcp_servers_enabled": False,
+                "browser_integration_enabled": False,
+                "session_persistence_enabled": False,
+                "automatic_model_fallback_configured": False,
             },
         }, indent=2, sort_keys=True)
         + "\n",
@@ -178,9 +203,13 @@ def _write_batch(
     )
     (run_dir / "summary.json").write_text(
         json.dumps({
-            "schema_version": "belief.susvibes_agent_run.v1",
+            "schema_version": "belief.susvibes_agent_run.v2",
             "task_count": len(ids),
             "successful_agent_runs": len(ids),
+            "model_identity_verified_runs": len(ids),
+            "model_refusal_observed_count": 0,
+            "api_retry_event_count": 0,
+            "automatic_model_fallback_configured": False,
             "policy_violation_suspected_count": suspected,
             "predictions": str(predictions.resolve()),
         }, indent=2, sort_keys=True)
@@ -232,6 +261,14 @@ def test_merge_validates_batches_and_restores_frozen_order(tmp_path):
         "anti_cheating_adjudication_required"
     ] is True
     assert payload["quality_flags"]["suspected_cases_removed"] is False
+    assert payload["quality_flags"][
+        "model_identity_verified_run_count"
+    ] == 5
+    assert payload["quality_flags"]["model_refusal_observed_count"] == 0
+    assert payload["quality_flags"]["api_retry_event_count"] == 0
+    assert payload["quality_flags"][
+        "automatic_model_fallback_configured"
+    ] is False
     assert payload["output"]["predictions_sha256"] == hashlib.sha256(
         output.read_bytes()
     ).hexdigest()
@@ -365,6 +402,59 @@ def test_merge_rejects_result_tampering(tmp_path):
             dataset=dataset,
             cohort="full",
             run_dirs=[batch],
+        )
+
+
+def test_merge_rejects_model_identity_drift_and_fallback(tmp_path):
+    dataset, manifest, ids, selection = _experiment(tmp_path)
+    drifted = _write_batch(
+        tmp_path / "batch-drifted",
+        ids=ids,
+        all_ids=ids,
+        selection=selection,
+    )
+    result_path = drifted / ids[0] / "result.json"
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    result["agent_stream"]["assistant_models_observed"] = [
+        "claude-sonnet-5"
+    ]
+    result_path.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="observed model mismatch"):
+        write_merged_susvibes_predictions(
+            tmp_path / "drifted.jsonl",
+            tmp_path / "drifted-provenance.json",
+            experiment_manifest=manifest,
+            dataset=dataset,
+            cohort="full",
+            run_dirs=[drifted],
+        )
+
+    fallback = _write_batch(
+        tmp_path / "batch-fallback",
+        ids=ids,
+        all_ids=ids,
+        selection=selection,
+    )
+    summary_path = fallback / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["automatic_model_fallback_configured"] = True
+    summary_path.write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="configured model fallback"):
+        write_merged_susvibes_predictions(
+            tmp_path / "fallback.jsonl",
+            tmp_path / "fallback-provenance.json",
+            experiment_manifest=manifest,
+            dataset=dataset,
+            cohort="full",
+            run_dirs=[fallback],
         )
 
 

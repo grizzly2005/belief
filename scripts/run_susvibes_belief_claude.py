@@ -14,6 +14,7 @@ import hashlib
 import importlib
 import json
 import os
+import re
 import shlex
 import shutil
 import stat
@@ -51,11 +52,13 @@ ALLOWED_TOOLS = (
     "Read",
     "Glob",
     "Grep",
-    "LS",
     "NotebookEdit",
-    "NotebookRead",
-    "TodoRead",
-    "TodoWrite",
+)
+AGENT_PLAN_SCHEMA_VERSION = "belief.susvibes_agent_plan.v2"
+AGENT_RESULT_SCHEMA_VERSION = "belief.susvibes_agent_result.v2"
+AGENT_RUN_SCHEMA_VERSION = "belief.susvibes_agent_run.v2"
+_CONTAINER_IDENTIFIER_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
 )
 
 
@@ -130,7 +133,7 @@ def _arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--claude-version",
-        default="2.1.83",
+        default="2.1.218",
         help="Pinned @anthropic-ai/claude-code version",
     )
     parser.add_argument(
@@ -244,12 +247,17 @@ def build_sanitized_plan(
     """Build a provenance plan with hashes, not benchmark oracle fields."""
 
     return {
-        "schema_version": "belief.susvibes_agent_plan.v1",
+        "schema_version": AGENT_PLAN_SCHEMA_VERSION,
         "mode": "claude_code_with_belief_stop_hook",
         "dataset": dataset.name,
         "dataset_sha256": _sha256_file(dataset),
         "susvibes_commit": susvibes_commit,
         "model": model,
+        "model_selection": {
+            "requested_model": model,
+            "claude_cli_argument": "--model",
+            "automatic_fallback_configured": False,
+        },
         "claude_code_version": claude_version,
         "max_stop_blocks": max_stop_blocks,
         "results_dir": str(results_dir),
@@ -279,10 +287,143 @@ def build_sanitized_plan(
             "workspace_git_history_removed": True,
             "git_history_lookup_blocked": True,
             "web_tools_blocked": True,
+            "builtin_tool_allowlist_enforced": True,
+            "mcp_servers_enabled": False,
+            "browser_integration_enabled": False,
+            "session_persistence_enabled": False,
+            "automatic_model_fallback_configured": False,
             "docker_auto_start": False,
             "parallel_workers": 1,
         },
     }
+
+
+def _build_claude_command(*, prompt: str, model: str) -> str:
+    """Build the pinned, no-fallback Claude CLI command for one task."""
+
+    arguments = [
+        "claude",
+        "--verbose",
+        "--output-format",
+        "stream-json",
+        "--model",
+        model,
+        "--no-session-persistence",
+        "--no-chrome",
+        "--disable-slash-commands",
+        "--setting-sources",
+        "",
+        "--mcp-config",
+        "/opt/belief/empty-mcp.json",
+        "--strict-mcp-config",
+        "--tools",
+        ",".join(ALLOWED_TOOLS),
+        "--allowedTools",
+        *ALLOWED_TOOLS,
+        "-p",
+        prompt,
+        "--settings",
+        "/opt/belief/claude-hook-settings.json",
+    ]
+    return (
+        "source /root/.nvm/nvm.sh && "
+        "source /root/.belief_agent_env && "
+        + shlex.join(arguments)
+    )
+
+
+def _summarize_agent_stream(output: bytes) -> dict[str, Any]:
+    """Extract reproducibility metadata from Claude stream-json output."""
+
+    models: set[str] = set()
+    stop_reasons: set[str] = set()
+    refusal_categories: set[str] = set()
+    valid_events = 0
+    invalid_lines = 0
+    api_retries = 0
+    result_events = 0
+    result_subtypes: set[str] = set()
+    result_error_observed = False
+
+    def capture(message: Mapping[str, Any]) -> None:
+        model = message.get("model")
+        if isinstance(model, str) and model:
+            models.add(model)
+        stop_reason = message.get("stop_reason")
+        if isinstance(stop_reason, str) and stop_reason:
+            stop_reasons.add(stop_reason)
+        stop_details = message.get("stop_details")
+        if isinstance(stop_details, Mapping):
+            category = stop_details.get("category")
+            if isinstance(category, str) and category:
+                refusal_categories.add(category)
+
+    for raw_line in output.splitlines():
+        if not raw_line.strip():
+            continue
+        try:
+            event = json.loads(raw_line)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            invalid_lines += 1
+            continue
+        if not isinstance(event, Mapping):
+            invalid_lines += 1
+            continue
+        valid_events += 1
+        if (
+            event.get("type") == "system"
+            and event.get("subtype") == "api_retry"
+        ):
+            api_retries += 1
+        if event.get("type") == "assistant":
+            capture(event)
+            message = event.get("message")
+            if isinstance(message, Mapping):
+                capture(message)
+        if event.get("type") == "result":
+            result_events += 1
+            subtype = event.get("subtype")
+            if isinstance(subtype, str) and subtype:
+                result_subtypes.add(subtype)
+            result_error_observed = (
+                result_error_observed
+                or event.get("is_error") is True
+            )
+            capture(event)
+        if event.get("type") == "stream_event":
+            stream_event = event.get("event")
+            if isinstance(stream_event, Mapping):
+                message = stream_event.get("message")
+                if isinstance(message, Mapping):
+                    capture(message)
+                delta = stream_event.get("delta")
+                if isinstance(delta, Mapping):
+                    capture(delta)
+
+    return {
+        "valid_json_event_count": valid_events,
+        "invalid_json_line_count": invalid_lines,
+        "assistant_models_observed": sorted(models),
+        "stop_reasons_observed": sorted(stop_reasons),
+        "model_refusal_observed": "refusal" in stop_reasons,
+        "refusal_categories_observed": sorted(refusal_categories),
+        "api_retry_event_count": api_retries,
+        "result_event_count": result_events,
+        "result_subtypes_observed": sorted(result_subtypes),
+        "result_error_observed": result_error_observed,
+    }
+
+
+def _model_identity_status(
+    requested_model: str,
+    observed_models: Iterable[str],
+) -> str:
+    observed = set(observed_models)
+    if not observed:
+        return "not_observed"
+    if observed == {requested_model}:
+        return "matched"
+    return "mismatch"
 
 
 def _run_task(
@@ -311,7 +452,9 @@ def _run_task(
     workspace: Path | None = None
     try:
         workspace = integration.setup_persistent_workspace()
-        container = str(integration.workspace_container or "")
+        container = _validated_container_identifier(
+            str(integration.workspace_container or "")
+        )
         if not container:
             raise ValueError("official harness did not create a container")
         sanitization = _sanitize_candidate_workspace(Path(workspace))
@@ -342,6 +485,28 @@ def _run_task(
                 "Claude Code pin failed: "
                 + upgrade.stderr.decode("utf-8", errors="replace")
             )
+        version_probe = _docker_exec(
+            container,
+            "source /root/.nvm/nvm.sh && claude --version",
+            timeout=30,
+        )
+        if version_probe.returncode:
+            raise ValueError(
+                "Claude Code version probe failed: "
+                + version_probe.stderr.decode(
+                    "utf-8",
+                    errors="replace",
+                )
+            )
+        observed_claude_version = _parse_claude_cli_version(
+            version_probe.stdout
+        )
+        if observed_claude_version != claude_version:
+            raise ValueError(
+                "Claude Code installed version mismatch: "
+                f"expected {claude_version}, observed "
+                f"{observed_claude_version}"
+            )
 
         _install_belief_hook_bundle(container)
         settings = build_claude_hook_settings(
@@ -351,6 +516,11 @@ def _run_task(
             container,
             settings,
             "/opt/belief/claude-hook-settings.json",
+        )
+        _copy_json_to_container(
+            container,
+            {"mcpServers": {}},
+            "/opt/belief/empty-mcp.json",
         )
         _write_secret_agent_env(
             container,
@@ -362,21 +532,9 @@ def _run_task(
             local_work_dir="/project",
             problem_statement=task["problem_statement"],
         )
-        command = (
-            "source /root/.nvm/nvm.sh && "
-            "source /root/.belief_agent_env && "
-            + shlex.join([
-                "claude",
-                "--verbose",
-                "--output-format",
-                "stream-json",
-                "-p",
-                prompt,
-                "--settings",
-                "/opt/belief/claude-hook-settings.json",
-                "--allowedTools",
-                *ALLOWED_TOOLS,
-            ])
+        command = _build_claude_command(
+            prompt=prompt,
+            model=model,
         )
         agent = _docker_exec(
             container,
@@ -390,6 +548,17 @@ def _run_task(
         _copy_hook_reports(container, task_dir / "hook-reports")
 
         patch = _prediction_patch(Path(workspace))
+        stream_metadata = _summarize_agent_stream(agent.stdout)
+        model_identity = _model_identity_status(
+            model,
+            stream_metadata["assistant_models_observed"],
+        )
+        agent_success = (
+            agent.returncode == 0
+            and stream_metadata["result_event_count"] == 1
+            and stream_metadata["result_subtypes_observed"] == ["success"]
+            and not stream_metadata["result_error_observed"]
+        )
         policy_suspected = _trajectory_policy_suspected(
             agent.stdout.decode("utf-8", errors="replace")
         )
@@ -401,13 +570,17 @@ def _run_task(
             "model_patch": patch,
         }
         provenance = {
-            "schema_version": "belief.susvibes_agent_result.v1",
+            "schema_version": AGENT_RESULT_SCHEMA_VERSION,
             "instance_id": task["instance_id"],
             "image_name": task["image_name"],
             "model": model,
+            "model_identity_status": model_identity,
+            "automatic_model_fallback_configured": False,
             "claude_code_version": claude_version,
+            "claude_code_version_observed": observed_claude_version,
             "agent_return_code": agent.returncode,
-            "agent_success": agent.returncode == 0,
+            "agent_success": agent_success,
+            "agent_stream": stream_metadata,
             "policy_violation_suspected": policy_suspected,
             "model_patch_sha256": hashlib.sha256(
                 patch.encode("utf-8")
@@ -445,6 +618,8 @@ def _load_official_harness(
 
 
 def _install_belief_hook_bundle(container: str) -> None:
+    if not _CONTAINER_IDENTIFIER_RE.fullmatch(container):
+        raise ValueError("invalid Docker container identifier")
     created = _docker_exec(
         container,
         "mkdir -p /opt/belief/scripts",
@@ -471,6 +646,8 @@ def _copy_json_to_container(
     payload: Any,
     destination: str,
 ) -> None:
+    if not _CONTAINER_IDENTIFIER_RE.fullmatch(container):
+        raise ValueError("invalid Docker container identifier")
     with tempfile.TemporaryDirectory(prefix="belief-hook-settings-") as temp:
         source = Path(temp) / "settings.json"
         source.write_text(
@@ -491,6 +668,8 @@ def _write_secret_agent_env(
     model: str,
     max_stop_blocks: int,
 ) -> None:
+    if not _CONTAINER_IDENTIFIER_RE.fullmatch(container):
+        raise ValueError("invalid Docker container identifier")
     keys = (
         "ANTHROPIC_API_KEY",
         "ANTHROPIC_AUTH_TOKEN",
@@ -510,6 +689,8 @@ def _write_secret_agent_env(
         )
     values.update({
         "ANTHROPIC_MODEL": model,
+        "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+        "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1",
         "PYTHONPATH": "/opt/belief",
         "BELIEF_STOP_HOOK_MAX_BLOCKS": str(max_stop_blocks),
         "BELIEF_HOOK_STATE_DIR": "/tmp/belief-hook-state",
@@ -542,12 +723,32 @@ def _write_secret_agent_env(
         )
 
 
+def _parse_claude_cli_version(output: bytes) -> str:
+    text = output.decode("utf-8", errors="strict").strip()
+    first_token = text.split(maxsplit=1)[0] if text else ""
+    normalized = first_token.removeprefix("v")
+    if not re.fullmatch(
+        r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9_.-]+)?",
+        normalized,
+    ):
+        raise ValueError("Claude Code version probe returned invalid output")
+    return normalized
+
+
+def _validated_container_identifier(value: str) -> str:
+    if not _CONTAINER_IDENTIFIER_RE.fullmatch(value):
+        raise ValueError("invalid Docker container identifier")
+    return value
+
+
 def _docker_exec(
     container: str,
     command: str,
     *,
     timeout: int,
 ) -> subprocess.CompletedProcess[bytes]:
+    if not _CONTAINER_IDENTIFIER_RE.fullmatch(container):
+        raise ValueError("invalid Docker container identifier")
     return subprocess.run(
         [
             "docker",
@@ -586,6 +787,8 @@ def _docker(
 
 
 def _copy_hook_reports(container: str, destination: Path) -> None:
+    if not _CONTAINER_IDENTIFIER_RE.fullmatch(container):
+        raise ValueError("invalid Docker container identifier")
     exists = _docker_exec(
         container,
         "test -d /tmp/belief-hook-reports",
@@ -1004,11 +1207,24 @@ def main() -> int:
             encoding="utf-8",
         )
         summary = {
-            "schema_version": "belief.susvibes_agent_run.v1",
+            "schema_version": AGENT_RUN_SCHEMA_VERSION,
             "task_count": len(results),
             "successful_agent_runs": sum(
                 result["agent_success"] for result in results
             ),
+            "model_identity_verified_runs": sum(
+                result["model_identity_status"] == "matched"
+                for result in results
+            ),
+            "model_refusal_observed_count": sum(
+                result["agent_stream"]["model_refusal_observed"]
+                for result in results
+            ),
+            "api_retry_event_count": sum(
+                result["agent_stream"]["api_retry_event_count"]
+                for result in results
+            ),
+            "automatic_model_fallback_configured": False,
             "policy_violation_suspected_count": sum(
                 result["policy_violation_suspected"]
                 for result in results

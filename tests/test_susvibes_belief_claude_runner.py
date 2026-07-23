@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -18,7 +19,13 @@ from belief.benchmark.susvibes_preflight import (
     write_susvibes_agent_preflight,
 )
 from scripts.run_susvibes_belief_claude import (
+    ALLOWED_TOOLS,
+    _build_claude_command,
+    _model_identity_status,
+    _parse_claude_cli_version,
     _sanitize_candidate_workspace,
+    _summarize_agent_stream,
+    _validated_container_identifier,
     load_agent_tasks,
 )
 
@@ -166,6 +173,11 @@ def test_runner_dry_run_emits_hashed_sanitized_plan_only(tmp_path):
     assert json.loads(plan_path.read_text(encoding="utf-8")) == plan
     assert plan["task_count"] == 1
     assert plan["model"] == "claude-fable-5"
+    assert plan["model_selection"] == {
+        "requested_model": "claude-fable-5",
+        "claude_cli_argument": "--model",
+        "automatic_fallback_configured": False,
+    }
     assert plan["boundaries"]["benchmark_oracle_forwarded"] is False
     assert plan["boundaries"]["docker_auto_start"] is False
     assert plan["boundaries"]["workspace_git_history_removed"] is True
@@ -178,6 +190,77 @@ def test_runner_dry_run_emits_hashed_sanitized_plan_only(tmp_path):
     assert "Implement a safe asset reader" not in serialized
     assert "SECRET" not in serialized
     assert not results.exists()
+
+
+def test_claude_command_pins_model_and_disables_fallback_surfaces():
+    command = _build_claude_command(
+        prompt="Fix the local task safely.",
+        model="claude-fable-5",
+    )
+    arguments = shlex.split(command.split(" && ", maxsplit=2)[2])
+
+    assert arguments[arguments.index("--model") + 1] == "claude-fable-5"
+    assert "--fallback-model" not in arguments
+    assert arguments[arguments.index("--tools") + 1].split(",") == list(
+        ALLOWED_TOOLS
+    )
+    assert arguments[arguments.index("--setting-sources") + 1] == ""
+    assert "--strict-mcp-config" in arguments
+    assert "--disable-slash-commands" in arguments
+    assert "--no-chrome" in arguments
+    assert "--no-session-persistence" in arguments
+
+
+def test_agent_stream_records_model_refusal_and_same_model_retries():
+    stream = (
+        b'{"type":"system","subtype":"api_retry","attempt":1}\n'
+        b'{"type":"assistant","message":{"model":"claude-fable-5",'
+        b'"stop_reason":null}}\n'
+        b'{"type":"result","subtype":"success","is_error":false,'
+        b'"stop_reason":"refusal","stop_details":{"category":"cyber"}}\n'
+    )
+
+    metadata = _summarize_agent_stream(stream)
+
+    assert metadata == {
+        "valid_json_event_count": 3,
+        "invalid_json_line_count": 0,
+        "assistant_models_observed": ["claude-fable-5"],
+        "stop_reasons_observed": ["refusal"],
+        "model_refusal_observed": True,
+        "refusal_categories_observed": ["cyber"],
+        "api_retry_event_count": 1,
+        "result_event_count": 1,
+        "result_subtypes_observed": ["success"],
+        "result_error_observed": False,
+    }
+    assert _model_identity_status(
+        "claude-fable-5",
+        metadata["assistant_models_observed"],
+    ) == "matched"
+    assert _model_identity_status("claude-fable-5", []) == "not_observed"
+    assert _model_identity_status(
+        "claude-fable-5",
+        ["claude-sonnet-5"],
+    ) == "mismatch"
+
+
+def test_claude_cli_version_probe_is_exact():
+    assert _parse_claude_cli_version(
+        b"2.1.218 (Claude Code)\n"
+    ) == "2.1.218"
+    assert _parse_claude_cli_version(b"v2.1.218\n") == "2.1.218"
+    with pytest.raises(ValueError, match="invalid output"):
+        _parse_claude_cli_version(b"latest\n")
+
+
+def test_docker_container_identifier_is_abortively_validated():
+    assert _validated_container_identifier(
+        "susvibes-task.123"
+    ) == "susvibes-task.123"
+    for unsafe in ("", "--context=attacker", "name:tag", "name\nother"):
+        with pytest.raises(ValueError, match="container identifier"):
+            _validated_container_identifier(unsafe)
 
 
 def test_runner_refuses_unknown_instance_id(tmp_path):
@@ -366,7 +449,7 @@ def test_execute_requires_and_records_matching_ready_preflight(
         cohort="smoke",
         results_dir=results,
         model="claude-fable-5",
-        claude_version="2.1.83",
+        claude_version="2.1.218",
         minimum_free_gib=1.0,
         acknowledge_agent_network=True,
         environment={"ANTHROPIC_API_KEY": "test-only-secret"},
@@ -379,6 +462,11 @@ def test_execute_requires_and_records_matching_ready_preflight(
         return {
             "instance_id": task["instance_id"],
             "agent_success": True,
+            "model_identity_status": "matched",
+            "agent_stream": {
+                "model_refusal_observed": False,
+                "api_retry_event_count": 0,
+            },
             "policy_violation_suspected": False,
             "prediction": {
                 "instance_id": task["instance_id"],

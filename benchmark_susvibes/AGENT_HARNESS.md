@@ -23,6 +23,31 @@ alone:
 BELIEF's experiment is consequently named
 `belief-claude-hook/<exact-model-id>` in prediction records.
 
+## Target model identity
+
+Anthropic's official model overview identifies Claude Fable 5 as the pinned
+Claude API model ID `claude-fable-5` and lists it as generally available.
+Score-bearing Fable experiments use that full ID, not a moving alias:
+
+- model overview:
+  <https://platform.claude.com/docs/en/about-claude/models/overview>
+- release notes:
+  <https://platform.claude.com/docs/en/release-notes/overview>
+
+The runner passes `--model claude-fable-5` explicitly, which takes precedence
+over ambient Claude settings. It does not configure `--fallback-model`.
+Structured output must identify the requested model before a completed batch
+can be merged. Fable safety refusals and same-model API retry events are
+retained as provenance rather than hidden. Published general availability
+does not prove that a particular container credential has access, so the
+offline preflight continues to mark live provider access as unverified.
+
+Claude Code `2.1.170` is the first release that advertises Fable 5 access, so
+the preflight rejects older pins. The frozen experiment uses `2.1.218`; its
+official release, npm integrity, and shasum are recorded in
+`claude_code_target_2026-07-23.json`. After installation, every task probes
+`claude --version`; the merger rejects a requested/observed version mismatch.
+
 ## Trust boundaries
 
 Only these dataset fields cross into the agent harness:
@@ -81,7 +106,7 @@ model API.
 python scripts/run_susvibes_belief_claude.py `
   --susvibes-root F:\belief-rd\susvibes-main `
   --results-dir F:\belief-rd\agent-runs\trial-001 `
-  --model <exact-anthropic-model-id> `
+  --model claude-fable-5 `
   --plan-output F:\belief-rd\results\agent-plan-001.json
 ```
 
@@ -116,7 +141,7 @@ python scripts/run_susvibes_belief_claude.py `
   --cohort smoke `
   --num-instances 3 `
   --results-dir F:\belief-rd\agent-runs\smoke-001 `
-  --model <exact-anthropic-model-id> `
+  --model claude-fable-5 `
   --plan-output F:\belief-rd\results\smoke-plan-001.json
 ```
 
@@ -139,8 +164,8 @@ python scripts/preflight_susvibes_agent.py `
   --cohort smoke `
   --num-instances 3 `
   --results-dir F:\belief-rd\agent-runs\smoke-001 `
-  --model <exact-anthropic-model-id> `
-  --claude-version 2.1.83 `
+  --model claude-fable-5 `
+  --claude-version 2.1.218 `
   --acknowledge-agent-network `
   --output F:\belief-rd\results\smoke-preflight-001.json
 ```
@@ -169,8 +194,8 @@ python scripts/run_susvibes_belief_claude.py `
   --cohort smoke `
   --preflight-report F:\belief-rd\results\smoke-preflight-001.json `
   --results-dir F:\belief-rd\agent-runs\smoke-001 `
-  --model <exact-anthropic-model-id> `
-  --claude-version 2.1.83 `
+  --model claude-fable-5 `
+  --claude-version 2.1.218 `
   --max-stop-blocks 1 `
   --num-instances 3 `
   --execute `
@@ -187,6 +212,9 @@ The runner:
 - injects credentials through container stdin into a mode-`0600` environment
   file rather than placing secrets in command arguments or logs;
 - pins the Claude Code CLI version;
+- pins the exact model through the CLI and configures no automatic fallback;
+- restricts built-in tools, disables MCP servers, browser integration, skills,
+  lower-scope settings, auto-memory, and session persistence;
 - preserves complete stdout, stderr, hook reports, patch hashes, and
   provenance;
 - emits official three-field prediction JSONL.
@@ -213,11 +241,12 @@ python scripts/merge_susvibes_predictions.py `
 ```
 
 The merger rejects missing or duplicate tasks, mixed models or feedback
-budgets, dry-run plans, mismatched preflight slices, modified task results,
-unexpected agent-visible fields, and plan/result/prediction hash
+budgets, dry-run plans, mismatched preflight slices, unverified observed model
+identity, configured fallbacks, malformed stream output, modified task
+results, unexpected agent-visible fields, and plan/result/prediction hash
 inconsistencies. `--allow-partial` exists only for explicitly incomplete
-diagnostics. Suspected anti-cheating cases remain in the output and are flagged
-for adjudication; they are never silently dropped to improve a score.
+diagnostics. Refusals, API retries, and suspected anti-cheating cases remain in
+the provenance; suspected cases are never silently dropped to improve a score.
 
 ## Official evaluation
 

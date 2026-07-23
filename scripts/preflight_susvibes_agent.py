@@ -67,7 +67,7 @@ def _arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--claude-version",
-        default="2.1.83",
+        default="2.1.218",
         help="Pinned @anthropic-ai/claude-code version",
     )
     parser.add_argument(

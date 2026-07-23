@@ -17,9 +17,9 @@ SUSVIBES_PREDICTION_MERGE_SCHEMA_VERSION = (
     "belief.susvibes_prediction_merge.v1"
 )
 
-_PLAN_SCHEMA = "belief.susvibes_agent_plan.v1"
-_RUN_SCHEMA = "belief.susvibes_agent_run.v1"
-_RESULT_SCHEMA = "belief.susvibes_agent_result.v1"
+_PLAN_SCHEMA = "belief.susvibes_agent_plan.v2"
+_RUN_SCHEMA = "belief.susvibes_agent_run.v2"
+_RESULT_SCHEMA = "belief.susvibes_agent_result.v2"
 _PREDICTION_FIELDS = frozenset({
     "instance_id",
     "model_name_or_path",
@@ -142,6 +142,18 @@ def write_merged_susvibes_predictions(
         batch["task_count"] - batch["successful_agent_runs"]
         for batch in batch_payloads
     )
+    verified_model_runs = sum(
+        batch["model_identity_verified_runs"]
+        for batch in batch_payloads
+    )
+    refusals = sum(
+        batch["model_refusal_observed_count"]
+        for batch in batch_payloads
+    )
+    api_retries = sum(
+        batch["api_retry_event_count"]
+        for batch in batch_payloads
+    )
     payload: dict[str, Any] = {
         "schema_version": SUSVIBES_PREDICTION_MERGE_SCHEMA_VERSION,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -167,6 +179,10 @@ def write_merged_susvibes_predictions(
         },
         "quality_flags": {
             "failed_agent_run_count": failed_agents,
+            "model_identity_verified_run_count": verified_model_runs,
+            "model_refusal_observed_count": refusals,
+            "api_retry_event_count": api_retries,
+            "automatic_model_fallback_configured": False,
             "policy_violation_suspected_count": suspected,
             "anti_cheating_adjudication_required": suspected > 0,
             "suspected_cases_removed": False,
@@ -299,6 +315,11 @@ def _load_batch_run(
         "workspace_git_history_removed": True,
         "git_history_lookup_blocked": True,
         "web_tools_blocked": True,
+        "builtin_tool_allowlist_enforced": True,
+        "mcp_servers_enabled": False,
+        "browser_integration_enabled": False,
+        "session_persistence_enabled": False,
+        "automatic_model_fallback_configured": False,
     }
     if not isinstance(boundaries, Mapping) or any(
         boundaries.get(key) is not value
@@ -372,9 +393,26 @@ def _load_batch_run(
     if _integer(summary, "task_count") != len(task_ids):
         raise ValueError(f"BELIEF summary task count mismatch: {run_dir}")
     successful = _integer(summary, "successful_agent_runs")
+    identity_verified = _integer(
+        summary,
+        "model_identity_verified_runs",
+    )
+    refusal_count = _integer(
+        summary,
+        "model_refusal_observed_count",
+    )
+    retry_count = _integer(summary, "api_retry_event_count")
     suspected = _integer(summary, "policy_violation_suspected_count")
     if not 0 <= successful <= len(task_ids):
         raise ValueError(f"invalid successful agent count: {run_dir}")
+    if not 0 <= identity_verified <= len(task_ids):
+        raise ValueError(f"invalid verified model count: {run_dir}")
+    if not 0 <= refusal_count <= len(task_ids):
+        raise ValueError(f"invalid refusal count: {run_dir}")
+    if retry_count < 0:
+        raise ValueError(f"invalid API retry count: {run_dir}")
+    if summary.get("automatic_model_fallback_configured") is not False:
+        raise ValueError(f"BELIEF batch configured model fallback: {run_dir}")
     if not 0 <= suspected <= len(task_ids):
         raise ValueError(f"invalid suspected policy count: {run_dir}")
     if Path(str(summary.get("predictions") or "")).resolve() != (
@@ -387,6 +425,13 @@ def _load_batch_run(
     max_stop_blocks = _integer(plan, "max_stop_blocks")
     if not 0 <= max_stop_blocks <= 3:
         raise ValueError(f"BELIEF feedback budget is invalid: {run_dir}")
+    model_selection = plan.get("model_selection")
+    if model_selection != {
+        "requested_model": model,
+        "claude_cli_argument": "--model",
+        "automatic_fallback_configured": False,
+    }:
+        raise ValueError(f"BELIEF model selection is invalid: {run_dir}")
     expected_model_path = f"belief-claude-hook/{model}"
     if not model or any(
         record["model_name_or_path"] != expected_model_path
@@ -394,6 +439,9 @@ def _load_batch_run(
     ):
         raise ValueError(f"BELIEF prediction model mismatch: {run_dir}")
     observed_successful = 0
+    observed_identity_verified = 0
+    observed_refusals = 0
+    observed_retries = 0
     observed_suspected = 0
     for task_id, record in zip(task_ids, records):
         result_path = _safe_child(run_dir, task_id) / "result.json"
@@ -408,9 +456,21 @@ def _load_batch_run(
             raise ValueError(f"BELIEF task result ID mismatch: {task_id}")
         if result.get("model") != model:
             raise ValueError(f"BELIEF task result model mismatch: {task_id}")
+        if result.get("model_identity_status") != "matched":
+            raise ValueError(
+                f"BELIEF task model identity is unverified: {task_id}"
+            )
+        if result.get("automatic_model_fallback_configured") is not False:
+            raise ValueError(
+                f"BELIEF task configured model fallback: {task_id}"
+            )
         if result.get("claude_code_version") != claude_version:
             raise ValueError(
                 f"BELIEF task result Claude version mismatch: {task_id}"
+            )
+        if result.get("claude_code_version_observed") != claude_version:
+            raise ValueError(
+                f"BELIEF task observed Claude version mismatch: {task_id}"
             )
         if result.get("prediction") != record:
             raise ValueError(
@@ -425,15 +485,109 @@ def _load_batch_run(
             raise ValueError(f"BELIEF task patch size mismatch: {task_id}")
         if not isinstance(result.get("agent_success"), bool):
             raise ValueError(f"BELIEF task success flag is invalid: {task_id}")
+        stream = result.get("agent_stream")
+        expected_stream_fields = {
+            "valid_json_event_count",
+            "invalid_json_line_count",
+            "assistant_models_observed",
+            "stop_reasons_observed",
+            "model_refusal_observed",
+            "refusal_categories_observed",
+            "api_retry_event_count",
+            "result_event_count",
+            "result_subtypes_observed",
+            "result_error_observed",
+        }
+        if not isinstance(stream, Mapping) or set(stream) != (
+            expected_stream_fields
+        ):
+            raise ValueError(
+                f"BELIEF task stream metadata is invalid: {task_id}"
+            )
+        valid_events = _integer(stream, "valid_json_event_count")
+        invalid_lines = _integer(stream, "invalid_json_line_count")
+        task_retries = _integer(stream, "api_retry_event_count")
+        result_event_count = _integer(stream, "result_event_count")
+        if (
+            valid_events <= 0
+            or invalid_lines != 0
+            or task_retries < 0
+            or result_event_count != 1
+        ):
+            raise ValueError(
+                f"BELIEF task stream integrity is invalid: {task_id}"
+            )
+        if stream.get("assistant_models_observed") != [model]:
+            raise ValueError(
+                f"BELIEF task observed model mismatch: {task_id}"
+            )
+        stop_reasons = stream.get("stop_reasons_observed")
+        refusal_categories = stream.get("refusal_categories_observed")
+        for values, label in (
+            (stop_reasons, "stop reasons"),
+            (refusal_categories, "refusal categories"),
+            (
+                stream.get("result_subtypes_observed"),
+                "result subtypes",
+            ),
+        ):
+            if (
+                not isinstance(values, list)
+                or not all(
+                    isinstance(value, str) and value
+                    for value in values
+                )
+                or values != sorted(set(values))
+            ):
+                raise ValueError(
+                    f"BELIEF task {label} are invalid: {task_id}"
+                )
+        task_refused = stream.get("model_refusal_observed")
+        if (
+            not isinstance(task_refused, bool)
+            or task_refused != ("refusal" in stop_reasons)
+        ):
+            raise ValueError(
+                f"BELIEF task refusal evidence is invalid: {task_id}"
+            )
+        result_error = stream.get("result_error_observed")
+        if not isinstance(result_error, bool):
+            raise ValueError(
+                f"BELIEF task result error flag is invalid: {task_id}"
+            )
+        result_subtypes = stream["result_subtypes_observed"]
+        if len(result_subtypes) != 1:
+            raise ValueError(
+                f"BELIEF task result subtype is invalid: {task_id}"
+            )
+        agent_return_code = _integer(result, "agent_return_code")
+        expected_success = (
+            agent_return_code == 0
+            and result_subtypes == ["success"]
+            and not result_error
+        )
+        if result["agent_success"] is not expected_success:
+            raise ValueError(
+                f"BELIEF task success evidence mismatch: {task_id}"
+            )
         if not isinstance(
             result.get("policy_violation_suspected"),
             bool,
         ):
             raise ValueError(f"BELIEF task policy flag is invalid: {task_id}")
         observed_successful += int(result["agent_success"])
+        observed_identity_verified += 1
+        observed_refusals += int(task_refused)
+        observed_retries += task_retries
         observed_suspected += int(result["policy_violation_suspected"])
     if successful != observed_successful:
         raise ValueError(f"BELIEF successful agent count mismatch: {run_dir}")
+    if identity_verified != observed_identity_verified:
+        raise ValueError(f"BELIEF verified model count mismatch: {run_dir}")
+    if refusal_count != observed_refusals:
+        raise ValueError(f"BELIEF refusal count mismatch: {run_dir}")
+    if retry_count != observed_retries:
+        raise ValueError(f"BELIEF API retry count mismatch: {run_dir}")
     if suspected != observed_suspected:
         raise ValueError(f"BELIEF suspected policy count mismatch: {run_dir}")
 
@@ -453,6 +607,9 @@ def _load_batch_run(
         ),
         "task_count": len(task_ids),
         "successful_agent_runs": successful,
+        "model_identity_verified_runs": identity_verified,
+        "model_refusal_observed_count": refusal_count,
+        "api_retry_event_count": retry_count,
         "policy_violation_suspected_count": suspected,
         "instance_ids_sha256": _instance_ids_digest(task_ids),
         "model": model,

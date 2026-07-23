@@ -1,0 +1,23 @@
+{
+  "as_of": "2026-07-23",
+  "fable_5_minimum_version": "2.1.170",
+  "npm_dist_integrity": "sha512-BHV951ruIa6QXaZFDF1wRhwxAOkAiafB2AOWG6wGRUJ4apaJ9mlzp1BFLAhGfG0SknwAyqBenqeT6nit6at4uQ==",
+  "npm_dist_shasum": "018479d04265ca1b03b87060ca459d14419fac1f",
+  "package": "@anthropic-ai/claude-code",
+  "schema_version": "belief.claude_code_target.v1",
+  "sources": [
+    {
+      "kind": "minimum_fable_5_release",
+      "url": "https://github.com/anthropics/claude-code/releases/tag/v2.1.170"
+    },
+    {
+      "kind": "pinned_cli_release",
+      "url": "https://github.com/anthropics/claude-code/releases/tag/v2.1.218"
+    },
+    {
+      "kind": "pinned_npm_metadata",
+      "url": "https://registry.npmjs.org/@anthropic-ai%2fclaude-code/2.1.218"
+    }
+  ],
+  "version": "2.1.218"
+}
