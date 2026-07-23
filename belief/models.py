@@ -469,7 +469,13 @@ class Finding:
             "logic_type": belief.logic_type.value,
             "justification": belief.justification.value,
             "epistemic_status": belief.epistemic_status.value,
+            "predicate_expression": belief.predicate.expression,
+            "predicate_variables": list(belief.predicate.variables),
         })
+        if belief.scope.function_name:
+            metadata.setdefault("function_name", belief.scope.function_name)
+        if belief.scope.class_name:
+            metadata.setdefault("class_name", belief.scope.class_name)
         text = belief.predicate.natural_language or belief.predicate.expression
         return cls(
             source=str(metadata.get("source") or source),

@@ -1,0 +1,4 @@
+minimum_verdict_accuracy: 0.75
+minimum_vulnerable_detection_rate: 0.75
+maximum_protected_false_positive_rate: 0.0
+minimum_expected_no_case_accuracy: 0.75

@@ -11,10 +11,16 @@ import pytest
 
 from belief.audit_case import (
     AuditCase,
+    audit_case_from_dataflow_path,
     attach_route_context_to_audit_cases,
     build_audit_cases,
 )
-from belief.dataflow import analyze_source_dataflow, attach_dataflow_to_findings
+from belief.dataflow import (
+    DataFlowNode,
+    DataFlowPath,
+    analyze_source_dataflow,
+    attach_dataflow_to_findings,
+)
 from belief.hypothesis_engine import attach_hypotheses_to_findings
 from belief.invariant_miner import InvariantMiner
 from belief.models import Finding
@@ -41,6 +47,29 @@ def _guarantees(*items: tuple[str, str]):
     for name, path in items:
         beliefs.extend(miner.extract(_snippet(name), path))
     return beliefs
+
+
+def test_unknown_guard_order_is_not_serialized_as_applicable():
+    source = DataFlowNode("source", "source", "request.args", line=2)
+    guard = DataFlowNode("guard", "guarantee", "path.is_within_store == true")
+    sink = DataFlowNode("sink", "sink", "open(path)", line=4)
+    path = DataFlowPath(
+        source=source,
+        sink=sink,
+        nodes=(source, guard, sink),
+        guarantees=(guard,),
+        file_path="app.py",
+        function_name="download",
+        sink_category="path",
+        cwe="CWE-22",
+    )
+
+    evidence = audit_case_from_dataflow_path(path).structured_dataflow
+
+    assert evidence["guard_applicability"] == {
+        "guard_applicable": False,
+        "reason": "flow_not_demonstrated",
+    }
 
 
 def _summary(name: str, file_path: str):

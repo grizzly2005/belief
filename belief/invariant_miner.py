@@ -44,6 +44,8 @@ class InvariantSpec:
     function_name: str | None = None
     class_name: str | None = None
     confidence: float = 0.9
+    variables: tuple[str, ...] | None = None
+    result_used: bool | None = None
 
 
 class InvariantMiner:
@@ -105,10 +107,12 @@ class InvariantMiner:
         class_name: str | None = None,
     ) -> list[InvariantSpec]:
         specs: list[InvariantSpec] = []
+        function_nodes = list(_function_body_nodes(node))
+        calls = [child for child in function_nodes if isinstance(child, ast.Call)]
+        parent_map = _parent_map(node)
         call_names = {
             name.lower()
-            for child in ast.walk(node)
-            if isinstance(child, ast.Call)
+            for child in calls
             for name in [_call_name(child)]
             if name
         }
@@ -136,71 +140,102 @@ class InvariantMiner:
                 0.95,
             ))
 
-        if any(name.endswith(("realpath", "abspath")) for name in call_names):
-            specs.append(self._spec(
-                "path.is_normalized == true",
-                "path_safety",
-                "INVARIANT_PATH_NORMALIZED",
-                "Path is normalized through realpath/abspath before use.",
-                node.lineno,
-                node.name,
-                0.86,
-            ))
-        if any(name.endswith("commonpath") for name in call_names):
-            specs.append(self._spec(
-                "path.is_within_store == true",
-                "path_safety",
-                "INVARIANT_PATH_COMMONPATH_BOUNDARY",
-                "commonpath is used to enforce a storage boundary.",
-                node.lineno,
-                node.name,
-                0.9,
-            ))
-        if any(name.endswith("basename") for name in call_names):
-            specs.append(self._spec(
-                "filename.basename_only == true",
-                "path_safety",
-                "INVARIANT_FILENAME_BASENAME",
-                "basename strips directory components from a filename.",
-                node.lineno,
-                node.name,
-                0.82,
-            ))
-        if any(name.endswith("secure_filename") for name in call_names):
-            specs.extend([
-                self._spec(
-                    "filename.matches_allowed_pattern == true",
+        for call in calls:
+            call_name = (_call_name(call) or "").lower()
+            line = getattr(call, "lineno", node.lineno)
+            result_used = _call_result_used(call, parent_map)
+            if call_name.endswith(("realpath", "abspath")):
+                specs.append(self._spec(
+                    "path.is_normalized == true",
                     "path_safety",
-                    "INVARIANT_FILENAME_SECURE_FILENAME",
-                    "secure_filename derives a safe filename.",
-                    node.lineno,
+                    "INVARIANT_PATH_NORMALIZED",
+                    "Path is normalized through realpath/abspath before use.",
+                    line,
+                    node.name,
+                    0.86,
+                    variables=_call_output_variables(call, parent_map),
+                    result_used=result_used,
+                ))
+            if call_name.endswith("commonpath"):
+                specs.append(self._spec(
+                    "path.is_within_store == true",
+                    "path_safety",
+                    "INVARIANT_PATH_COMMONPATH_BOUNDARY",
+                    "commonpath is used to enforce a storage boundary.",
+                    line,
                     node.name,
                     0.9,
-                ),
-                self._spec(
-                    "filename.user_controlled == false",
-                    "generated_value",
-                    "INVARIANT_FILENAME_SANITIZED_DERIVED",
-                    "Filename is derived through a sanitizing transformation.",
-                    node.lineno,
+                    variables=_commonpath_checked_variables(call, parent_map),
+                    result_used=(
+                        result_used and _call_enforces_guard(call, parent_map)
+                    ),
+                ))
+            if call_name.endswith("basename"):
+                specs.append(self._spec(
+                    "filename.basename_only == true",
+                    "path_safety",
+                    "INVARIANT_FILENAME_BASENAME",
+                    "basename strips directory components from a filename.",
+                    line,
                     node.name,
-                    0.8,
-                ),
-            ])
+                    0.82,
+                    variables=_call_output_variables(call, parent_map),
+                    result_used=result_used,
+                ))
+            if call_name.endswith("secure_filename"):
+                specs.extend([
+                    self._spec(
+                        "filename.matches_allowed_pattern == true",
+                        "path_safety",
+                        "INVARIANT_FILENAME_SECURE_FILENAME",
+                        "secure_filename derives a safe filename.",
+                        line,
+                        node.name,
+                        0.9,
+                        variables=_call_output_variables(call, parent_map),
+                        result_used=result_used,
+                    ),
+                    self._spec(
+                        "filename.user_controlled == false",
+                        "generated_value",
+                        "INVARIANT_FILENAME_SANITIZED_DERIVED",
+                        "Filename is derived through a sanitizing transformation.",
+                        line,
+                        node.name,
+                        0.8,
+                        variables=_call_output_variables(call, parent_map),
+                        result_used=result_used,
+                    ),
+                ])
 
-        calls_verify = any(name == "verify" or name.endswith(".verify") for name in call_names)
+        boundary_calls = [
+            call
+            for call in calls
+            if _call_is_storage_boundary(call, parent_map)
+        ]
         if func_name in {"verify", "store_contains", "path"}:
-            if calls_verify or any(
-                name.endswith(("commonpath", "realpath", "abspath")) for name in call_names
-            ):
+            if boundary_calls:
+                boundary_call = min(
+                    boundary_calls,
+                    key=lambda call: (
+                        getattr(call, "lineno", node.lineno),
+                        getattr(call, "col_offset", 0),
+                    ),
+                )
                 specs.append(self._spec(
                     f"storage.{func_name}.enforces_store_boundary == true",
                     "path_safety",
                     f"INVARIANT_STORAGE_{func_name.upper()}_BOUNDARY",
                     f"{node.name} enforces or delegates storage boundary validation.",
-                    node.lineno,
+                    getattr(boundary_call, "lineno", node.lineno),
                     node.name,
                     0.92,
+                    variables=(
+                        _commonpath_checked_variables(boundary_call, parent_map)
+                        if (_call_name(boundary_call) or "").lower().endswith("commonpath")
+                        else _call_flow_variables(boundary_call, parent_map)
+                    ),
+                    result_used=_call_result_used(boundary_call, parent_map),
                 ))
 
         if any(name.endswith(("uuid4", "token_urlsafe", "token_hex", "token_bytes")) for name in call_names):
@@ -277,7 +312,7 @@ class InvariantMiner:
         function: ast.FunctionDef | ast.AsyncFunctionDef,
     ) -> list[InvariantSpec]:
         specs: list[InvariantSpec] = []
-        for node in ast.walk(function):
+        for node in _function_body_nodes(function):
             if not isinstance(node, (ast.Assign, ast.AnnAssign)):
                 continue
             value = node.value
@@ -295,6 +330,7 @@ class InvariantMiner:
             if not is_generated:
                 continue
             if any("filename" in name or name.endswith("path") for name in names):
+                variables = tuple(dict.fromkeys(names))
                 specs.extend([
                     self._spec(
                         "filename.server_generated == true",
@@ -304,6 +340,8 @@ class InvariantMiner:
                         getattr(node, "lineno", function.lineno),
                         function.name,
                         0.84,
+                        variables=variables,
+                        result_used=True,
                     ),
                     self._spec(
                         "filename.user_controlled == false",
@@ -313,6 +351,8 @@ class InvariantMiner:
                         getattr(node, "lineno", function.lineno),
                         function.name,
                         0.8,
+                        variables=variables,
+                        result_used=True,
                     ),
                 ])
         return specs
@@ -324,7 +364,7 @@ class InvariantMiner:
         specs: list[InvariantSpec] = []
         if "filename" not in function.name.lower():
             return specs
-        for node in ast.walk(function):
+        for node in _function_body_nodes(function):
             if not isinstance(node, ast.Return) or node.value is None:
                 continue
             dump = ast.dump(node.value).lower()
@@ -332,6 +372,11 @@ class InvariantMiner:
                 "uuid4", "token_urlsafe", "token_hex", "token_bytes", "interaction_count",
             ]):
                 continue
+            variables = tuple(sorted({
+                child.id
+                for child in ast.walk(node.value)
+                if isinstance(child, ast.Name)
+            }))
             specs.extend([
                 self._spec(
                     "filename.server_generated == true",
@@ -341,6 +386,8 @@ class InvariantMiner:
                     getattr(node, "lineno", function.lineno),
                     function.name,
                     0.84,
+                    variables=variables,
+                    result_used=True,
                 ),
                 self._spec(
                     "filename.user_controlled == false",
@@ -350,6 +397,8 @@ class InvariantMiner:
                     getattr(node, "lineno", function.lineno),
                     function.name,
                     0.8,
+                    variables=variables,
+                    result_used=True,
                 ),
             ])
         return specs
@@ -359,10 +408,13 @@ class InvariantMiner:
         function: ast.FunctionDef | ast.AsyncFunctionDef,
     ) -> list[InvariantSpec]:
         specs: list[InvariantSpec] = []
-        for node in ast.walk(function):
+        parent_map = _parent_map(function)
+        for node in _function_body_nodes(function):
             if not isinstance(node, ast.Call):
                 continue
             name = (_call_name(node) or "").lower()
+            variables = _call_flow_variables(node, parent_map)
+            result_used = _call_result_used(node, parent_map)
             if name.endswith("filter_by"):
                 for kw in node.keywords:
                     if kw.arg is None:
@@ -376,6 +428,8 @@ class InvariantMiner:
                             getattr(node, "lineno", function.lineno),
                             function.name,
                             0.94,
+                            variables=variables,
+                            result_used=result_used,
                         ))
                     if kw.arg in {"user_id", "owner_id"} and _looks_current_principal(kw.value):
                         specs.append(self._spec(
@@ -386,6 +440,8 @@ class InvariantMiner:
                             getattr(node, "lineno", function.lineno),
                             function.name,
                             0.94,
+                            variables=variables,
+                            result_used=result_used,
                         ))
             if name.endswith("filter"):
                 for arg in node.args:
@@ -398,6 +454,8 @@ class InvariantMiner:
                             getattr(node, "lineno", function.lineno),
                             function.name,
                             0.9,
+                            variables=variables,
+                            result_used=result_used,
                         ))
         return specs
 
@@ -406,7 +464,8 @@ class InvariantMiner:
         function: ast.FunctionDef | ast.AsyncFunctionDef,
     ) -> list[InvariantSpec]:
         specs: list[InvariantSpec] = []
-        for node in ast.walk(function):
+        parent_map = _parent_map(function)
+        for node in _function_body_nodes(function):
             if not isinstance(node, ast.Call):
                 continue
             name = (_call_name(node) or "").lower()
@@ -419,6 +478,8 @@ class InvariantMiner:
                     getattr(node, "lineno", function.lineno),
                     function.name,
                     0.9,
+                    variables=_call_output_variables(node, parent_map),
+                    result_used=_call_result_used(node, parent_map),
                 ))
             if name.endswith("markup") or name == "markup":
                 if _call_contains_escape(node):
@@ -430,6 +491,8 @@ class InvariantMiner:
                         getattr(node, "lineno", function.lineno),
                         function.name,
                         0.9,
+                        variables=_call_flow_variables(node, parent_map),
+                        result_used=_call_result_used(node, parent_map),
                     ))
         return specs
 
@@ -492,6 +555,9 @@ class InvariantMiner:
         lineno: int,
         function_name: str | None,
         confidence: float,
+        *,
+        variables: tuple[str, ...] | None = None,
+        result_used: bool | None = None,
     ) -> InvariantSpec:
         return InvariantSpec(
             expression=expression,
@@ -501,6 +567,8 @@ class InvariantMiner:
             lineno=lineno,
             function_name=function_name,
             confidence=confidence,
+            variables=variables,
+            result_used=result_used,
         )
 
     def _belief_from_spec(
@@ -527,7 +595,11 @@ class InvariantMiner:
         return Belief(
             predicate=Predicate(
                 expression=spec.expression,
-                variables=tuple(_variables_from_expression(spec.expression)),
+                variables=(
+                    spec.variables
+                    if spec.variables is not None
+                    else tuple(_variables_from_expression(spec.expression))
+                ),
                 anchor_lines=(spec.lineno,),
                 natural_language=spec.description,
             ),
@@ -545,6 +617,11 @@ class InvariantMiner:
                 "rule_id": spec.rule_id,
                 "severity": "info",
                 "function_qualname": function_qualname,
+                **(
+                    {"result_used": spec.result_used}
+                    if spec.result_used is not None
+                    else {}
+                ),
             },
         )
 
@@ -601,6 +678,362 @@ def _dedupe_beliefs(beliefs: Iterable[Belief]) -> list[Belief]:
             b.predicate.expression,
         ),
     )
+
+
+def _function_body_nodes(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> Iterable[ast.AST]:
+    """Yield nodes owned by ``function`` without entering nested scopes."""
+
+    nested_scopes = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+
+    def walk_owned(node: ast.AST) -> Iterable[ast.AST]:
+        yield node
+        if isinstance(node, nested_scopes):
+            return
+        for child in ast.iter_child_nodes(node):
+            yield from walk_owned(child)
+
+    for statement in function.body:
+        yield from walk_owned(statement)
+
+
+def _parent_map(root: ast.AST) -> dict[int, ast.AST]:
+    return {
+        id(child): parent
+        for parent in ast.walk(root)
+        for child in ast.iter_child_nodes(parent)
+    }
+
+
+def _flow_variables_in_nodes(nodes: Iterable[ast.AST]) -> tuple[str, ...]:
+    names: list[str] = []
+
+    def collect(node: ast.AST) -> None:
+        if isinstance(node, ast.Name):
+            names.append(node.id)
+            return
+        if isinstance(node, ast.Attribute):
+            qualified = _name(node)
+            if qualified:
+                names.append(qualified)
+            collect(node.value)
+            return
+        if isinstance(node, ast.Call):
+            for argument in node.args:
+                collect(argument)
+            for keyword in node.keywords:
+                collect(keyword.value)
+            return
+        for child in ast.iter_child_nodes(node):
+            collect(child)
+
+    for node in nodes:
+        collect(node)
+    return tuple(dict.fromkeys(name for name in names if name))
+
+
+def _argument_flow_variables(call: ast.Call) -> tuple[str, ...]:
+    return _flow_variables_in_nodes([
+        *call.args,
+        *(keyword.value for keyword in call.keywords),
+    ])
+
+
+def _commonpath_checked_variables(
+    call: ast.Call,
+    parent_map: dict[int, ast.AST],
+) -> tuple[str, ...]:
+    """Exclude the compared storage root from commonpath's checked value."""
+
+    variables = _argument_flow_variables(call)
+    current: ast.AST = call
+    while (parent := parent_map.get(id(current))) is not None:
+        if isinstance(parent, ast.Compare):
+            comparison_values = [parent.left, *parent.comparators]
+            root_variables = set(_flow_variables_in_nodes(
+                value
+                for value in comparison_values
+                if not _is_descendant(call, value)
+            ))
+            filtered = tuple(name for name in variables if name not in root_variables)
+            if filtered:
+                return filtered
+            break
+        if isinstance(parent, ast.stmt):
+            break
+        current = parent
+
+    if call.args and isinstance(call.args[0], (ast.List, ast.Tuple)):
+        elements = call.args[0].elts
+        if len(elements) >= 2:
+            candidates = _flow_variables_in_nodes(elements[1:])
+            if candidates:
+                return candidates
+    return variables
+
+
+def _assignment_targets_for_call(
+    call: ast.Call,
+    parent_map: dict[int, ast.AST],
+) -> tuple[str, ...]:
+    current: ast.AST = call
+    while (parent := parent_map.get(id(current))) is not None:
+        if isinstance(parent, ast.Assign):
+            return tuple(dict.fromkeys(
+                name for target in parent.targets for name in _target_names(target)
+            ))
+        if isinstance(parent, ast.AnnAssign):
+            return tuple(dict.fromkeys(_target_names(parent.target)))
+        if isinstance(parent, ast.NamedExpr):
+            return tuple(dict.fromkeys(_target_names(parent.target)))
+        if isinstance(parent, (ast.Return, ast.Expr, ast.If, ast.While, ast.Assert)):
+            break
+        current = parent
+    return ()
+
+
+def _call_flow_variables(
+    call: ast.Call,
+    parent_map: dict[int, ast.AST],
+) -> tuple[str, ...]:
+    return tuple(dict.fromkeys((
+        *_argument_flow_variables(call),
+        *_assignment_targets_for_call(call, parent_map),
+    )))
+
+
+def _call_output_variables(
+    call: ast.Call,
+    parent_map: dict[int, ast.AST],
+) -> tuple[str, ...]:
+    """Name the transformed value, not the unsanitized input, when assigned."""
+
+    targets = _assignment_targets_for_call(call, parent_map)
+    return targets or _argument_flow_variables(call)
+
+
+def _containing_statement(
+    node: ast.AST,
+    parent_map: dict[int, ast.AST],
+) -> ast.stmt | None:
+    current = node
+    while (parent := parent_map.get(id(current))) is not None:
+        if isinstance(parent, ast.stmt):
+            return parent
+        current = parent
+    return None
+
+
+def _containing_function(
+    node: ast.AST,
+    parent_map: dict[int, ast.AST],
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    current = node
+    while (parent := parent_map.get(id(current))) is not None:
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return parent
+        current = parent
+    return None
+
+
+def _call_result_used(
+    call: ast.Call,
+    parent_map: dict[int, ast.AST],
+) -> bool:
+    """Return whether the produced value participates in later computation."""
+
+    current: ast.AST = call
+    nested_expression_use = False
+    while (parent := parent_map.get(id(current))) is not None:
+        if isinstance(parent, ast.Expr):
+            return nested_expression_use
+        if isinstance(parent, (ast.Return, ast.If, ast.While, ast.Assert)):
+            return True
+        if isinstance(parent, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            targets = _assignment_targets_for_call(call, parent_map)
+            if not targets:
+                return False
+            statement = _containing_statement(call, parent_map)
+            function = _containing_function(call, parent_map)
+            if statement is None or function is None:
+                return False
+            statement_position = (
+                getattr(statement, "lineno", 0),
+                getattr(statement, "col_offset", 0),
+            )
+            for node in _function_body_nodes(function):
+                if not isinstance(node, ast.Name) or not isinstance(node.ctx, ast.Load):
+                    continue
+                if node.id not in targets:
+                    continue
+                if (
+                    getattr(node, "lineno", 0),
+                    getattr(node, "col_offset", 0),
+                ) > statement_position:
+                    return True
+            return False
+        if isinstance(parent, ast.Call) and parent is not call:
+            nested_expression_use = True
+        current = parent
+    return nested_expression_use
+
+
+def _call_enforces_guard(
+    call: ast.Call,
+    parent_map: dict[int, ast.AST],
+) -> bool:
+    """Recognize only a returned assertion or a branch that blocks execution."""
+
+    current: ast.AST = call
+    while (parent := parent_map.get(id(current))) is not None:
+        if isinstance(parent, ast.Return):
+            if (_call_name(call) or "").lower().endswith("commonpath"):
+                return bool(
+                    _condition_truth_means_safe(call, parent.value) is True
+                    and _guard_context_is_unconditional(parent, parent_map)
+                )
+            return _guard_context_is_unconditional(parent, parent_map)
+        if isinstance(parent, ast.Assert):
+            return bool(
+                _condition_truth_means_safe(call, parent.test) is True
+                and _guard_context_is_unconditional(parent, parent_map)
+            )
+        if isinstance(parent, (ast.If, ast.While)) and _is_descendant(call, parent.test):
+            return bool(
+                _condition_truth_means_safe(call, parent.test) is False
+                and _suite_blocks_execution(parent.body)
+                and _guard_context_is_unconditional(parent, parent_map)
+            )
+        if isinstance(parent, ast.stmt):
+            return False
+        current = parent
+    return False
+
+
+def _call_is_storage_boundary(
+    call: ast.Call,
+    parent_map: dict[int, ast.AST],
+) -> bool:
+    name = (_call_name(call) or "").lower()
+    result_used = _call_result_used(call, parent_map)
+    if name.endswith("commonpath"):
+        return result_used and _call_enforces_guard(call, parent_map)
+    if name in {"verify", "store_contains"} or name.endswith((".verify", ".store_contains")):
+        return result_used and _call_enforces_guard(call, parent_map)
+    return False
+
+
+def _condition_truth_means_safe(call: ast.Call, expression: ast.AST | None) -> bool | None:
+    """Return whether a true expression means the checked value is contained."""
+
+    if expression is None or not _is_descendant(call, expression):
+        return None
+    call_name = (_call_name(call) or "").lower()
+    safe_when_true: bool | None = (
+        True
+        if call_name in {"store_contains", "verify"}
+        or call_name.endswith((".store_contains", ".verify"))
+        else None
+    )
+    current: ast.AST = call
+    while current is not expression:
+        parent = next(
+            (
+                candidate
+                for candidate in ast.walk(expression)
+                if current in ast.iter_child_nodes(candidate)
+            ),
+            None,
+        )
+        if parent is None:
+            return None
+        if isinstance(parent, ast.Compare):
+            if len(parent.ops) != 1:
+                return None
+            if (
+                (_call_name(call) or "").lower().endswith("commonpath")
+                and not _commonpath_compare_matches_base(call, parent)
+            ):
+                return None
+            if isinstance(parent.ops[0], ast.Eq):
+                safe_when_true = True
+            elif isinstance(parent.ops[0], ast.NotEq):
+                safe_when_true = False
+            else:
+                return None
+        elif isinstance(parent, ast.UnaryOp) and isinstance(parent.op, ast.Not):
+            if safe_when_true is None:
+                return None
+            safe_when_true = not safe_when_true
+        elif isinstance(parent, (ast.BoolOp, ast.IfExp, ast.Call)):
+            return None
+        current = parent
+    return safe_when_true
+
+
+def _commonpath_compare_matches_base(call: ast.Call, comparison: ast.Compare) -> bool:
+    if (
+        len(comparison.ops) != 1
+        or len(comparison.comparators) != 1
+        or not call.args
+        or not isinstance(call.args[0], (ast.List, ast.Tuple))
+        or not call.args[0].elts
+    ):
+        return False
+    if _is_descendant(call, comparison.left):
+        compared_value = comparison.comparators[0]
+    elif _is_descendant(call, comparison.comparators[0]):
+        compared_value = comparison.left
+    else:
+        return False
+    return ast.dump(call.args[0].elts[0]) == ast.dump(compared_value)
+
+
+def _suite_blocks_execution(statements: list[ast.stmt]) -> bool:
+    if not statements:
+        return False
+    final = statements[-1]
+    if isinstance(final, ast.Raise):
+        return True
+    if isinstance(final, ast.Return):
+        return final.value is None or isinstance(final.value, ast.Constant)
+    if isinstance(final, ast.If):
+        return bool(
+            final.orelse
+            and _suite_blocks_execution(final.body)
+            and _suite_blocks_execution(final.orelse)
+        )
+    return False
+
+
+def _guard_context_is_unconditional(
+    guard_statement: ast.stmt,
+    parent_map: dict[int, ast.AST],
+) -> bool:
+    """Reject guards that run only in an outer branch or absorbable try block."""
+
+    current: ast.AST = guard_statement
+    conditional_ancestors = (
+        ast.If,
+        ast.For,
+        ast.AsyncFor,
+        ast.While,
+        ast.Try,
+        ast.IfExp,
+        ast.Match,
+    )
+    while (parent := parent_map.get(id(current))) is not None:
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return True
+        if isinstance(parent, conditional_ancestors):
+            return False
+        current = parent
+    return False
+
+
+def _is_descendant(candidate: ast.AST, root: ast.AST) -> bool:
+    return any(node is candidate for node in ast.walk(root))
 
 
 def _call_name(node: ast.Call) -> str | None:

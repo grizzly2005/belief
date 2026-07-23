@@ -7,6 +7,7 @@ from typing import Any, Iterable
 
 from belief.audit_case import AuditCase, sort_audit_cases
 
+from .guards import GuardApplicability, blockers_for, evaluate_case_guards
 from .models import ReportabilityAssessment
 
 
@@ -67,6 +68,9 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
     if metadata.get("has_codeflow") or _has_codeflow(metadata):
         score += 20
         positive.append("CodeQL/SARIF code-flow evidence present")
+    if _has_ordered_local_dataflow(case, metadata):
+        score += 20
+        positive.append("ordered local source-to-sink evidence present")
     if case.route_context or metadata.get("route") or metadata.get("path"):
         score += 15
         positive.append("route context present")
@@ -107,21 +111,26 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
             score += 5
             positive.append("positive validation evidence remains inconclusive")
 
-    strong_guard = _strong_guard(case, metadata)
-    contradictory_evidence = bool(case.missing_guarantees or metadata.get("missing_guards"))
+    guard_results = evaluate_case_guards(case, metadata)
+    guard_blockers = blockers_for(guard_results)
+    strong_guard = _strong_guard(case, guard_results)
+    contradictory_evidence = bool(metadata.get("missing_guards"))
     if strong_guard:
         score -= 40
-        negative.append("strong owner/tenant guard detected")
-    if _admin_guard_for_admin_action(case, metadata):
+        negative.append("causally applicable security guard detected")
+    elif "authentication_only" in guard_blockers:
+        negative.append("authentication present without resource authorization")
+    if _admin_guard_for_admin_action(case, metadata, guard_results):
         score -= 25
         negative.append("admin-only guard for admin action")
     if _test_generated_or_vendor_path(case.file):
         score -= 20
         negative.append("test, fixture, generated, or vendor path")
-    if not (case.route_context or case.dataflow_path or signal_type == "access_observation"):
+    has_path = _case_has_dataflow(case, metadata)
+    if not (case.route_context or has_path or signal_type == "access_observation"):
         score -= 20
         negative.append("no route, source-to-sink path, or access observation")
-    if signal_type == "external_finding" and not case.dataflow_path and len(source_tools) <= 1:
+    if signal_type == "external_finding" and not has_path and len(source_tools) <= 1:
         score -= 15
         negative.append("weak generic static-only signal")
     if str(case.severity or "").lower() in {"low", "info"}:
@@ -138,9 +147,18 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
             score -= 35
             negative.append("validation marked false positive")
 
+    if _requires_manual_static_access_validation(
+        case,
+        source_tools=source_tools,
+        signal_type=signal_type,
+        validation_results=validation_results,
+    ) and score >= 80:
+        score = 79
+        negative.append("static access-control flow requires manual authorization validation")
+
     if not case.route_context and not metadata.get("route") and not metadata.get("path"):
         missing_evidence.append("affected route or endpoint")
-    if not case.dataflow_path and signal_type != "access_observation":
+    if not has_path and signal_type != "access_observation":
         missing_evidence.append("source-to-sink evidence")
     if case.missing_guarantees:
         missing_evidence.extend(f"proof for {item}" for item in case.missing_guarantees)
@@ -163,7 +181,7 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
         source_tools=source_tools,
         signal_type=signal_type,
         has_route=bool(case.route_context or metadata.get("route") or metadata.get("path")),
-        has_path=bool(case.dataflow_path),
+        has_path=has_path,
         validation_steps=bool(validation_steps),
     )
     return ReportabilityAssessment(
@@ -174,6 +192,8 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
         negative_factors=_dedupe(negative),
         missing_evidence=_dedupe(missing_evidence),
         validation_steps=_dedupe(validation_steps),
+        guard_applicability=[result.to_dict() for result in guard_results],
+        blockers=list(guard_blockers),
     )
 
 
@@ -218,34 +238,60 @@ def _missing_owner_tenant_guard(case: AuditCase, metadata: dict[str, Any]) -> bo
     return any(token in text for token in ("owner", "tenant", "authorization", "scoped"))
 
 
-def _strong_guard(case: AuditCase, metadata: dict[str, Any]) -> bool:
-    if bool(metadata.get("strong_guard")):
+def _strong_guard(case: AuditCase, results: Iterable[GuardApplicability]) -> bool:
+    case_type = str(case.case_type or "").lower()
+    for result in results:
+        if not result.applicable:
+            continue
+        expression = result.expression.lower()
+        if "path" in case_type:
+            if result.category == "path_containment_guard":
+                return True
+            if result.category == "input_validation_guard" and any(
+                token in expression for token in (
+                    "matches_allowed_pattern",
+                    "allowlist",
+                    "server_generated",
+                    "user_controlled == false",
+                )
+            ):
+                return True
+            if result.category == "sanitizer_guard" and "basename" in expression:
+                return True
+            continue
+        if any(token in case_type for token in ("idor", "bola", "authorization", "access")):
+            if result.category in {
+                "role_authorization_guard",
+                "ownership_guard",
+                "tenant_guard",
+                "resource_binding_guard",
+            }:
+                return True
+            continue
+        if any(token in case_type for token in ("xss", "html", "template")):
+            if result.category == "sanitizer_guard" and "escape" in expression:
+                return True
+            continue
         return True
-    text = " ".join([
-        " ".join(case.guarantees),
-        " ".join(str(item) for item in _as_list(metadata.get("detected_guards"))),
-        " ".join(str(item) for item in _as_list((case.route_context or {}).get("auth_guarantees"))),
-    ]).lower()
-    return any(token in text for token in (
-        "owner",
-        "tenant",
-        "filter_by",
-        "current_user.id",
-        "current_user.tenant_id",
-        "admin_required",
-        "permission",
-        "route.requires_login == true",
-    ))
+    return False
 
 
-def _admin_guard_for_admin_action(case: AuditCase, metadata: dict[str, Any]) -> bool:
-    text = " ".join([
+def _admin_guard_for_admin_action(
+    case: AuditCase,
+    metadata: dict[str, Any],
+    guard_results: Iterable[GuardApplicability],
+) -> bool:
+    action = " ".join([
         str(metadata.get("action") or ""),
         str(case.sink or ""),
-        " ".join(case.guarantees),
-        " ".join(str(item) for item in _as_list(metadata.get("detected_guards"))),
     ]).lower()
-    return "admin" in text and any(token in text for token in ("delete", "promote", "role", "permission"))
+    privileged_action = any(
+        token in action for token in ("admin", "delete", "promote", "role", "permission")
+    )
+    return privileged_action and any(
+        result.applicable and result.category == "role_authorization_guard"
+        for result in guard_results
+    )
 
 
 def _test_generated_or_vendor_path(path: str) -> bool:
@@ -260,6 +306,35 @@ def _has_codeflow(metadata: dict[str, Any]) -> bool:
         return bool(evidence)
     raw = str(metadata.get("external_raw") or "").lower()
     return "codeflow" in raw or "threadflow" in raw
+
+
+def _case_has_dataflow(case: AuditCase, metadata: dict[str, Any]) -> bool:
+    if case.dataflow_path or _has_ordered_local_dataflow(case, metadata):
+        return True
+    dataflow = metadata.get("dataflow")
+    return isinstance(dataflow, dict) and bool(
+        dataflow.get("path") and dataflow.get("source") and dataflow.get("sink")
+    )
+
+
+def _has_ordered_local_dataflow(case: AuditCase, metadata: dict[str, Any]) -> bool:
+    candidates = [
+        getattr(case, "structured_dataflow", None),
+        metadata.get("structured_dataflow"),
+        metadata.get("dataflow_evidence"),
+    ]
+    for evidence in candidates:
+        if not isinstance(evidence, dict):
+            continue
+        nodes = evidence.get("ordered_nodes")
+        edges = evidence.get("ordered_edges")
+        if not isinstance(nodes, list) or len(nodes) < 2:
+            continue
+        if (isinstance(edges, list) and edges) or (
+            evidence.get("source") and evidence.get("sink")
+        ):
+            return True
+    return False
 
 
 def _sensitive_object(metadata: dict[str, Any]) -> bool:
@@ -294,6 +369,28 @@ def _validation_results(metadata: dict[str, Any]) -> list[dict[str, Any]]:
 def _positive_validation_evidence(result: dict[str, Any]) -> bool:
     metadata = result.get("metadata")
     return isinstance(metadata, dict) and metadata.get("positive_evidence") is True
+
+
+def _requires_manual_static_access_validation(
+    case: AuditCase,
+    *,
+    source_tools: list[str],
+    signal_type: str,
+    validation_results: list[dict[str, Any]],
+) -> bool:
+    case_type = str(case.case_type or "").lower()
+    if not any(token in case_type for token in ("idor", "bola", "authorization", "access")):
+        return False
+    if source_tools or signal_type in {"access_observation", "attack_path"}:
+        return False
+    return not any(
+        bool(result.get("tested") or result.get("human_validated"))
+        and str(result.get("outcome") or "").lower() in {
+            "bypassed",
+            "validated_candidate",
+        }
+        for result in validation_results
+    )
 
 
 def _dedupe(values: Iterable[Any]) -> list[str]:

@@ -47,10 +47,19 @@ class SecurityPatternExtractor:
         )
         beliefs.extend(self._check_module_dynamic_code_execution(tree, module_scope))
 
+        class_names: dict[int, str] = {}
+        for class_node in ast.walk(tree):
+            if not isinstance(class_node, ast.ClassDef):
+                continue
+            for child in class_node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    class_names[id(child)] = class_node.name
+
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 scope = Scope(
                     file_path=file_path, function_name=node.name,
+                    class_name=class_names.get(id(node)),
                     module=module, line_start=node.lineno,
                     line_end=node.end_lineno,
                 )
@@ -728,6 +737,7 @@ class SecurityPatternExtractor:
                 f"File operation with externally controlled path at line {child.lineno} — "
                 f"potential path traversal (CWE-22).",
                 scope, child.lineno, "high", "CWE-22",
+                variables=(source_name,),
             ))
         return beliefs
 
@@ -836,10 +846,20 @@ class SecurityPatternExtractor:
             if isinstance(child, ast.Call):
                 name = self._get_call_name(child)
                 if name and any(s in name for s in xss_sinks):
+                    variables = tuple(dict.fromkeys(
+                        candidate.id
+                        for argument in [
+                            *child.args,
+                            *(keyword.value for keyword in child.keywords),
+                        ]
+                        for candidate in ast.walk(argument)
+                        if isinstance(candidate, ast.Name)
+                    ))
                     beliefs.append(self._make_belief(
                         "html_output.is_escaped == True",
                         f"Unescaped HTML output via '{name}' at line {child.lineno} (CWE-79).",
                         scope, child.lineno, "high", "CWE-79",
+                        variables=variables,
                     ))
         return beliefs
 
@@ -963,11 +983,12 @@ class SecurityPatternExtractor:
     # ── Helpers ──
 
     def _make_belief(self, expr: str, desc: str, scope: Scope,
-                     lineno: int, severity: str, cwe: str) -> Belief:
+                     lineno: int, severity: str, cwe: str,
+                     variables: tuple[str, ...] = ()) -> Belief:
         confidence = {"critical": 0.95, "high": 0.88, "medium": 0.78}.get(severity, 0.7)
         return Belief(
             predicate=Predicate(
-                expression=expr, variables=(),
+                expression=expr, variables=variables,
                 anchor_lines=(lineno,),
                 natural_language=f"{desc}",
             ),

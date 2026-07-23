@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from belief.invariant_miner import InvariantMiner, classify_runtime_surface
 
 SNIPPETS = Path(__file__).parent / "real_world_snippets"
@@ -77,3 +79,122 @@ def test_invariant_metadata_is_traceable_and_serializable():
     assert data["source_metadata"]["category"] == "guarantee"
     assert data["source_metadata"]["invariant_type"] == "path_safety"
     assert data["id"].startswith("inv_")
+
+
+def test_commonpath_guarantee_keeps_call_line_and_concrete_value():
+    source = """\
+def read_file(user_path):
+    if commonpath([ROOT, user_path]) != ROOT:
+        raise ValueError("outside root")
+    return open(user_path).read()
+"""
+
+    guard = next(
+        belief
+        for belief in InvariantMiner().extract(source, "files.py")
+        if belief.predicate.expression == "path.is_within_store == true"
+    )
+
+    assert guard.scope.line_start == 2
+    assert guard.predicate.variables == ("user_path",)
+    assert guard.source_metadata["result_used"] is True
+
+
+def test_inverted_commonpath_branch_is_not_recorded_as_an_enforced_guard():
+    source = """\
+def read_file(user_path):
+    if commonpath([ROOT, user_path]) == ROOT:
+        raise ValueError("inside root")
+    return open(user_path).read()
+"""
+
+    guard = next(
+        belief
+        for belief in InvariantMiner().extract(source, "files.py")
+        if belief.predicate.expression == "path.is_within_store == true"
+    )
+
+    assert guard.source_metadata["result_used"] is False
+
+
+def test_commonpath_compared_to_an_unrelated_root_is_not_enforced():
+    source = """\
+def read_file(user_path):
+    if commonpath([ROOT, user_path]) != OTHER_ROOT:
+        raise ValueError("outside unrelated root")
+    return open(user_path).read()
+"""
+
+    guard = next(
+        belief
+        for belief in InvariantMiner().extract(source, "files.py")
+        if belief.predicate.expression == "path.is_within_store == true"
+    )
+
+    assert guard.source_metadata["result_used"] is False
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        """\
+    if feature_enabled:
+        if commonpath([ROOT, user_path]) != ROOT:
+            raise ValueError("outside root")
+    return open(user_path).read()
+""",
+        """\
+    try:
+        if commonpath([ROOT, user_path]) != ROOT:
+            raise ValueError("outside root")
+    except ValueError:
+        pass
+    return open(user_path).read()
+""",
+    ],
+)
+def test_conditional_or_absorbable_commonpath_guard_is_not_dominating(body):
+    source = "def read_file(user_path, feature_enabled=True):\n" + body
+
+    guard = next(
+        belief
+        for belief in InvariantMiner().extract(source, "files.py")
+        if belief.predicate.expression == "path.is_within_store == true"
+    )
+
+    assert guard.source_metadata["result_used"] is False
+
+
+def test_ignored_secure_filename_records_unused_result_and_input_value():
+    source = """\
+def read_file(user_path):
+    secure_filename(user_path)
+    return open(user_path).read()
+"""
+
+    guard = next(
+        belief
+        for belief in InvariantMiner().extract(source, "files.py")
+        if belief.predicate.expression == "filename.matches_allowed_pattern == true"
+    )
+
+    assert guard.scope.line_start == 2
+    assert guard.predicate.variables == ("user_path",)
+    assert guard.source_metadata["result_used"] is False
+
+
+def test_assigned_sanitizer_names_the_output_value_not_the_original_input():
+    source = """\
+def read_file(user_path):
+    safe_path = secure_filename(user_path)
+    return open(safe_path).read()
+"""
+
+    guard = next(
+        belief
+        for belief in InvariantMiner().extract(source, "files.py")
+        if belief.predicate.expression == "filename.matches_allowed_pattern == true"
+    )
+
+    assert guard.predicate.variables == ("safe_path",)
+    assert guard.source_metadata["result_used"] is True

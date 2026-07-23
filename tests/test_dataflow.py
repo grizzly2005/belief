@@ -95,7 +95,10 @@ def test_securedrop_reply_path_keeps_storage_path_guarantee_before_open():
 
     assert len(open_paths) == 1
     open_path = open_paths[0]
-    assert open_path.source.expression == "storage.path.enforces_store_boundary == true"
+    assert open_path.source.expression == 'request.form["reply_filename"]'
+    assert [item.expression for item in open_path.guarantees] == [
+        "storage.path.enforces_store_boundary == true"
+    ]
     assert open_path.missing_sanitizers == ()
     assert open_path.review_priority == "low"
 

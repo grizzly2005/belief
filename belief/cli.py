@@ -12,15 +12,14 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import re
 import sys
 from xml.etree import ElementTree as ET
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
 from .config import BeliefConfig
 from .orchestrator import Orchestrator
+from .static_analysis_pipeline import ScanRecord
 
 
 _ASCII_FALLBACKS = str.maketrans({
@@ -69,12 +68,6 @@ class SafeArgumentParser(argparse.ArgumentParser):
 SCAN_SCHEMA_VERSION = "belief.scan.filtered.v1"
 SCAN_CATEGORIES = ("structural", "security", "taint", "temporal", "cycles")
 SCAN_CATEGORY_SET = set(SCAN_CATEGORIES)
-
-
-@dataclass(frozen=True)
-class ScanRecord:
-    category: str
-    finding: Any
 
 
 def setup_logging(verbose: bool = True):
@@ -220,27 +213,7 @@ def cmd_hunt(args):
 
 def cmd_scan(args):
     """Quick structural + security scan (no LLM needed)."""
-    from .parser import CodeParser
-    from .structural import StructuralExtractor
-    from .security_patterns import SecurityPatternExtractor
-    from .taint import TaintEngine
-    from .temporal import TemporalChecker
-    dataflow_enabled = _scan_dataflow_enabled(args)
-    routes_enabled = _scan_routes_enabled(args)
-    if dataflow_enabled:
-        from .dataflow import analyze_source_dataflow, attach_dataflow_to_findings
-    if _scan_hypotheses_enabled(args):
-        from .guarantee_index import build_guarantee_index
-        from .hypothesis_engine import attach_hypotheses_to_findings
-        from .invariant_miner import InvariantMiner
-    if _scan_audit_cases_enabled(args):
-        from .audit_case import (
-            attach_route_context_to_audit_cases,
-            build_audit_cases,
-            summarize_guarantees,
-        )
-    if routes_enabled:
-        from .routes import extract_routes_from_files
+    from .static_analysis_pipeline import StaticAnalysisOptions, analyze_static_target
 
     setup_logging(args.verbose)
     target = Path(args.target_path)
@@ -251,158 +224,58 @@ def cmd_scan(args):
         sys.exit(2)
     if getattr(args, "audit_mode", False) and getattr(args, "only", "all") == "all":
         selected_categories = {"security", "taint"}
+    options = StaticAnalysisOptions(
+        max_files=int(args.max_files),
+        selected_categories=frozenset(selected_categories),
+        min_confidence=float(args.min_confidence),
+        hide_structural=bool(args.hide_structural),
+        include_cycles=bool(getattr(args, "include_cycles", False)),
+        max_cycles=int(args.max_cycles),
+        include_hypotheses=_scan_hypotheses_enabled(args),
+        include_guarantees=_scan_hypotheses_enabled(args),
+        show_proofs=bool(getattr(args, "show_proofs", False)),
+        only_hypotheses=str(getattr(args, "only_hypotheses", "all")),
+        include_dataflow=_scan_dataflow_enabled(args),
+        show_dataflow=bool(getattr(args, "show_dataflow", False)),
+        legacy_single_file_path_projection=True,
+        include_audit_cases=_scan_audit_cases_enabled(args),
+        audit_mode=bool(getattr(args, "audit_mode", False)),
+        interesting_only=bool(getattr(args, "interesting_only", False)),
+        include_routes=_scan_routes_enabled(args),
+        import_tool_results=tuple(
+            str(path) for path in (getattr(args, "import_tool_results", None) or [])
+        ),
+        reportability=_scan_reportability_enabled(args),
+        min_reportability_score=int(getattr(args, "min_reportability_score", 0) or 0),
+        only_reportable=bool(getattr(args, "only_reportable", False)),
+        dedup_audit_cases=bool(getattr(args, "dedup_audit_cases", False)),
+    )
+    try:
+        result = analyze_static_target(target, options)
+    except ValueError as exc:
+        safe_print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(2)
 
-    parser = CodeParser(str(target))
-    files = parser._collect_python_files()[:args.max_files]
-    routes = []
-    if routes_enabled:
-        route_root = target if target.is_dir() else target.parent
-        routes = extract_routes_from_files(files, target_root=route_root)
+    files = list(result.files)
+    routes = list(result.routes)
+    total = dict(result.totals)
+    scan_records = list(result.records)
+    filtered_records = list(result.filtered_records)
+    invariant_beliefs = list(result.guarantees)
+    dataflow_summaries = result.dataflow_summaries
+    audit_cases = list(result.audit_cases)
+    audit_case_clusters_payload = list(result.audit_case_clusters)
+    guarantee_summary = result.guarantee_summary
+    cycle_metadata = result.cycle_metadata
+    hypothesis_count = len(result.hypotheses)
+    dataflow_path_count = len(result.dataflow_paths)
+    dataflow_enabled = options.dataflow_enabled
+    routes_enabled = options.routes_enabled
 
-    structural = StructuralExtractor()
-    security = SecurityPatternExtractor()
-    taint = TaintEngine()
-    temporal = TemporalChecker()
-    invariant_miner = InvariantMiner() if _scan_hypotheses_enabled(args) else None
-
-    total = {"structural": 0, "security": 0, "taint": 0, "temporal": 0}
-    scan_records: list[ScanRecord] = []
-    invariant_beliefs = []
-    source_contexts: dict[str, str] = {}
-    dataflow_summaries = {}
-    imported_tool_results = []
-    imported_audit_cases = []
-
-    for f in files:
-        try:
-            source = f.read_text(errors="replace")
-        except Exception:
-            continue
-
-        rel = str(f.relative_to(target)) if target.is_dir() else str(f)
-        source_contexts[rel] = source
-        if dataflow_enabled:
-            dataflow_summaries[rel] = analyze_source_dataflow(source, rel)
-        if invariant_miner is not None:
-            invariant_beliefs.extend(invariant_miner.extract(source, rel))
-
-        sb = structural.extract(source, rel)
-        total["structural"] += len(sb)
-        scan_records.extend(_beliefs_to_scan_records("structural", sb))
-
-        sec = security.extract(source, rel)
-        total["security"] += len(sec)
-        scan_records.extend(_beliefs_to_scan_records("security", sec))
-
-        tb = taint.analyze_to_beliefs(source, rel)
-        total["taint"] += len(tb)
-        scan_records.extend(_beliefs_to_scan_records("taint", tb))
-
-        temp = temporal.check(source, rel)
-        total["temporal"] += len(temp)
-        scan_records.extend(_beliefs_to_scan_records("temporal", temp))
-
-    cycle_metadata = None
-    if getattr(args, "include_cycles", False):
-        from .cycle_detector import detect_cycle_findings_with_metadata
-
-        parser.parse()
-        cycle_findings, cycle_metadata = detect_cycle_findings_with_metadata(
-            parser.call_graph,
-            max_cycles=args.max_cycles,
-        )
-        total["cycles"] = len(cycle_findings)
-        scan_records.extend(
-            ScanRecord("cycles", _with_scan_category(finding, "cycles"))
-            for finding in cycle_findings
-        )
-    elif "cycles" in selected_categories and selected_categories != SCAN_CATEGORY_SET:
+    if any(item.code == "cycle_analysis_not_enabled" for item in result.diagnostics):
         safe_print(
             "  Cycle analysis not enabled; use --include-cycles to populate cycle findings."
         )
-
-    if getattr(args, "import_tool_results", None):
-        (
-            imported_tool_results,
-            imported_findings,
-            imported_audit_cases,
-        ) = _load_imported_tool_results(args)
-        total["security"] += len(imported_findings)
-        scan_records.extend(
-            ScanRecord("security", _with_scan_category(finding, "security"))
-            for finding in imported_findings
-        )
-
-    if dataflow_enabled:
-        attach_dataflow_to_findings(
-            [record.finding for record in scan_records],
-            dataflow_summaries,
-            show_dataflow=bool(getattr(args, "show_dataflow", False)),
-        )
-
-    guarantee_index = None
-    if _scan_hypotheses_enabled(args):
-        guarantee_index = build_guarantee_index(files, target_root=target)
-        invariant_beliefs = _dedupe_beliefs_by_id([
-            *invariant_beliefs,
-            *guarantee_index.all_guarantees,
-        ])
-        attach_hypotheses_to_findings(
-            [record.finding for record in scan_records],
-            invariant_beliefs,
-            show_proofs=bool(args.show_proofs),
-            guarantee_index=guarantee_index,
-            local_contexts=source_contexts,
-            dataflow_summaries=dataflow_summaries if dataflow_enabled else None,
-            show_dataflow=bool(getattr(args, "show_dataflow", False)),
-        )
-    hypothesis_count = sum(
-        1 for record in scan_records
-        if isinstance(getattr(record.finding, "metadata", None), dict)
-        and isinstance(record.finding.metadata.get("hypothesis"), dict)
-    )
-    dataflow_path_count = sum(
-        len(summary.paths) for summary in dataflow_summaries.values()
-    ) if dataflow_enabled else 0
-
-    filtered_records = _filter_scan_records(
-        scan_records,
-        selected_categories=selected_categories,
-        min_confidence=args.min_confidence,
-        hide_structural=args.hide_structural,
-        only_hypothesis_status=(
-            args.only_hypotheses if _scan_hypotheses_enabled(args) else "all"
-        ),
-    )
-    audit_cases = []
-    audit_case_clusters_payload = []
-    guarantee_summary = {}
-    if _scan_audit_cases_enabled(args):
-        audit_cases = build_audit_cases(
-            [record.finding for record in scan_records],
-            dataflow_summaries=dataflow_summaries if dataflow_enabled else None,
-        )
-        if routes_enabled:
-            audit_cases = attach_route_context_to_audit_cases(
-                audit_cases,
-                routes,
-                source_contexts=source_contexts,
-            )
-        if imported_audit_cases:
-            from .tool_results.merger import merge_audit_cases
-
-            audit_cases = merge_audit_cases([*audit_cases, *imported_audit_cases])
-        guarantee_summary = summarize_guarantees(invariant_beliefs)
-        if getattr(args, "dedup_audit_cases", False):
-            from .audit_dedup import cluster_audit_cases, cluster_to_dict
-
-            audit_case_clusters = cluster_audit_cases(audit_cases)
-            audit_cases = [cluster["representative"] for cluster in audit_case_clusters]
-            audit_case_clusters_payload = [
-                cluster_to_dict(cluster) for cluster in audit_case_clusters
-            ]
-        if _scan_reportability_enabled(args):
-            audit_cases = _apply_reportability(args, audit_cases)
 
     if getattr(args, "show_routes", False):
         _print_routes_summary(routes, top=int(args.top))
@@ -566,27 +439,6 @@ def _parse_scan_only(value: str | None) -> set[str]:
     return parts
 
 
-def _beliefs_to_scan_records(category: str, beliefs: list[Any]) -> list[ScanRecord]:
-    from .models import Finding
-
-    records = []
-    for belief in beliefs:
-        records.append(
-            ScanRecord(
-                category,
-                _with_scan_category(Finding.from_belief(belief, source=category), category),
-            )
-        )
-    return records
-
-
-def _with_scan_category(finding: Any, category: str) -> Any:
-    metadata = dict(getattr(finding, "metadata", {}) or {})
-    metadata.setdefault("category", category)
-    finding.metadata = metadata
-    return finding
-
-
 def _filter_scan_records(
     records: list[ScanRecord],
     *,
@@ -595,70 +447,33 @@ def _filter_scan_records(
     hide_structural: bool,
     only_hypothesis_status: str = "all",
 ) -> list[ScanRecord]:
-    categories = set(selected_categories)
-    if hide_structural:
-        categories.discard("structural")
-    status_filter = (only_hypothesis_status or "all").strip().lower()
-    return [
-        record for record in records
-        if record.category in categories
-        and float(getattr(record.finding, "confidence", 0.0)) >= min_confidence
-        and (
-            status_filter == "all"
-            or (
-                isinstance(getattr(record.finding, "metadata", None), dict)
-                and isinstance(record.finding.metadata.get("hypothesis"), dict)
-                and record.finding.metadata["hypothesis"].get("status") == status_filter
-            )
-        )
-    ]
+    from .static_analysis_pipeline import filter_scan_records
 
-
-def _sort_scan_records(records: list[ScanRecord]) -> list[ScanRecord]:
-    return sorted(records, key=_scan_record_sort_key)
-
-
-def _scan_record_sort_key(record: ScanRecord) -> tuple:
-    finding = record.finding
-    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
-    return (
-        -float(getattr(finding, "confidence", 0.0)),
-        severity_order.get(str(getattr(finding, "severity", "info")).lower(), 9),
-        record.category,
-        str(getattr(finding, "file", "")),
-        getattr(finding, "line", None) or 0,
-        str(getattr(finding, "rule_id", "")),
-        str(getattr(finding, "dedup_key", "")),
+    return filter_scan_records(
+        records,
+        selected_categories=selected_categories,
+        min_confidence=min_confidence,
+        hide_structural=hide_structural,
+        only_hypothesis_status=only_hypothesis_status,
     )
 
 
+def _sort_scan_records(records: list[ScanRecord]) -> list[ScanRecord]:
+    from .static_analysis_pipeline import sort_scan_records
+
+    return sort_scan_records(records)
+
+
 def _dedupe_scan_records(records: list[ScanRecord]) -> list[ScanRecord]:
-    seen = set()
-    deduped: list[ScanRecord] = []
-    for record in records:
-        key = _scan_record_dedup_key(record)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(record)
-    return deduped
+    from .static_analysis_pipeline import dedupe_scan_records
+
+    return dedupe_scan_records(records)
 
 
 def _scan_record_dedup_key(record: ScanRecord) -> tuple:
-    finding = record.finding
-    file = str(getattr(finding, "file", ""))
-    line = getattr(finding, "line", None)
-    rule_id = str(getattr(finding, "rule_id", ""))
-    dedup_key = str(getattr(finding, "dedup_key", ""))
-    if dedup_key:
-        return (file, line, rule_id, dedup_key)
-    fallback_text = " ".join([
-        str(getattr(finding, "evidence", "")),
-        str(getattr(finding, "title", "")),
-        str(getattr(finding, "description", "")),
-    ])
-    normalized = re.sub(r"\s+", " ", fallback_text).strip().lower()
-    return (file, line, rule_id, normalized)
+    from .static_analysis_pipeline import scan_record_dedup_key
+
+    return scan_record_dedup_key(record)
 
 
 def _finding_location(finding: Any) -> str:
@@ -747,44 +562,6 @@ def _scan_reportability_enabled(args) -> bool:
         or bool(getattr(args, "only_reportable", False))
         or int(getattr(args, "min_reportability_score", 0) or 0) > 0
     )
-
-
-def _load_imported_tool_results(args) -> tuple[list[Any], list[Any], list[Any]]:
-    from .tool_results.io import read_many_normalized_tool_results
-    from .tool_results.mapper import normalized_result_to_audit_cases, normalized_result_to_findings
-    from .tool_results.models import ToolResultSchemaError
-
-    paths = [Path(path) for path in (getattr(args, "import_tool_results", None) or [])]
-    try:
-        results = read_many_normalized_tool_results(paths)
-    except (OSError, ToolResultSchemaError) as exc:
-        safe_print(f"ERROR: failed to import normalized tool results: {exc}", file=sys.stderr)
-        sys.exit(2)
-    findings = []
-    audit_cases = []
-    for result in results:
-        findings.extend(normalized_result_to_findings(result))
-        audit_cases.extend(normalized_result_to_audit_cases(result))
-    return results, findings, audit_cases
-
-
-def _apply_reportability(args, audit_cases: list[Any]) -> list[Any]:
-    from .reportability.scoring import attach_reportability_to_cases
-
-    cases = attach_reportability_to_cases(audit_cases)
-    min_score = int(getattr(args, "min_reportability_score", 0) or 0)
-    if min_score:
-        cases = [
-            case for case in cases
-            if _case_reportability(case).get("score", 0) >= min_score
-        ]
-    if bool(getattr(args, "only_reportable", False)):
-        allowed = {"reportable_candidate", "needs_manual_validation"}
-        cases = [
-            case for case in cases
-            if _case_reportability(case).get("verdict") in allowed
-        ]
-    return cases
 
 
 def _case_reportability(case: Any) -> dict[str, Any]:
@@ -1109,21 +886,6 @@ def _finding_dataflow_summary(finding: Any) -> str:
     return short
 
 
-def _dedupe_beliefs_by_id(beliefs: list[Any]) -> list[Any]:
-    seen = set()
-    deduped = []
-    for belief in beliefs:
-        key = (
-            getattr(belief, "id", ""),
-            (getattr(belief, "source_metadata", {}) or {}).get("propagated_via", ""),
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(belief)
-    return deduped
-
-
 def cmd_serve(args):
     """Start the REST API server."""
     from .api_server import APIServer, is_loopback_host
@@ -1142,20 +904,63 @@ def cmd_serve(args):
 def cmd_benchmark(args):
     """Run benchmarks on example codebases."""
     if getattr(args, "benchmark_command", "") == "reportability":
-        from .benchmark.reportability import write_reportability_benchmark_json
+        from .benchmark.reportability import REPORTABILITY_MODE, write_reportability_benchmark_json
+        from .benchmark.static_analysis import (
+            STATIC_ANALYSIS_MODE,
+            write_static_analysis_benchmark_json,
+        )
 
         try:
-            payload = write_reportability_benchmark_json(args.reportability_target, args.json_output)
+            mode = str(getattr(args, "benchmark_mode", REPORTABILITY_MODE) or REPORTABILITY_MODE)
+            if mode == REPORTABILITY_MODE:
+                target = args.reportability_target or "benchmark_reportability"
+                payload = write_reportability_benchmark_json(target, args.json_output)
+            elif mode == STATIC_ANALYSIS_MODE:
+                from .static_analysis_pipeline import StaticAnalysisOptions, analyze_static_target
+
+                target = args.reportability_target or "benchmark_static_analysis"
+                analysis_options = StaticAnalysisOptions(
+                    selected_categories=frozenset({"security", "taint"}),
+                    include_hypotheses=True,
+                    include_guarantees=True,
+                    include_dataflow=True,
+                    show_dataflow=True,
+                    include_audit_cases=True,
+                    audit_mode=True,
+                    include_routes=True,
+                    reportability=True,
+                )
+
+                def pipeline(fixture: Path):
+                    return analyze_static_target(fixture, analysis_options)
+
+                payload = write_static_analysis_benchmark_json(
+                    target,
+                    args.json_output,
+                    pipeline,
+                    thresholds=(getattr(args, "thresholds", "") or None),
+                )
+            else:
+                raise ValueError(f"unsupported benchmark mode: {mode}")
         except ValueError as exc:
             safe_print(json.dumps({"error": str(exc)}, indent=2, sort_keys=True), file=sys.stderr)
             sys.exit(2)
 
-        safe_print(json.dumps({
+        summary = {
             "schema_version": payload["schema_version"],
             "output": str(args.json_output),
             "case_count": payload["case_count"],
             "mode": payload["mode"],
-        }, indent=2, sort_keys=True))
+        }
+        if mode == STATIC_ANALYSIS_MODE:
+            summary.update({
+                "status": payload["status"],
+                "thresholds_passed": payload["thresholds_passed"],
+                "deterministic_digest": payload["deterministic_digest"],
+            })
+        safe_print(json.dumps(summary, indent=2, sort_keys=True))
+        if mode == STATIC_ANALYSIS_MODE and int(payload.get("exit_code", 0)):
+            sys.exit(int(payload["exit_code"]))
         return
 
     from .benchmark_suite import BenchmarkRunner
@@ -1942,8 +1747,20 @@ def main():
     p_bench_reportability.add_argument(
         "--target",
         dest="reportability_target",
-        default="benchmark_reportability",
-        help="Benchmark corpus root",
+        default="",
+        help="Benchmark corpus root (default depends on --mode)",
+    )
+    p_bench_reportability.add_argument(
+        "--mode",
+        dest="benchmark_mode",
+        choices=["metadata_ground_truth_mvp", "static_analysis_ground_truth_v1"],
+        default="metadata_ground_truth_mvp",
+        help="Metadata compatibility benchmark or real static-analysis ground truth",
+    )
+    p_bench_reportability.add_argument(
+        "--thresholds",
+        default="",
+        help="Optional threshold YAML for static_analysis_ground_truth_v1",
     )
     p_bench_reportability.add_argument(
         "--json-output",

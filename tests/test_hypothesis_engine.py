@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from belief.guarantee_index import build_guarantee_index
 from belief.hypothesis_engine import (
     attach_hypotheses_to_findings,
     filter_findings_by_hypothesis_status,
@@ -40,6 +41,14 @@ def _guarantees(*items: tuple[str, str]):
     return mined
 
 
+def _securedrop_guarantee_context():
+    sources = {
+        "securedrop/store.py": _snippet("securedrop_store.py"),
+        "securedrop/source_app/main.py": _snippet("securedrop_source_app.py"),
+    }
+    return sources, build_guarantee_index(sources)
+
+
 def test_path_traversal_hypothesis_is_contradicted_by_securedrop_store_boundary():
     findings = [
         finding for finding in _security_findings(
@@ -49,12 +58,15 @@ def test_path_traversal_hypothesis_is_contradicted_by_securedrop_store_boundary(
         if finding.cwe == "CWE-22"
     ]
     assert findings
-    guarantees = _guarantees(
-        ("securedrop_store.py", "securedrop/store.py"),
-        ("securedrop_source_app.py", "securedrop/source_app/main.py"),
-    )
+    source_contexts, guarantee_index = _securedrop_guarantee_context()
 
-    attach_hypotheses_to_findings(findings, guarantees, show_proofs=True)
+    attach_hypotheses_to_findings(
+        findings,
+        guarantee_index.all_guarantees,
+        show_proofs=True,
+        guarantee_index=guarantee_index,
+        local_contexts=source_contexts,
+    )
 
     hypothesis = findings[0].metadata["hypothesis"]
     assert hypothesis["hypothesis_type"] == "path_traversal_possible"
@@ -155,11 +167,19 @@ def test_filter_findings_by_hypothesis_status_is_deterministic():
         if finding.cwe == "CWE-502"
     ]
     findings = path_findings[:1] + deser_findings[:1]
-    guarantees = _guarantees(
-        ("securedrop_store.py", "securedrop/store.py"),
-        ("flask_caching_pickle_backend.py", "flask_caching/backends/filesystemcache.py"),
+    source_contexts, guarantee_index = _securedrop_guarantee_context()
+    guarantees = [
+        *guarantee_index.all_guarantees,
+        *_guarantees(
+            ("flask_caching_pickle_backend.py", "flask_caching/backends/filesystemcache.py"),
+        ),
+    ]
+    attach_hypotheses_to_findings(
+        findings,
+        guarantees,
+        guarantee_index=guarantee_index,
+        local_contexts=source_contexts,
     )
-    attach_hypotheses_to_findings(findings, guarantees)
 
     contradicted = filter_findings_by_hypothesis_status(findings, "contradicted")
     strengthened = filter_findings_by_hypothesis_status(findings, "strengthened")

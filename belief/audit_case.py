@@ -18,6 +18,7 @@ from .models import Belief, Finding, _json_safe
 
 
 AUDIT_SCHEMA_VERSION = "belief.audit.v1"
+STRUCTURED_DATAFLOW_SCHEMA_VERSION = "belief.dataflow_evidence.v1"
 AUDIT_CASE_STATUSES = ("actionable", "needs_review", "protected", "false_positive_likely")
 REVIEW_PRIORITIES = ("critical", "high", "medium", "low", "info")
 
@@ -46,6 +47,7 @@ class AuditCase:
     related_finding_fingerprint: str = ""
     reason: str = ""
     route_context: dict[str, Any] = field(default_factory=dict)
+    structured_dataflow: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -74,6 +76,8 @@ class AuditCase:
         }
         if self.route_context:
             data["route_context"] = dict(self.route_context)
+        if self.structured_dataflow:
+            data["structured_dataflow"] = _json_safe(self.structured_dataflow)
         if self.metadata:
             data["metadata"] = _json_safe(self.metadata)
         return data
@@ -184,6 +188,11 @@ def audit_case_from_finding(finding: Finding) -> AuditCase | None:
         human_next_steps=tuple(_human_next_steps(case_type, status, missing)),
         related_finding_fingerprint=finding.fingerprint,
         reason=reason,
+        structured_dataflow=_structured_dataflow_from_payload(
+            dataflow,
+            default_file=finding.file,
+            hypothesis=hypothesis,
+        ),
     )
 
 
@@ -229,6 +238,7 @@ def audit_case_from_dataflow_path(path: DataFlowPath) -> AuditCase:
         z3_status="not_applicable",
         human_next_steps=tuple(_human_next_steps(case_type, status, missing)),
         reason=reason,
+        structured_dataflow=_structured_dataflow_from_path(path),
     )
 
 
@@ -696,8 +706,244 @@ def _short_handler(handler: str) -> str:
     return str(handler or "").rsplit(".", 1)[-1]
 
 
+def _structured_dataflow_from_path(path: DataFlowPath) -> dict[str, Any]:
+    """Keep the rich path proof alongside AuditCase's legacy string fields."""
+
+    guard_applicability = getattr(path, "guard_applicability", None)
+    if not isinstance(guard_applicability, dict):
+        guards = tuple((*path.guarantees, *path.sanitizers))
+        source_order = _node_order(path.source)
+        sink_order = _node_order(path.sink)
+        guard_orders = tuple(_node_order(node) for node in guards)
+        positions_known = bool(
+            source_order is not None
+            and sink_order is not None
+            and all(order is not None for order in guard_orders)
+        )
+        ordered_guards = bool(
+            positions_known
+            and source_order <= sink_order
+            and all(
+                source_order <= order <= sink_order
+                for order in guard_orders
+                if order is not None
+            )
+            and _guards_are_on_serialized_path(path, guards)
+        )
+        if guards and ordered_guards:
+            guard_applicability = {
+                "guard_applicable": True,
+                "reason": "guard_on_dataflow_path_before_sink",
+            }
+        elif guards:
+            guard_applicability = {
+                "guard_applicable": False,
+                "reason": (
+                    "guard_after_sink"
+                    if positions_known
+                    and any(
+                        order > sink_order
+                        for order in guard_orders
+                        if order is not None and sink_order is not None
+                    )
+                    else "flow_not_demonstrated"
+                ),
+            }
+        else:
+            guard_applicability = {
+                "guard_applicable": False,
+                "reason": "no_applicable_guard",
+            }
+
+    diagnostics = list(getattr(path, "diagnostics", ()) or ())
+    rejection_reason = str(getattr(path, "rejection_reason", "") or "")
+    truncation_reason = str(getattr(path, "truncation_reason", "") or "")
+    if not truncation_reason:
+        for diagnostic in diagnostics:
+            reason = (
+                diagnostic.get("reason") or diagnostic.get("code")
+                if isinstance(diagnostic, dict)
+                else diagnostic
+            )
+            if str(reason).startswith("analysis_truncated_") or reason == "cycle_detected":
+                truncation_reason = str(reason)
+                break
+
+    return {
+        "schema_version": STRUCTURED_DATAFLOW_SCHEMA_VERSION,
+        "source": _structured_node(path.source, path.file_path),
+        "sink": _structured_node(path.sink, path.file_path),
+        "ordered_nodes": [node.to_dict() for node in path.nodes],
+        "ordered_edges": [edge.to_dict() for edge in path.edges],
+        "function_context": path.function_name,
+        "guard_applicability": _json_safe(guard_applicability),
+        "rejection_reason": rejection_reason,
+        "truncation_reason": truncation_reason,
+    }
+
+
+def _structured_dataflow_from_payload(
+    dataflow: dict[str, Any],
+    *,
+    default_file: str,
+    hypothesis: dict[str, Any],
+) -> dict[str, Any]:
+    if not dataflow:
+        return {}
+
+    source_value = dataflow.get("source", "")
+    sink_value = dataflow.get("sink", "")
+    guard_applicability = (
+        dataflow.get("guard_applicability")
+        or hypothesis.get("guard_applicability")
+    )
+    if not isinstance(guard_applicability, (dict, list)):
+        applicable = hypothesis.get("guard_applicable")
+        reason = hypothesis.get("guard_applicability_reason") or hypothesis.get("reason")
+        if isinstance(applicable, bool):
+            guard_applicability = {
+                "guard_applicable": applicable,
+                "reason": str(reason or ("applicable_guard" if applicable else "no_applicable_guard")),
+            }
+        else:
+            guard_applicability = {
+                "guard_applicable": bool(dataflow.get("guarantees") or dataflow.get("sanitizers")),
+                "reason": (
+                    "guard_on_dataflow_path_before_sink"
+                    if dataflow.get("guarantees") or dataflow.get("sanitizers")
+                    else "no_applicable_guard"
+                ),
+            }
+
+    nodes = dataflow.get("nodes")
+    if not isinstance(nodes, list):
+        nodes = [
+            {
+                "kind": "flow_step",
+                "expression": str(expression),
+            }
+            for expression in dataflow.get("path", [])
+        ]
+    edges = dataflow.get("edges")
+    if not isinstance(edges, list):
+        edges = []
+
+    file_path = str(dataflow.get("file") or default_file)
+    return {
+        "schema_version": STRUCTURED_DATAFLOW_SCHEMA_VERSION,
+        "source": _structured_payload_endpoint(
+            source_value,
+            file_path=file_path,
+            line=dataflow.get("source_line"),
+            column=dataflow.get("source_column"),
+        ),
+        "sink": _structured_payload_endpoint(
+            sink_value,
+            file_path=file_path,
+            line=dataflow.get("sink_line"),
+            column=dataflow.get("sink_column"),
+        ),
+        "ordered_nodes": _json_safe(nodes),
+        "ordered_edges": _json_safe(edges),
+        "function_context": str(dataflow.get("function") or ""),
+        "guard_applicability": _json_safe(guard_applicability),
+        "rejection_reason": str(
+            dataflow.get("rejection_reason")
+            or hypothesis.get("rejection_reason")
+            or ""
+        ),
+        "truncation_reason": str(
+            dataflow.get("truncation_reason")
+            or hypothesis.get("truncation_reason")
+            or ""
+        ),
+    }
+
+
+def _structured_node(node: Any, default_file: str) -> dict[str, Any]:
+    metadata = getattr(node, "metadata", None)
+    metadata = metadata if isinstance(metadata, dict) else {}
+    column = getattr(node, "column", None)
+    if column is None:
+        column = metadata.get("column")
+    return {
+        "file": str(getattr(node, "file_path", "") or metadata.get("file") or default_file),
+        "line": getattr(node, "line", None),
+        "column": column,
+        "symbol": str(getattr(node, "expression", "") or ""),
+    }
+
+
+def _structured_payload_endpoint(
+    value: Any,
+    *,
+    file_path: str,
+    line: Any,
+    column: Any,
+) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return {
+            "file": str(value.get("file") or file_path),
+            "line": value.get("line", line),
+            "column": value.get("column", column),
+            "symbol": str(value.get("symbol") or value.get("expression") or ""),
+        }
+    return {
+        "file": file_path,
+        "line": line,
+        "column": column,
+        "symbol": str(value or ""),
+    }
+
+
+def _node_order(node: Any) -> int | None:
+    value = getattr(node, "statement_order", None)
+    if isinstance(value, int):
+        return value
+    line = getattr(node, "line", None)
+    return line if isinstance(line, int) else None
+
+
+def _guards_are_on_serialized_path(path: DataFlowPath, guards: tuple[Any, ...]) -> bool:
+    node_ids = [str(getattr(node, "node_id", "") or "") for node in path.nodes]
+    source_id = str(getattr(path.source, "node_id", "") or "")
+    sink_id = str(getattr(path.sink, "node_id", "") or "")
+    guard_ids = [str(getattr(node, "node_id", "") or "") for node in guards]
+    if (
+        not source_id
+        or not sink_id
+        or any(not guard_id for guard_id in guard_ids)
+        or source_id not in node_ids
+        or sink_id not in node_ids
+        or any(guard_id not in node_ids for guard_id in guard_ids)
+    ):
+        return False
+    source_index = node_ids.index(source_id)
+    sink_index = node_ids.index(sink_id)
+    if not all(source_index <= node_ids.index(guard_id) <= sink_index for guard_id in guard_ids):
+        return False
+    edge_pairs = {
+        (
+            str(getattr(edge, "source_id", "") or ""),
+            str(getattr(edge, "target_id", "") or ""),
+        )
+        for edge in path.edges
+    }
+    return bool(
+        source_index < sink_index
+        and all(
+            (left, right) in edge_pairs
+            for left, right in zip(
+                node_ids[source_index:sink_index],
+                node_ids[source_index + 1:sink_index + 1],
+            )
+        )
+    )
+
+
 __all__ = [
     "AUDIT_SCHEMA_VERSION",
+    "STRUCTURED_DATAFLOW_SCHEMA_VERSION",
     "AUDIT_CASE_STATUSES",
     "REVIEW_PRIORITIES",
     "AuditCase",

@@ -1,0 +1,132 @@
+- id: path-traversal-vulnerable
+  category: path_traversal
+  variant: vulnerable
+  target: path_traversal/vulnerable.py
+  expected:
+    verdict: needs_manual_validation
+    vulnerability_type: path_traversal_possible
+    route: /files
+    source: request.args
+    sink: open
+    guard: ""
+    file: path_traversal/vulnerable.py
+    relevant_lines:
+      - 5
+      - 6
+    root_cause: externally controlled path reaches a file-read sink without containment
+- id: path-traversal-protected
+  category: path_traversal
+  variant: protected
+  target: path_traversal/protected.py
+  expected:
+    verdict: protected_by_guard
+    vulnerability_type: path_traversal_possible
+    route: /files/safe
+    source: request.args
+    sink: open
+    guard: path_containment_guard
+    file: path_traversal/protected.py
+    relevant_lines:
+      - 9
+      - 11
+      - 13
+    root_cause: resolved candidate is confined to the allowed directory before file read
+- id: path-traversal-ambiguous
+  category: path_traversal
+  variant: ambiguous
+  target: path_traversal/ambiguous.py
+  expected:
+    verdict: needs_manual_validation
+    vulnerability_type: path_traversal_possible
+    route: /files/delegated
+    source: request.args
+    sink: open
+    guard: unresolved_helper
+    file: path_traversal/ambiguous.py
+    relevant_lines:
+      - 5
+      - 6
+      - 7
+    root_cause: unresolved helper prevents a local proof of path containment
+- id: path-traversal-false-positive-trap
+  category: path_traversal
+  variant: false_positive_trap
+  target: path_traversal/false_positive_trap.py
+  expected:
+    verdict: likely_false_positive
+    vulnerability_type: path_traversal_possible
+    route: /files/index
+    source: ""
+    sink: ""
+    guard: ""
+    file: path_traversal/false_positive_trap.py
+    relevant_lines:
+    root_cause: user path is used only as a label and never reaches the constant file sink
+    expected_no_audit_case: true
+- id: idor-bola-vulnerable
+  category: idor_bola
+  variant: vulnerable
+  target: idor_bola/vulnerable.py
+  expected:
+    verdict: needs_manual_validation
+    vulnerability_type: idor_bola_possible
+    route: /documents/<document_id>
+    source: document_id
+    sink: filter_by
+    guard: authentication_guard
+    file: idor_bola/vulnerable.py
+    relevant_lines:
+      - 5
+      - 6
+      - 7
+    root_cause: externally controlled resource id is loaded without owner or tenant binding
+- id: idor-bola-protected
+  category: idor_bola
+  variant: protected
+  target: idor_bola/protected.py
+  expected:
+    verdict: protected_by_guard
+    vulnerability_type: idor_bola_possible
+    route: /documents/<document_id>/safe
+    source: document_id
+    sink: filter_by
+    guard: ownership_guard
+    file: idor_bola/protected.py
+    relevant_lines:
+      - 5
+      - 6
+      - 7
+    root_cause: resource lookup is bound to the current owner before sensitive return
+- id: idor-bola-ambiguous
+  category: idor_bola
+  variant: ambiguous
+  target: idor_bola/ambiguous.py
+  expected:
+    verdict: needs_manual_validation
+    vulnerability_type: idor_bola_possible
+    route: /documents/<document_id>/delegated
+    source: document_id
+    sink: filter_by
+    guard: unresolved_helper
+    file: idor_bola/ambiguous.py
+    relevant_lines:
+      - 5
+      - 6
+      - 7
+      - 8
+    root_cause: delegated authorization cannot be proven from the local source
+- id: idor-bola-false-positive-trap
+  category: idor_bola
+  variant: false_positive_trap
+  target: idor_bola/false_positive_trap.py
+  expected:
+    verdict: likely_false_positive
+    vulnerability_type: idor_bola_possible
+    route: /profile
+    source: ""
+    sink: ""
+    guard: ""
+    file: idor_bola/false_positive_trap.py
+    relevant_lines:
+    root_cause: local user id is not an externally controlled sensitive-resource identifier
+    expected_no_audit_case: true
