@@ -47,13 +47,27 @@ def _arguments() -> argparse.Namespace:
         "--only-cwe",
         action="append",
         default=[],
-        help="Limit cases to a CWE (repeat or use comma-separated values)",
+        help="Limit cases to a CWE; incompatible with a frozen cohort",
     )
     parser.add_argument(
         "--max-cases",
         type=int,
         default=0,
-        help="Maximum cases after deterministic sorting (0 means all)",
+        help=(
+            "Maximum cases after deterministic sorting; incompatible with "
+            "a frozen cohort"
+        ),
+    )
+    parser.add_argument(
+        "--experiment-manifest",
+        default="",
+        help="Verified frozen SusVibes experiment manifest",
+    )
+    parser.add_argument(
+        "--cohort",
+        choices=["smoke", "canary", "holdout", "full"],
+        default="",
+        help="Frozen cohort selected from --experiment-manifest",
     )
     parser.add_argument(
         "--patch-field",
@@ -136,6 +150,64 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _validate_manifest_output(
+    manifest_path: Path,
+    *,
+    dataset: Path,
+    experiment_manifest: Path | None = None,
+) -> None:
+    protected_inputs = {dataset.resolve()}
+    if experiment_manifest is not None:
+        protected_inputs.add(experiment_manifest.resolve())
+    if manifest_path.resolve() in protected_inputs:
+        raise ValueError(
+            "cache manifest output must not overwrite a frozen input"
+        )
+
+
+def _select_cases(
+    dataset: Path,
+    *,
+    only_cwes: Iterable[str] = (),
+    max_cases: int = 0,
+    instance_ids: Iterable[str] = (),
+) -> list[dict[str, object]]:
+    requested_ids = tuple(str(value) for value in instance_ids)
+    if len(requested_ids) != len(set(requested_ids)):
+        raise ValueError("cache-preparation instance IDs must be unique")
+    configured_cwes = tuple(only_cwes)
+    if requested_ids and (configured_cwes or max_cases):
+        raise ValueError(
+            "explicit instance IDs cannot be combined with only_cwes or "
+            "max_cases"
+        )
+    cases = load_susvibes_cases(
+        dataset,
+        only_cwes=configured_cwes,
+        max_cases=0 if requested_ids else max_cases,
+    )
+    if not requested_ids:
+        return cases
+    cases_by_id = {
+        str(case["instance_id"]): case
+        for case in cases
+    }
+    missing = [
+        instance_id
+        for instance_id in requested_ids
+        if instance_id not in cases_by_id
+    ]
+    if missing:
+        raise ValueError(
+            "cache-preparation instance IDs are absent from the dataset: "
+            + ", ".join(missing)
+        )
+    return [
+        cases_by_id[instance_id]
+        for instance_id in requested_ids
+    ]
 
 
 def _ensure_repository(cache_root: Path, project: str) -> Path:
@@ -263,6 +335,8 @@ def prepare_cache(
     *,
     only_cwes: Iterable[str] = (),
     max_cases: int = 0,
+    instance_ids: Iterable[str] = (),
+    selection_provenance: dict[str, str] | None = None,
     patch_fields: Iterable[str] = ("security_patch",),
     allow_network: bool = False,
 ) -> dict[str, object]:
@@ -270,10 +344,13 @@ def prepare_cache(
         raise ValueError(
             "network preparation is disabled; pass --allow-network explicitly"
         )
-    cases = load_susvibes_cases(
+    configured_cwes = tuple(str(value) for value in only_cwes)
+    requested_ids = tuple(str(value) for value in instance_ids)
+    cases = _select_cases(
         dataset,
-        only_cwes=only_cwes,
+        only_cwes=configured_cwes,
         max_cases=max_cases,
+        instance_ids=requested_ids,
     )
     selected_fields = tuple(dict.fromkeys(patch_fields))
     allowed_fields = {
@@ -331,17 +408,36 @@ def prepare_cache(
                         f"{project}@{revision}:{path}"
                     )
 
-    return {
+    payload: dict[str, object] = {
         "schema_version": "belief.susvibes_cache_manifest.v1",
         "dataset": dataset.name,
         "dataset_sha256": _sha256(dataset),
         "case_count": len(cases),
         "project_count": len(project_rows),
-        "only_cwes": sorted(set(only_cwes)),
+        "only_cwes": sorted(set(configured_cwes)),
         "patch_fields": list(selected_fields),
         "projects": project_rows,
         "offline_verification_passed": True,
     }
+    if requested_ids:
+        selection: dict[str, object] = {
+            "kind": "explicit_instance_ids",
+            "case_count": len(requested_ids),
+            "instance_ids_sha256": hashlib.sha256(
+                json.dumps(
+                    requested_ids,
+                    separators=(",", ":"),
+                    ensure_ascii=True,
+                ).encode("utf-8")
+            ).hexdigest(),
+        }
+        if selection_provenance:
+            selection["provenance"] = {
+                str(key): str(value)
+                for key, value in sorted(selection_provenance.items())
+            }
+        payload["selection"] = selection
+    return payload
 
 
 def main() -> int:
@@ -354,11 +450,42 @@ def main() -> int:
         else cache_root / "belief-cache-manifest.json"
     )
     try:
+        experiment_manifest = str(args.experiment_manifest or "")
+        cohort = str(args.cohort or "")
+        if bool(experiment_manifest) != bool(cohort):
+            raise ValueError(
+                "--experiment-manifest and --cohort must be used together"
+            )
+        experiment_manifest_path = (
+            Path(experiment_manifest).resolve()
+            if experiment_manifest
+            else None
+        )
+        _validate_manifest_output(
+            manifest_path,
+            dataset=dataset,
+            experiment_manifest=experiment_manifest_path,
+        )
+        instance_ids: tuple[str, ...] = ()
+        selection_provenance: dict[str, str] | None = None
+        if experiment_manifest_path is not None:
+            from belief.benchmark.susvibes_experiment import (
+                load_experiment_cohort,
+            )
+
+            loaded_ids, selection_provenance = load_experiment_cohort(
+                experiment_manifest_path,
+                cohort,
+                dataset=dataset,
+            )
+            instance_ids = tuple(loaded_ids)
         payload = prepare_cache(
             dataset,
             cache_root,
             only_cwes=_cwe_values(args.only_cwe),
             max_cases=int(args.max_cases),
+            instance_ids=instance_ids,
+            selection_provenance=selection_provenance,
             patch_fields=tuple(args.patch_field or ("security_patch",)),
             allow_network=bool(args.allow_network),
         )

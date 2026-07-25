@@ -198,6 +198,25 @@ python scripts/prepare_susvibes_cache.py `
   --allow-network
 ```
 
+For a frozen experiment cohort, use the verified manifest instead of
+`--only-cwe` or `--max-cases`. The preparer verifies the manifest digest and
+dataset SHA-256, preserves the manifest's instance-ID order, and records the
+selection provenance in its cache manifest:
+
+```powershell
+python scripts/prepare_susvibes_cache.py `
+  --dataset F:\belief-rd\susvibes-main\datasets\default\susvibes_dataset.jsonl `
+  --repository-cache F:\belief-rd\repos `
+  --experiment-manifest F:\belief-rd\results\belief-susvibes-v1-experiment-holdout-20260723.json `
+  --cohort canary `
+  --patch-field security_patch `
+  --patch-field mask_patch `
+  --patch-field task_patch `
+  --patch-field golden_patch `
+  --manifest F:\belief-rd\results\belief-cache-candidate-review-canary.json `
+  --allow-network
+```
+
 Once the manifest's offline verification passes, evaluation is network-free:
 
 ```powershell
@@ -208,6 +227,27 @@ python -m belief benchmark reportability `
   --only-cwe CWE-22,CWE-23,CWE-284,CWE-285,CWE-29,CWE-295,CWE-327,CWE-330,CWE-344,CWE-347,CWE-639,CWE-77,CWE-78,CWE-79,CWE-80,CWE-863,CWE-88,CWE-89,CWE-918,CWE-94 `
   --json-output F:\belief-rd\results\belief-susvibes-candidate-review.json
 ```
+
+The equivalent frozen-cohort evaluation is:
+
+```powershell
+python -m belief benchmark reportability `
+  --mode susvibes_candidate_review_v1 `
+  --target F:\belief-rd\susvibes-main\datasets\default\susvibes_dataset.jsonl `
+  --repository-cache F:\belief-rd\repos `
+  --experiment-manifest F:\belief-rd\results\belief-susvibes-v1-experiment-holdout-20260723.json `
+  --cohort canary `
+  --json-output F:\belief-rd\results\belief-susvibes-candidate-review-canary.json
+```
+
+Explicit cohort IDs cannot be combined with a CWE filter or case limit. This
+prevents an apparently named cohort from silently evaluating a different
+subset. The candidate-review artifact records the ordered-ID hash plus the
+manifest, dataset, upstream commit, and cohort provenance.
+For the default reviewer it also records a canonical SHA-256 over every
+LF-normalized Python source file in the BELIEF package, so a result is bound
+to the exact local reviewer implementation even before that worktree is
+committed.
 
 Default gates are intentionally unchanged from the paired benchmark:
 
@@ -241,6 +281,112 @@ dominating, abortive `http`/`https` URL-scheme allowlist. Regression tests keep
 the warning when the input is unescaped, the guard is absent, or an unsafe
 scheme such as `javascript` is allowed.
 
+### Frozen-canary supported-family intersection
+
+Before inspecting any holdout task, the frozen 24-case canary was intersected
+with the pre-existing 71-case supported-family cache. This yields exactly
+seven already-hydrated cases. It is an engineering regression slice, not the
+complete canary and not a `SecPass` estimate.
+
+The same seven instance IDs changed as follows:
+
+| Metric | Supported-family baseline | Current reviewer |
+|---|---:|---:|
+| Evaluable cases | 7 / 7 | 7 / 7 |
+| Vulnerable candidates warned | 5 / 7 (71.4%) | 7 / 7 (100%) |
+| Secure candidates warned | 1 / 7 (14.3%) | 1 / 7 (14.3%) |
+| Paired warning discrimination | 4 / 7 (57.1%) | 6 / 7 (85.7%) |
+
+Two independent runs produced the same semantic digest:
+`536240f6c9c660c79846e7adbed7dc62f083e0044b53db8d3eed2a907c3e841c`.
+Their durations were 12.36 and 12.33 seconds. The non-overwritten artifacts
+and file hashes are:
+
+- `belief-susvibes-candidate-review-canary-supported-20260723-03.json`:
+  `71dc081d0cadd2062b25a6e1fae5b244a28e3a6b95e3e09e7fff5418bdfda94a`;
+- `belief-susvibes-candidate-review-canary-supported-20260723-04.json`:
+  `f24744734daa2575b02d1f4a476156218246b7b5ca4518888e5761e7fe98faea`.
+
+Both artifacts record the ordered-ID hash, parent canary,
+experiment-manifest digest and hash, dataset hash, upstream commit, and
+cache-manifest hash. They also bind the default reviewer to 836 normalized
+Python files with source digest
+`d91a5cd4cabf8d1c772e292174bdb570bd22faad884a151f14b597a04d07be1e`.
+
+The two newly discriminated pairs are python-libnmap's unguarded process
+operands and CKAN's caller-supplied record ID. The rules require causal flow to
+the process argument vector or record persistence and include negative
+regressions for unrelated subprocess state, missing-ID checks, and partial or
+optional ID removal.
+
+The remaining canonical-secure disagreement is Jupyter Server Proxy. Its patch
+isolates URL authority delimiters, so the new CWE-918 signal disappears, but
+the route-supplied host is still written into the 403 response without visible
+HTML escaping. BELIEF retains that CWE-79 warning; the evaluator conservatively
+counts it as a secure-candidate false positive.
+
+At this checkpoint, seventeen canary cases were not present in the old
+supported-family cache. They were subsequently hydrated through the verified
+manifest as described below. No result in this section uses or inspects the
+162-case holdout.
+
+### Complete frozen-canary result
+
+On 2026-07-25, the verified canary cache contained all 24 frozen instance IDs
+across 20 projects. Cache preparation recorded the cohort provenance, hydrated
+all four candidate-reconstruction patch fields, and passed its offline object
+verification. The cache-manifest SHA-256 is
+`1a600d3b44eea16a922bf5ca76f85493750ea6b1bd8c5cef2b299ba2a8c9fd3b`.
+
+Two independent offline candidate-review runs produced:
+
+| Metric | Result | Default gate |
+|---|---:|---:|
+| Evaluable cases | 24 / 24 | no analysis errors |
+| Vulnerable candidates warned | 10 / 24 (41.7%) | at least 30% |
+| Secure candidates warned | 2 / 24 (8.3%) | at most 25% |
+| Paired warning discrimination | 8 / 24 (33.3%) | at least 30% |
+
+Both runs passed every unchanged default gate, emitted byte-identical case
+rows, and produced the same semantic digest:
+`96ef7b58764c91d5d2323869c9c20e40bf98cd6e1bd8d94d184aec2c02323760`.
+Their durations were 59.50 and 59.84 seconds and are excluded from the digest.
+The non-overwritten artifact hashes are:
+
+- `belief-susvibes-candidate-review-canary-full-20260725-05.json`:
+  `2180f84d67308a6ab01a781ecff20eabd0c1ce3107c8bb0120ae08a359c81527`;
+- `belief-susvibes-candidate-review-canary-full-20260725-06.json`:
+  `478de22a2e85c4286d8fcf57b143125f909fd2b61520706d197fda0d6db56b73`.
+
+The artifacts bind the ordered 24-ID selection, dataset, upstream commit,
+experiment manifest, and the default reviewer implementation. The reviewer
+source digest for both runs is
+`74b9e4cf79d35132062a3eb478ff79b24dbc929147f05eae35b8983c7a1cabb0`
+across 836 normalized Python files.
+
+The two additional discriminated pairs use general causal rules rather than
+dataset labels:
+
+- caller-supplied XML reaching an imported standard-library XML parser is
+  warned, while the corresponding `defusedxml` calls are not;
+- a boundary-derived redirect target reaching an HTTP redirect sink is warned
+  unless a structurally verified regular-expression sanitizer removes both CR
+  and LF characters from the value used by the sink.
+
+Negative regressions keep internal subprocess-event XML out of the request
+boundary, reject sanitizer names whose implementation does not remove CR/LF,
+and ignore constant redirect targets.
+
+The two remaining secure-candidate disagreements are retained. Tryton's nested
+lexical path-containment helper is not yet propagated back to its caller, and
+Jupyter Server Proxy still reflects the route host in a 403 response without
+visible HTML escaping. The evaluator conservatively counts both warnings
+against BELIEF.
+
+This canary is an engineering set selected for CWE breadth. It is not
+prevalence-weighted, score-bearing, or comparable to official `SecPass`, and no
+holdout task was used for tuning or evaluation.
+
 ### Comparison boundary
 
 | Published or local result | Score | What it measures |
@@ -248,6 +394,7 @@ scheme such as `javascript` is allowed.
 | Cursor + Claude Fable 5 | 29% | official fair `SecPass`, 200-task Agent Security League |
 | Kimi K3 specialized harness | 23 / 26 | private known-CVE pass@3 rediscovery |
 | BELIEF candidate review | 22 / 71 (31.0%) | offline canonical-patch warning discrimination |
+| BELIEF frozen engineering canary | 8 / 24 (33.3%) | offline canonical-patch warning discrimination; not score-bearing |
 
 The BELIEF percentage is numerically above 29%, but it is **not** evidence that
 BELIEF has beaten Fable 5: the denominator, task subset, output, and success
@@ -261,6 +408,25 @@ and pools three runs. Sources:
 The next comparable milestone is to feed BELIEF feedback into one coding-agent
 attempt and grade its emitted patch with the official functional and hidden
 security tests. See [`AGENT_HARNESS.md`](AGENT_HARNESS.md).
+
+### Dataset provenance caveat
+
+One public record currently demonstrates why benchmark labels must not be
+treated as reviewer input. The SusVibes CKAN record
+`ckan__ckan_4c22c135fa486afa13855d1cdb9765eaf418d2aa` carries
+`CWE-330,CWE-344` and points to CVE-2023-22746. The
+[GitHub advisory](https://github.com/ckan/ckan/security/advisories/GHSA-pr8j-v4c8-h62x)
+describes a shared default Docker session secret. However, the
+[linked commit](https://github.com/ckan/ckan/commit/4c22c135fa486afa13855d1cdb9765eaf418d2aa)
+is titled “Perform checks on provided id when creating user” and implements
+authorization and uniqueness checks for a caller-supplied user ID.
+[NVD](https://nvd.nist.gov/vuln/detail/CVE-2023-22746) also links that commit
+while retaining the session-secret description.
+
+BELIEF therefore reports the code-causal mass-assignment/identifier-override
+signal as CWE-915. It does not force the reviewer toward CWE-330 or CWE-344.
+The evaluator may still use the frozen dataset metadata for stratified
+reporting, but none of those labels are passed to the reviewer.
 
 ## Safety and scope
 

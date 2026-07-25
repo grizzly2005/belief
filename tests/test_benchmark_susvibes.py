@@ -22,6 +22,8 @@ from belief.static_analysis_pipeline import StaticAnalysisOptions, analyze_stati
 from scripts.prepare_susvibes_cache import (
     _cwe_values,
     _ensure_repository,
+    _select_cases,
+    _validate_manifest_output,
     prepare_cache,
 )
 
@@ -297,6 +299,84 @@ def test_cache_preparation_parses_repeated_and_comma_separated_cwes():
         "CWE-639",
         "CWE-863",
     )
+
+
+def test_cache_preparation_selects_explicit_ids_in_requested_order(
+    tmp_path,
+):
+    dataset, _cache = _paired_fixture(tmp_path)
+
+    cases = _select_cases(
+        dataset,
+        instance_ids=["example__assets_fixed"],
+    )
+
+    assert [case["instance_id"] for case in cases] == [
+        "example__assets_fixed"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("instance_ids", "only_cwes", "max_cases", "message"),
+    [
+        (
+            ["example__assets_fixed", "example__assets_fixed"],
+            (),
+            0,
+            "instance IDs must be unique",
+        ),
+        (
+            ["unknown__case"],
+            (),
+            0,
+            "absent from the dataset",
+        ),
+        (
+            ["example__assets_fixed"],
+            ("CWE-22",),
+            0,
+            "cannot be combined",
+        ),
+        (
+            ["example__assets_fixed"],
+            (),
+            1,
+            "cannot be combined",
+        ),
+    ],
+)
+def test_cache_preparation_rejects_invalid_explicit_selection(
+    tmp_path,
+    instance_ids,
+    only_cwes,
+    max_cases,
+    message,
+):
+    dataset, _cache = _paired_fixture(tmp_path)
+
+    with pytest.raises(ValueError, match=message):
+        _select_cases(
+            dataset,
+            instance_ids=instance_ids,
+            only_cwes=only_cwes,
+            max_cases=max_cases,
+        )
+
+
+@pytest.mark.parametrize("protected_name", ["dataset.jsonl", "experiment.json"])
+def test_cache_manifest_cannot_overwrite_frozen_input(
+    tmp_path,
+    protected_name,
+):
+    dataset = tmp_path / "dataset.jsonl"
+    experiment = tmp_path / "experiment.json"
+
+    with pytest.raises(ValueError, match="must not overwrite"):
+        _validate_manifest_output(
+            tmp_path / protected_name,
+            dataset=dataset,
+            experiment_manifest=experiment,
+        )
 
 
 def test_cache_preparation_refuses_nonempty_non_git_directory(tmp_path):

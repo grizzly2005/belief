@@ -179,6 +179,18 @@ class SecurityPatternExtractor:
             beliefs.extend(
                 self._check_patch_boundary_view_access(tree, module_scope)
             )
+            beliefs.extend(
+                self._check_patch_proxy_route_authority(tree, module_scope)
+            )
+            beliefs.extend(
+                self._check_patch_unsafe_xml_parsing(tree, module_scope)
+            )
+            beliefs.extend(
+                self._check_patch_redirect_header_injection(tree, module_scope)
+            )
+            beliefs.extend(
+                self._check_patch_boundary_option_injection(tree, module_scope)
+            )
 
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -200,6 +212,9 @@ class SecurityPatternExtractor:
                     )
                     beliefs.extend(
                         self._check_patch_boundary_authorization_context(node, scope)
+                    )
+                    beliefs.extend(
+                        self._check_patch_boundary_identifier_override(node, scope)
                     )
                     beliefs.extend(
                         self._check_patch_boundary_sql_fragments(node, scope)
@@ -1286,6 +1301,75 @@ class SecurityPatternExtractor:
                 ]
         return []
 
+    def _check_patch_boundary_identifier_override(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: Scope,
+    ) -> list[Belief]:
+        """Detect external record identifiers persisted without a field guard."""
+
+        if not _is_record_creation_function(node):
+            return []
+        boundary_sources = {
+            name
+            for name in _function_parameter_names(node) - {"self", "cls"}
+            if _is_mapping_boundary_name(name)
+        }
+        if (
+            not boundary_sources
+            or not _documents_external_identifier(node)
+        ):
+            return []
+        aliases = _flow_aliases(node, boundary_sources)
+        sink = next(
+            (
+                candidate
+                for candidate in _ordered_function_events(node)
+                if isinstance(candidate, ast.Call)
+                and _is_record_persistence_call(candidate)
+                and bool(_referenced_names(candidate) & aliases)
+            ),
+            None,
+        )
+        if sink is None or _has_external_identifier_guard(
+            node,
+            aliases,
+            before_line=sink.lineno,
+        ):
+            return []
+
+        source = sorted(boundary_sources)[0]
+        sink_name = _ast_call_name(sink) or "record persistence"
+        return [
+            self._make_belief(
+                "record.external_identifier_is_authorized == true",
+                (
+                    f"Externally supplied record identifier from '{source}' "
+                    f"reaches '{sink_name}' at line {sink.lineno} without a "
+                    "field-specific privilege, uniqueness, or removal guard "
+                    "(CWE-915)."
+                ),
+                scope,
+                sink.lineno,
+                "high",
+                "CWE-915",
+                variables=(source,),
+                metadata={
+                    "analysis_profile": "patch_review",
+                    "dataflow": {
+                        "source": source,
+                        "source_line": node.lineno,
+                        "sink": sink_name,
+                        "sink_line": sink.lineno,
+                        "path": [source, sink_name],
+                        "missing_guarantees": [
+                            "record.external_identifier_is_authorized == true"
+                        ],
+                    },
+                },
+            )
+        ]
+
     def _check_patch_boundary_sql_fragments(
         self,
         node: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -1553,6 +1637,24 @@ class SecurityPatternExtractor:
                 *(keyword.value for keyword in event.keywords),
             ]
             if not values:
+                continue
+            if (
+                short_sink in {"write", "finish"}
+                and (
+                    forwarded_response_aliases
+                    := _forwarded_http_response_aliases(
+                        node,
+                        before_line=event.lineno,
+                    )
+                )
+                and all(
+                    _is_http_response_payload(
+                        value,
+                        forwarded_response_aliases,
+                    )
+                    for value in values
+                )
+            ):
                 continue
             sources: set[str] = set()
             for value in values:
@@ -1858,6 +1960,382 @@ class SecurityPatternExtractor:
                     )
                 )
                 break
+        return beliefs
+
+    def _check_patch_proxy_route_authority(
+        self,
+        tree: ast.Module,
+        module_scope: Scope,
+    ) -> list[Belief]:
+        """Detect proxy route captures that do not isolate URL authorities."""
+
+        if not _module_has_outbound_http_request(tree):
+            return []
+
+        beliefs: list[Belief] = []
+        outbound_handler_names = _outbound_http_handler_names(tree)
+        class_names: dict[int, str] = {}
+        for class_node in (
+            candidate
+            for candidate in ast.walk(tree)
+            if isinstance(candidate, ast.ClassDef)
+        ):
+            for child in class_node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    class_names[id(child)] = class_node.name
+
+        for function in (
+            candidate
+            for candidate in ast.walk(tree)
+            if isinstance(candidate, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ):
+            scope = Scope(
+                file_path=module_scope.file_path,
+                function_name=function.name,
+                class_name=class_names.get(id(function)),
+                module=module_scope.module,
+                line_start=function.lineno,
+                line_end=function.end_lineno,
+            )
+            for call in (
+                candidate
+                for candidate in ast.walk(function)
+                if isinstance(candidate, ast.Call)
+                and _is_route_registration_call(candidate)
+            ):
+                if not (
+                    _node_has_outbound_http_request(function)
+                    or _route_references_handler(
+                        call,
+                        outbound_handler_names,
+                    )
+                ):
+                    continue
+                for literal in (
+                    candidate
+                    for candidate in ast.walk(call)
+                    if isinstance(candidate, ast.Constant)
+                    and isinstance(candidate.value, str)
+                ):
+                    if not _proxy_route_has_ambiguous_authority(literal.value):
+                        continue
+                    beliefs.append(
+                        self._make_belief(
+                            "proxy.route_authority_isolated == true",
+                            (
+                                f"Proxy route at line {literal.lineno} captures a "
+                                "host without excluding URL authority delimiters "
+                                "before an outbound request (CWE-918)."
+                            ),
+                            scope,
+                            literal.lineno,
+                            "high",
+                            "CWE-918",
+                            variables=("route_host",),
+                            metadata={
+                                "analysis_profile": "patch_review",
+                                "dataflow": {
+                                    "source": "route_host_capture",
+                                    "source_line": literal.lineno,
+                                    "sink": "outbound HTTP request",
+                                    "sink_line": literal.lineno,
+                                    "path": [
+                                        "route_host_capture",
+                                        "outbound HTTP request",
+                                    ],
+                                    "missing_guarantees": [
+                                        "proxy.route_authority_isolated == true"
+                                    ],
+                                },
+                            },
+                        )
+                    )
+        return beliefs
+
+    def _check_patch_unsafe_xml_parsing(
+        self,
+        tree: ast.Module,
+        module_scope: Scope,
+    ) -> list[Belief]:
+        """Detect boundary data parsed by an imported unsafe stdlib XML parser."""
+
+        unsafe_calls = _unsafe_xml_parser_call_names(tree)
+        if not unsafe_calls:
+            return []
+
+        beliefs: list[Belief] = []
+        class_names = _function_class_names(tree)
+        for function in (
+            candidate
+            for candidate in ast.walk(tree)
+            if isinstance(candidate, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ):
+            boundary_sources = (
+                _function_parameter_names(function) - {"self", "cls"}
+            )
+            if not boundary_sources:
+                continue
+            aliases = _flow_aliases(function, boundary_sources)
+            scope = Scope(
+                file_path=module_scope.file_path,
+                function_name=function.name,
+                class_name=class_names.get(id(function)),
+                module=module_scope.module,
+                line_start=function.lineno,
+                line_end=function.end_lineno,
+            )
+            for call in (
+                event
+                for event in _ordered_function_events(function)
+                if isinstance(event, ast.Call)
+                and _ast_call_name(event) in unsafe_calls
+            ):
+                values = [
+                    *call.args,
+                    *(keyword.value for keyword in call.keywords),
+                ]
+                sources = {
+                    source
+                    for value in values
+                    for source in (_referenced_names(value) & aliases)
+                }
+                if not sources or not _is_external_xml_boundary(
+                    function,
+                    sources=sources,
+                    values=values,
+                ):
+                    continue
+                source = sorted(sources)[0]
+                sink = _ast_call_name(call)
+                beliefs.append(
+                    self._make_belief(
+                        "xml.parser_rejects_unsafe_entities == true",
+                        (
+                            f"Boundary XML from '{source}' reaches stdlib parser "
+                            f"'{sink}' at line {call.lineno} without a hardened "
+                            "entity-expansion policy (CWE-611)."
+                        ),
+                        scope,
+                        call.lineno,
+                        "high",
+                        "CWE-611",
+                        variables=tuple(sorted(sources)),
+                        metadata={
+                            "analysis_profile": "patch_review",
+                            "dataflow": {
+                                "source": source,
+                                "source_line": function.lineno,
+                                "sink": sink,
+                                "sink_line": call.lineno,
+                                "path": [source, sink],
+                                "missing_guarantees": [
+                                    "xml.parser_rejects_unsafe_entities == true"
+                                ],
+                            },
+                        },
+                    )
+                )
+        return beliefs
+
+    def _check_patch_redirect_header_injection(
+        self,
+        tree: ast.Module,
+        module_scope: Scope,
+    ) -> list[Belief]:
+        """Detect boundary redirect targets without a proven CR/LF sanitizer."""
+
+        sanitizers = _proven_crlf_sanitizer_names(tree)
+        class_names = _function_class_names(tree)
+        class_attributes: dict[str, set[str]] = {}
+        for class_node in (
+            candidate
+            for candidate in ast.walk(tree)
+            if isinstance(candidate, ast.ClassDef)
+        ):
+            initializer = next(
+                (
+                    child
+                    for child in class_node.body
+                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and child.name == "__init__"
+                ),
+                None,
+            )
+            if initializer is None:
+                continue
+            class_attributes[class_node.name] = {
+                attribute
+                for attribute, (source, _) in (
+                    _boundary_backed_instance_attributes(initializer).items()
+                )
+                if (
+                    _is_redirect_boundary_name(source)
+                    or _is_redirect_boundary_name(attribute)
+                )
+            }
+
+        beliefs: list[Belief] = []
+        for function in (
+            candidate
+            for candidate in ast.walk(tree)
+            if isinstance(candidate, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ):
+            class_name = class_names.get(id(function))
+            tainted_attributes = class_attributes.get(class_name or "", set())
+            boundary_sources = {
+                name
+                for name in _function_parameter_names(function) - {"self", "cls"}
+                if _is_redirect_boundary_name(name)
+            }
+            if (
+                not boundary_sources
+                and not tainted_attributes
+                and not _references_request_context(function)
+            ):
+                continue
+
+            aliases = _redirect_taint_aliases(
+                function,
+                boundary_sources=boundary_sources,
+                tainted_attributes=tainted_attributes,
+                sanitizers=sanitizers,
+            )
+            scope = Scope(
+                file_path=module_scope.file_path,
+                function_name=function.name,
+                class_name=class_name,
+                module=module_scope.module,
+                line_start=function.lineno,
+                line_end=function.end_lineno,
+            )
+            for call in (
+                event
+                for event in _ordered_function_events(function)
+                if isinstance(event, ast.Call)
+                and _is_redirect_sink_call(event)
+            ):
+                for value in _redirect_call_values(call):
+                    if _expression_is_crlf_sanitized(value, sanitizers):
+                        continue
+                    if not _expression_has_redirect_taint(
+                        value,
+                        aliases=aliases,
+                        tainted_attributes=tainted_attributes,
+                    ):
+                        continue
+                    sink = _ast_call_name(call)
+                    source = _redirect_source_label(
+                        value,
+                        aliases=aliases,
+                        tainted_attributes=tainted_attributes,
+                    )
+                    beliefs.append(
+                        self._make_belief(
+                            "http.redirect_target_excludes_crlf == true",
+                            (
+                                f"Boundary redirect target '{source}' reaches "
+                                f"'{sink}' at line {call.lineno} without proven "
+                                "CR/LF removal (CWE-93)."
+                            ),
+                            scope,
+                            call.lineno,
+                            "high",
+                            "CWE-93",
+                            variables=(source,),
+                            metadata={
+                                "analysis_profile": "patch_review",
+                                "dataflow": {
+                                    "source": source,
+                                    "source_line": function.lineno,
+                                    "sink": sink,
+                                    "sink_line": call.lineno,
+                                    "path": [source, sink],
+                                    "missing_guarantees": [
+                                        "http.redirect_target_excludes_crlf == true"
+                                    ],
+                                },
+                            },
+                        )
+                    )
+                    break
+        return beliefs
+
+    def _check_patch_boundary_option_injection(
+        self,
+        tree: ast.Module,
+        module_scope: Scope,
+    ) -> list[Belief]:
+        """Detect boundary list items that become process options."""
+
+        beliefs: list[Belief] = []
+        for class_node in (
+            candidate
+            for candidate in ast.walk(tree)
+            if isinstance(candidate, ast.ClassDef)
+        ):
+            methods = {
+                child.name: child
+                for child in class_node.body
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            initializer = methods.get("__init__")
+            if initializer is None or not _class_has_process_sink(class_node):
+                continue
+            attributes = _boundary_backed_instance_attributes(initializer)
+            for attribute, (source, line) in sorted(attributes.items()):
+                if _is_explicit_process_option_source(source, attribute):
+                    continue
+                if not _class_builds_process_args_from_attribute(
+                    class_node,
+                    attribute,
+                ):
+                    continue
+                if _attribute_has_option_prefix_guard(
+                    initializer,
+                    methods,
+                    attribute,
+                ):
+                    continue
+                scope = Scope(
+                    file_path=module_scope.file_path,
+                    function_name=initializer.name,
+                    class_name=class_node.name,
+                    module=module_scope.module,
+                    line_start=initializer.lineno,
+                    line_end=initializer.end_lineno,
+                )
+                beliefs.append(
+                    self._make_belief(
+                        "command.argument_cannot_be_option == true",
+                        (
+                            f"Boundary collection '{source}' reaches a process "
+                            "argument vector without an abortive leading-option "
+                            f"check at line {line} (CWE-88)."
+                        ),
+                        scope,
+                        line,
+                        "high",
+                        "CWE-88",
+                        variables=(source, attribute),
+                        metadata={
+                            "analysis_profile": "patch_review",
+                            "dataflow": {
+                                "source": source,
+                                "source_line": initializer.lineno,
+                                "sink": "process argument vector",
+                                "sink_line": line,
+                                "path": [
+                                    source,
+                                    f"self.{attribute}",
+                                    "process argument vector",
+                                ],
+                                "missing_guarantees": [
+                                    "command.argument_cannot_be_option == true"
+                                ],
+                            },
+                        },
+                    )
+                )
         return beliefs
 
     def _patch_path_belief(
@@ -2501,6 +2979,1113 @@ def _flow_aliases(
                 aliases.update(additions)
                 changed = True
     return aliases
+
+
+def _function_class_names(tree: ast.Module) -> dict[int, str]:
+    return {
+        id(child): class_node.name
+        for class_node in ast.walk(tree)
+        if isinstance(class_node, ast.ClassDef)
+        for child in class_node.body
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
+def _unsafe_xml_parser_call_names(tree: ast.Module) -> set[str]:
+    modules = {
+        "cElementTree": {"fromstring", "iterparse", "parse"},
+        "elementtree.ElementTree": {"fromstring", "iterparse", "parse"},
+        "xml.dom.minidom": {"parse", "parseString"},
+        "xml.dom.pulldom": {"parse", "parseString"},
+        "xml.etree.ElementTree": {"fromstring", "iterparse", "parse"},
+        "xml.etree.cElementTree": {"fromstring", "iterparse", "parse"},
+        "xml.sax": {"parse", "parseString"},
+    }
+    calls: set[str] = set()
+    for statement in ast.walk(tree):
+        if isinstance(statement, ast.Import):
+            for imported in statement.names:
+                methods = modules.get(imported.name)
+                if not methods:
+                    continue
+                prefix = imported.asname or imported.name
+                calls.update(f"{prefix}.{method}" for method in methods)
+            continue
+        if not isinstance(statement, ast.ImportFrom):
+            continue
+        module = str(statement.module or "")
+        if module in {"xml.etree", "xml.dom"}:
+            for imported in statement.names:
+                full_module = f"{module}.{imported.name}"
+                methods = modules.get(full_module)
+                if not methods:
+                    continue
+                prefix = imported.asname or imported.name
+                calls.update(f"{prefix}.{method}" for method in methods)
+            continue
+        methods = modules.get(module)
+        if not methods:
+            continue
+        for imported in statement.names:
+            if imported.name not in methods:
+                continue
+            calls.add(imported.asname or imported.name)
+    return calls
+
+
+def _is_external_xml_boundary(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    sources: set[str],
+    values: list[ast.AST],
+) -> bool:
+    if any(_references_request_context(value) for value in values):
+        return True
+    xml_tokens = {
+        "assertion",
+        "body",
+        "document",
+        "envelope",
+        "message",
+        "payload",
+        "response",
+        "saml",
+        "soap",
+        "xml",
+    }
+    source_tokens = {
+        token
+        for source in sources
+        for token in re.split(r"[^a-z0-9]+", source.lower())
+        if token
+    }
+    if source_tokens & xml_tokens:
+        return True
+    function_tokens = {
+        token
+        for token in re.split(r"[^a-z0-9]+", function.name.lower())
+        if token
+    }
+    if function_tokens & {"parse", "parser", "saml", "soap", "xml"}:
+        return True
+    docstring = (ast.get_docstring(function) or "").lower()
+    return bool(
+        re.search(r"\b(?:http|request|response|saml|soap|wire|xml)\b", docstring)
+    )
+
+
+def _proven_crlf_sanitizer_names(tree: ast.Module) -> set[str]:
+    regex_names: set[str] = set()
+    for statement in tree.body:
+        if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = statement.value
+        if (
+            value is None
+            or not isinstance(value, ast.Call)
+            or _ast_call_name(value).lower() not in {"compile", "re.compile"}
+            or not value.args
+            or not _is_crlf_pattern(value.args[0])
+        ):
+            continue
+        targets = (
+            statement.targets
+            if isinstance(statement, ast.Assign)
+            else [statement.target]
+        )
+        regex_names.update(
+            name
+            for target in targets
+            for name in _target_names(target)
+        )
+
+    return {
+        function.name
+        for function in tree.body
+        if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and _function_removes_crlf(function, regex_names)
+    }
+
+
+def _is_crlf_pattern(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Constant):
+        return False
+    value = node.value
+    if isinstance(value, bytes):
+        normalized = value.decode("latin-1", errors="ignore")
+    elif isinstance(value, str):
+        normalized = value
+    else:
+        return False
+    return (
+        ("\\r" in normalized and "\\n" in normalized)
+        or ("\r" in normalized and "\n" in normalized)
+    )
+
+
+def _function_removes_crlf(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    regex_names: set[str],
+) -> bool:
+    parameters = _function_parameter_names(function) - {"self", "cls"}
+    for returned in (
+        candidate
+        for candidate in ast.walk(function)
+        if isinstance(candidate, ast.Return) and candidate.value is not None
+    ):
+        for call in (
+            candidate
+            for candidate in ast.walk(returned.value)
+            if isinstance(candidate, ast.Call)
+            and _ast_call_name(candidate).rsplit(".", 1)[-1].lower() == "sub"
+        ):
+            if len(call.args) < 2:
+                continue
+            receiver_names = (
+                _referenced_names(call.func.value)
+                if isinstance(call.func, ast.Attribute)
+                else set()
+            )
+            replacement = call.args[0]
+            replacement_is_empty = (
+                isinstance(replacement, ast.Constant)
+                and replacement.value in {"", b""}
+            )
+            if (
+                replacement_is_empty
+                and bool(receiver_names & regex_names)
+                and bool(_referenced_names(call.args[1]) & parameters)
+            ):
+                return True
+    return False
+
+
+def _is_redirect_boundary_name(name: str) -> bool:
+    normalized = str(name or "").strip("_").lower().replace("-", "_")
+    tokens = set(normalized.split("_"))
+    return bool(
+        tokens
+        & {
+            "continue",
+            "destination",
+            "location",
+            "next",
+            "path",
+            "redirect",
+            "return",
+            "target",
+            "uri",
+            "url",
+        }
+    ) or normalized.endswith(
+        ("destination", "location", "path", "target", "uri", "url")
+    )
+
+
+def _redirect_taint_aliases(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    boundary_sources: set[str],
+    tainted_attributes: set[str],
+    sanitizers: set[str],
+) -> set[str]:
+    aliases = set(boundary_sources)
+    changed = True
+    while changed:
+        changed = False
+        for candidate in _ordered_function_events(function):
+            targets: set[str] = set()
+            value: ast.AST | None = None
+            if isinstance(candidate, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                targets, value = _assignment_parts(candidate)
+            elif isinstance(candidate, ast.AugAssign):
+                targets = _target_names(candidate.target)
+                value = candidate.value
+            if value is None:
+                continue
+            if _expression_is_crlf_sanitized(value, sanitizers):
+                aliases.difference_update(targets)
+                continue
+            if _expression_has_redirect_taint(
+                value,
+                aliases=aliases,
+                tainted_attributes=tainted_attributes,
+            ):
+                additions = targets - aliases
+                if additions:
+                    aliases.update(additions)
+                    changed = True
+    return aliases
+
+
+def _expression_is_crlf_sanitized(
+    node: ast.AST,
+    sanitizers: set[str],
+) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    call_name = _ast_call_name(node)
+    return (
+        call_name in sanitizers
+        or call_name.rsplit(".", 1)[-1] in sanitizers
+    )
+
+
+def _expression_has_redirect_taint(
+    node: ast.AST,
+    *,
+    aliases: set[str],
+    tainted_attributes: set[str],
+) -> bool:
+    return (
+        bool(_referenced_names(node) & aliases)
+        or _references_request_context(node)
+        or any(
+            _self_attribute_name(candidate) in tainted_attributes
+            for candidate in ast.walk(node)
+        )
+    )
+
+
+def _is_redirect_sink_call(call: ast.Call) -> bool:
+    short_name = _ast_call_name(call).rsplit(".", 1)[-1].lower()
+    return short_name in {"redirect", "redirect_to"}
+
+
+def _redirect_call_values(call: ast.Call) -> list[ast.AST]:
+    values = list(call.args[:1])
+    values.extend(
+        keyword.value
+        for keyword in call.keywords
+        if keyword.arg in {"location", "target", "uri", "url"}
+    )
+    return values
+
+
+def _redirect_source_label(
+    node: ast.AST,
+    *,
+    aliases: set[str],
+    tainted_attributes: set[str],
+) -> str:
+    names = sorted(_referenced_names(node) & aliases)
+    if names:
+        return names[0]
+    attributes = sorted({
+        f"self.{attribute}"
+        for candidate in ast.walk(node)
+        if (attribute := _self_attribute_name(candidate)) in tainted_attributes
+    })
+    if attributes:
+        return attributes[0]
+    if _references_request_context(node):
+        return "request redirect target"
+    return "redirect target"
+
+
+def _is_record_creation_function(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    tokens = set(node.name.lower().strip("_").split("_"))
+    return bool(tokens & {"add", "create", "new", "register"})
+
+
+def _is_mapping_boundary_name(name: str) -> bool:
+    tokens = set(str(name or "").lower().strip("_").split("_"))
+    return bool(
+        tokens
+        & {
+            "attrs",
+            "body",
+            "data",
+            "dict",
+            "fields",
+            "input",
+            "payload",
+            "record",
+            "values",
+        }
+    )
+
+
+def _documents_external_identifier(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    docstring = ast.get_docstring(node, clean=False) or ""
+    normalized = docstring.lower()
+    return bool(
+        re.search(r":param\s+(?:str\s+)?id\s*:", normalized)
+        or re.search(r"\bid\s+of\s+the\s+(?:new|created)\b", normalized)
+        or re.search(r"\bid\s*\([^)]*optional[^)]*\)", normalized)
+    )
+
+
+def _is_record_persistence_call(call: ast.Call) -> bool:
+    short_name = _ast_call_name(call).rsplit(".", 1)[-1].lower()
+    return (
+        short_name in {"create", "insert", "save", "upsert"}
+        or short_name.endswith(("_create", "_insert", "_save", "_upsert"))
+    )
+
+
+def _has_external_identifier_guard(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    aliases: set[str],
+    *,
+    before_line: int,
+) -> bool:
+    unconditional_node_ids = {
+        id(candidate)
+        for statement in node.body
+        if not isinstance(
+            statement,
+            (
+                ast.For,
+                ast.AsyncFor,
+                ast.If,
+                ast.Match,
+                ast.Try,
+                ast.While,
+                ast.With,
+                ast.AsyncWith,
+            ),
+        )
+        for candidate in ast.walk(statement)
+    }
+    for candidate in ast.walk(node):
+        line = int(getattr(candidate, "lineno", 0) or 0)
+        if not line or line >= before_line:
+            continue
+        if isinstance(candidate, ast.Call):
+            short_name = _ast_call_name(candidate).rsplit(".", 1)[-1].lower()
+            if short_name == "pop" and candidate.args:
+                field = candidate.args[0]
+                if (
+                    isinstance(field, ast.Constant)
+                    and str(field.value).lower() == "id"
+                    and bool(_referenced_names(candidate.func) & aliases)
+                    and id(candidate) in unconditional_node_ids
+                ):
+                    return True
+        if isinstance(candidate, ast.Delete) and any(
+            _is_identifier_subscript(target, aliases)
+            for target in candidate.targets
+        ) and id(candidate) in unconditional_node_ids:
+            return True
+        if isinstance(candidate, (ast.Assign, ast.AnnAssign)):
+            targets = (
+                candidate.targets
+                if isinstance(candidate, ast.Assign)
+                else [candidate.target]
+            )
+            value = candidate.value
+            if any(
+                _is_identifier_subscript(target, aliases)
+                for target in targets
+            ) and value is not None and not bool(
+                _referenced_names(value) & aliases
+            ) and id(candidate) in unconditional_node_ids:
+                return True
+        if (
+            isinstance(candidate, ast.If)
+            and _condition_has_identifier_validation_marker(
+                candidate.test,
+                aliases,
+            )
+            and _branch_replaces_external_identifier(
+                candidate.body,
+                aliases,
+            )
+        ):
+            return True
+        if (
+            isinstance(candidate, ast.If)
+            and _branch_terminates(candidate.body)
+            and _condition_rejects_external_identifier(
+                candidate.test,
+                aliases,
+            )
+        ):
+            return True
+    return False
+
+
+def _is_identifier_subscript(
+    node: ast.AST,
+    aliases: set[str],
+) -> bool:
+    if not isinstance(node, ast.Subscript):
+        return False
+    field = node.slice
+    return (
+        isinstance(field, ast.Constant)
+        and str(field.value).lower() == "id"
+        and bool(_referenced_names(node.value) & aliases)
+    )
+
+
+def _condition_rejects_external_identifier(
+    node: ast.AST,
+    aliases: set[str],
+) -> bool:
+    references_identifier = bool(
+        _referenced_names(node) & aliases
+    ) and any(
+        isinstance(candidate, ast.Constant)
+        and str(candidate.value).lower() == "id"
+        for candidate in ast.walk(node)
+    )
+    if not references_identifier:
+        return False
+
+    if _condition_has_identifier_validation_marker(node, aliases):
+        return True
+
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return False
+    if isinstance(node, ast.BoolOp):
+        if isinstance(node.op, ast.Or):
+            return any(
+                _condition_rejects_external_identifier(value, aliases)
+                for value in node.values
+            )
+        return False
+    if isinstance(node, ast.Call):
+        return (
+            _ast_call_name(node).rsplit(".", 1)[-1].lower() == "get"
+            and bool(_referenced_names(node.func) & aliases)
+            and any(
+                isinstance(argument, ast.Constant)
+                and str(argument.value).lower() == "id"
+                for argument in node.args
+            )
+        )
+    if isinstance(node, ast.Compare) and len(node.ops) == 1:
+        operator = node.ops[0]
+        if isinstance(operator, ast.In):
+            return True
+        if isinstance(operator, (ast.IsNot, ast.NotEq)):
+            return any(
+                isinstance(value, ast.Constant)
+                and value.value in {None, "", False}
+                for value in node.comparators
+            )
+    return False
+
+
+def _condition_has_identifier_validation_marker(
+    node: ast.AST,
+    aliases: set[str],
+) -> bool:
+    if not (
+        bool(_referenced_names(node) & aliases)
+        and any(
+            isinstance(candidate, ast.Constant)
+            and str(candidate.value).lower() == "id"
+            for candidate in ast.walk(node)
+        )
+    ):
+        return False
+    validation_tokens = {
+        "admin",
+        "allow",
+        "auth",
+        "authoriz",
+        "exists",
+        "owner",
+        "permission",
+        "privilege",
+        "unique",
+        "valid",
+    }
+    dotted_names = {
+        _ast_dotted_name(candidate).lower()
+        for candidate in ast.walk(node)
+        if _ast_dotted_name(candidate)
+    }
+    if any(
+        token in dotted
+        for dotted in dotted_names
+        for token in validation_tokens
+    ):
+        return True
+    return False
+
+
+def _branch_replaces_external_identifier(
+    statements: list[ast.stmt],
+    aliases: set[str],
+) -> bool:
+    for statement in statements:
+        if isinstance(
+            statement,
+            (
+                ast.For,
+                ast.AsyncFor,
+                ast.If,
+                ast.Match,
+                ast.Try,
+                ast.While,
+                ast.With,
+                ast.AsyncWith,
+            ),
+        ):
+            continue
+        for candidate in ast.walk(statement):
+            if isinstance(candidate, ast.Call) and candidate.args:
+                short_name = (
+                    _ast_call_name(candidate).rsplit(".", 1)[-1].lower()
+                )
+                field = candidate.args[0]
+                if (
+                    short_name == "pop"
+                    and isinstance(field, ast.Constant)
+                    and str(field.value).lower() == "id"
+                    and bool(_referenced_names(candidate.func) & aliases)
+                ):
+                    return True
+            if isinstance(candidate, ast.Delete) and any(
+                _is_identifier_subscript(target, aliases)
+                for target in candidate.targets
+            ):
+                return True
+            if isinstance(candidate, (ast.Assign, ast.AnnAssign)):
+                targets = (
+                    candidate.targets
+                    if isinstance(candidate, ast.Assign)
+                    else [candidate.target]
+                )
+                value = candidate.value
+                if any(
+                    _is_identifier_subscript(target, aliases)
+                    for target in targets
+                ) and value is not None and not bool(
+                    _referenced_names(value) & aliases
+                ):
+                    return True
+    return False
+
+
+def _module_has_outbound_http_request(tree: ast.Module) -> bool:
+    return _node_has_outbound_http_request(tree)
+
+
+def _node_has_outbound_http_request(node: ast.AST) -> bool:
+    return any(
+        _is_outbound_http_call(candidate)
+        for candidate in ast.walk(node)
+        if isinstance(candidate, ast.Call)
+    )
+
+
+def _is_outbound_http_call(call: ast.Call) -> bool:
+    dotted = _ast_call_name(call).lower()
+    short_name = dotted.rsplit(".", 1)[-1]
+    if short_name in {"fetch", "urlopen"}:
+        return True
+    return dotted in {
+        "httpx.get",
+        "httpx.post",
+        "httpx.put",
+        "requests.get",
+        "requests.post",
+        "requests.put",
+        "urllib.request.urlopen",
+    }
+
+
+def _is_route_registration_call(call: ast.Call) -> bool:
+    short_name = _ast_call_name(call).rsplit(".", 1)[-1].lower()
+    return short_name in {
+        "add_handler",
+        "add_handlers",
+        "add_route",
+        "add_routes",
+        "route",
+    }
+
+
+def _route_references_handler(
+    call: ast.Call,
+    handler_names: set[str],
+) -> bool:
+    return any(
+        isinstance(candidate, ast.Name)
+        and candidate.id in handler_names
+        for candidate in ast.walk(call)
+    )
+
+
+def _outbound_http_handler_names(tree: ast.Module) -> set[str]:
+    classes = {
+        candidate.name: candidate
+        for candidate in ast.walk(tree)
+        if isinstance(candidate, ast.ClassDef)
+    }
+    handler_names = {
+        name
+        for name, candidate in classes.items()
+        if _node_has_outbound_http_request(candidate)
+    }
+    changed = True
+    while changed:
+        changed = False
+        for name, candidate in classes.items():
+            if name in handler_names:
+                continue
+            base_names = {
+                _ast_dotted_name(base).rsplit(".", 1)[-1]
+                for base in candidate.bases
+            }
+            if base_names & handler_names:
+                handler_names.add(name)
+                changed = True
+    return handler_names
+
+
+def _proxy_route_has_ambiguous_authority(pattern: str) -> bool:
+    """Return true when a host capture admits URL authority delimiters."""
+
+    captures = re.finditer(
+        r"\(\[\^([^\]]*)\](?:\*|\+)\)\s*:\s*\(\\d\+\)",
+        pattern,
+    )
+    return any(not {"/", ":", "@"}.issubset(set(match.group(1))) for match in captures)
+
+
+def _forwarded_http_response_aliases(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    before_line: int | None = None,
+) -> set[str]:
+    response_aliases: set[str] = set()
+    for event in _ordered_function_events(node):
+        if (
+            before_line is not None
+            and int(getattr(event, "lineno", 0) or 0) >= before_line
+        ):
+            continue
+        if not isinstance(
+            event,
+            (ast.Assign, ast.AnnAssign, ast.NamedExpr),
+        ):
+            continue
+        targets, value = _assignment_parts(event)
+        if value is None:
+            continue
+        derives_from_response = bool(
+            _referenced_names(value) & response_aliases
+        )
+        receives_outbound_response = any(
+            _is_outbound_http_call(candidate)
+            for candidate in ast.walk(value)
+            if isinstance(candidate, ast.Call)
+        )
+        response_aliases.difference_update(targets)
+        if derives_from_response or receives_outbound_response:
+            response_aliases.update(targets)
+    if not response_aliases:
+        return set()
+    response_metadata_calls = {
+        "add_header",
+        "set_header",
+        "set_status",
+    }
+    forwards_metadata = any(
+        _ast_call_name(candidate).rsplit(".", 1)[-1].lower()
+        in response_metadata_calls
+        for candidate in ast.walk(node)
+        if isinstance(candidate, ast.Call)
+    )
+    return response_aliases if forwards_metadata else set()
+
+
+def _is_http_response_payload(
+    node: ast.AST,
+    response_aliases: set[str],
+) -> bool:
+    if not isinstance(node, ast.Attribute):
+        return False
+    owner = _ast_dotted_name(node.value).rsplit(".", 1)[-1]
+    return (
+        node.attr.lower() in {"body", "content", "data", "raw"}
+        and owner in response_aliases
+    )
+
+
+def _class_has_process_sink(class_node: ast.ClassDef) -> bool:
+    return any(
+        _is_process_sink_call(candidate)
+        for candidate in ast.walk(class_node)
+        if isinstance(candidate, ast.Call)
+    )
+
+
+def _is_process_sink_call(call: ast.Call) -> bool:
+    dotted = _ast_call_name(call).lower()
+    short_name = dotted.rsplit(".", 1)[-1]
+    if dotted.startswith("subprocess."):
+        return short_name in {
+            "call",
+            "check_call",
+            "check_output",
+            "popen",
+            "run",
+        }
+    return dotted in {"popen", "check_call", "check_output"}
+
+
+def _boundary_backed_instance_attributes(
+    initializer: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> dict[str, tuple[str, int]]:
+    parameters = _function_parameter_names(initializer) - {"self", "cls"}
+    attributes: dict[str, tuple[str, int]] = {}
+    for assignment in ast.walk(initializer):
+        if not isinstance(assignment, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = assignment.value
+        if value is None:
+            continue
+        sources = sorted(_referenced_names(value) & parameters)
+        if not sources:
+            continue
+        targets = (
+            assignment.targets
+            if isinstance(assignment, ast.Assign)
+            else [assignment.target]
+        )
+        for target in targets:
+            attribute = _self_attribute_name(target)
+            if attribute:
+                attributes.setdefault(
+                    attribute,
+                    (sources[0], assignment.lineno),
+                )
+    return attributes
+
+
+def _self_attribute_name(node: ast.AST) -> str:
+    if (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+    ):
+        return node.attr
+    return ""
+
+
+def _expression_references_self_attribute(
+    node: ast.AST,
+    attribute: str,
+) -> bool:
+    return any(
+        _self_attribute_name(candidate) == attribute
+        for candidate in ast.walk(node)
+    )
+
+
+def _class_builds_process_args_from_attribute(
+    class_node: ast.ClassDef,
+    attribute: str,
+) -> bool:
+    methods = [
+        child
+        for child in class_node.body
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    tainted_attributes = {attribute}
+    tainted_return_methods: set[str] = set()
+    local_aliases: dict[int, set[str]] = {}
+
+    changed = True
+    while changed:
+        changed = False
+        for method in methods:
+            aliases = _method_process_taint_aliases(
+                method,
+                tainted_attributes,
+                tainted_return_methods,
+            )
+            local_aliases[id(method)] = aliases
+            for candidate in ast.walk(method):
+                targets: list[ast.AST] = []
+                value: ast.AST | None = None
+                if isinstance(candidate, (ast.Assign, ast.AnnAssign)):
+                    targets = (
+                        candidate.targets
+                        if isinstance(candidate, ast.Assign)
+                        else [candidate.target]
+                    )
+                    value = candidate.value
+                elif isinstance(candidate, ast.AugAssign):
+                    targets = [candidate.target]
+                    value = candidate.value
+                if value is None or not _expression_has_process_taint(
+                    value,
+                    tainted_attributes,
+                    aliases,
+                    tainted_return_methods,
+                ):
+                    continue
+                for target in targets:
+                    target_attribute = _self_attribute_name(target)
+                    if (
+                        target_attribute
+                        and target_attribute not in tainted_attributes
+                    ):
+                        tainted_attributes.add(target_attribute)
+                        changed = True
+            if (
+                method.name not in tainted_return_methods
+                and any(
+                    isinstance(candidate, ast.Return)
+                    and candidate.value is not None
+                    and _expression_has_process_taint(
+                        candidate.value,
+                        tainted_attributes,
+                        aliases,
+                        tainted_return_methods,
+                    )
+                    for candidate in ast.walk(method)
+                )
+            ):
+                tainted_return_methods.add(method.name)
+                changed = True
+
+    for method in methods:
+        aliases = local_aliases.get(id(method), set())
+        for call in (
+            candidate
+            for candidate in ast.walk(method)
+            if isinstance(candidate, ast.Call)
+            and _is_process_sink_call(candidate)
+        ):
+            if any(
+                _expression_has_process_taint(
+                    value,
+                    tainted_attributes,
+                    aliases,
+                    tainted_return_methods,
+                )
+                for value in _process_command_values(call)
+            ):
+                return True
+    return False
+
+
+def _process_command_values(call: ast.Call) -> list[ast.AST]:
+    values = list(call.args[:1])
+    values.extend(
+        keyword.value
+        for keyword in call.keywords
+        if keyword.arg in {"args", "cmd", "command"}
+    )
+    return values
+
+
+def _method_process_taint_aliases(
+    method: ast.FunctionDef | ast.AsyncFunctionDef,
+    tainted_attributes: set[str],
+    tainted_return_methods: set[str],
+) -> set[str]:
+    aliases: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for candidate in ast.walk(method):
+            targets: set[str] = set()
+            value: ast.AST | None = None
+            if isinstance(
+                candidate,
+                (ast.Assign, ast.AnnAssign, ast.NamedExpr),
+            ):
+                targets, value = _assignment_parts(candidate)
+            elif isinstance(candidate, ast.AugAssign):
+                targets = _target_names(candidate.target)
+                value = candidate.value
+            elif isinstance(candidate, (ast.For, ast.AsyncFor)):
+                targets = _target_names(candidate.target)
+                value = candidate.iter
+            if value is not None and _expression_has_process_taint(
+                value,
+                tainted_attributes,
+                aliases,
+                tainted_return_methods,
+            ):
+                additions = targets - aliases
+                if additions:
+                    aliases.update(additions)
+                    changed = True
+            if not isinstance(candidate, ast.Call):
+                continue
+            short_name = _ast_call_name(candidate).rsplit(".", 1)[-1].lower()
+            dotted_name = _ast_dotted_name(candidate.func)
+            owner = (
+                dotted_name.rsplit(".", 1)[0]
+                if "." in dotted_name
+                else ""
+            )
+            values = [
+                *candidate.args,
+                *(keyword.value for keyword in candidate.keywords),
+            ]
+            if (
+                short_name in {"append", "extend", "insert"}
+                and owner
+                and any(
+                    _expression_has_process_taint(
+                        item,
+                        tainted_attributes,
+                        aliases,
+                        tainted_return_methods,
+                    )
+                    for item in values
+                )
+            ):
+                owner_name = owner.rsplit(".", 1)[-1]
+                if owner_name not in aliases:
+                    aliases.add(owner_name)
+                    changed = True
+    return aliases
+
+
+def _expression_has_process_taint(
+    node: ast.AST,
+    tainted_attributes: set[str],
+    aliases: set[str],
+    tainted_return_methods: set[str],
+) -> bool:
+    if any(
+        _self_attribute_name(candidate) in tainted_attributes
+        for candidate in ast.walk(node)
+    ):
+        return True
+    if _referenced_names(node) & aliases:
+        return True
+    return any(
+        _ast_call_name(candidate).rsplit(".", 1)[-1]
+        in tainted_return_methods
+        for candidate in ast.walk(node)
+        if isinstance(candidate, ast.Call)
+    )
+
+
+def _is_explicit_process_option_source(
+    source: str,
+    attribute: str,
+) -> bool:
+    names = {
+        str(source or "").strip("_").lower(),
+        str(attribute or "").strip("_").lower(),
+    }
+    tokens = {
+        "arg",
+        "args",
+        "argument",
+        "arguments",
+        "argv",
+        "binary",
+        "cmd",
+        "command",
+        "executable",
+        "option",
+        "options",
+        "program",
+    }
+    return any(
+        set(name.replace("-", "_").split("_")) & tokens
+        for name in names
+    )
+
+
+def _attribute_has_option_prefix_guard(
+    initializer: ast.FunctionDef | ast.AsyncFunctionDef,
+    methods: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    attribute: str,
+) -> bool:
+    for loop in (
+        candidate
+        for candidate in ast.walk(initializer)
+        if isinstance(candidate, (ast.For, ast.AsyncFor))
+        and _expression_references_self_attribute(
+            candidate.iter,
+            attribute,
+        )
+    ):
+        item_names = _target_names(loop.target)
+        for branch in (
+            candidate
+            for candidate in ast.walk(loop)
+            if isinstance(candidate, ast.If)
+            and _branch_terminates(candidate.body)
+        ):
+            if _test_rejects_leading_option(branch.test, item_names):
+                return True
+        for call in (
+            candidate
+            for candidate in ast.walk(loop)
+            if isinstance(candidate, ast.Call)
+            and bool(_referenced_names(candidate) & item_names)
+        ):
+            method = methods.get(
+                _ast_call_name(call).rsplit(".", 1)[-1]
+            )
+            if method is not None and _validator_rejects_leading_option(
+                method
+            ):
+                return True
+    return False
+
+
+def _validator_rejects_leading_option(
+    method: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    parameters = _function_parameter_names(method) - {"self", "cls"}
+    return any(
+        _test_rejects_leading_option(candidate.test, parameters)
+        for candidate in ast.walk(method)
+        if isinstance(candidate, ast.If)
+        and _branch_terminates(candidate.body)
+    )
+
+
+def _test_rejects_leading_option(
+    test: ast.AST,
+    names: set[str],
+) -> bool:
+    for call in (
+        candidate
+        for candidate in ast.walk(test)
+        if isinstance(candidate, ast.Call)
+        and _ast_call_name(candidate).rsplit(".", 1)[-1].lower()
+        == "startswith"
+    ):
+        if not call.args or not (_referenced_names(call.func) & names):
+            continue
+        value = call.args[0]
+        if isinstance(value, ast.Constant) and value.value == "-":
+            return True
+    for comparison in (
+        candidate
+        for candidate in ast.walk(test)
+        if isinstance(candidate, ast.Compare)
+        and len(candidate.ops) == 1
+        and isinstance(candidate.ops[0], (ast.Eq, ast.In))
+    ):
+        if not (_referenced_names(comparison) & names):
+            continue
+        literals = {
+            value.value
+            for value in ast.walk(comparison)
+            if isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+        }
+        if "-" in literals and any(
+            isinstance(value, ast.Subscript)
+            for value in ast.walk(comparison.left)
+        ):
+            return True
+    return False
 
 
 def _command_boundary_is_validated(

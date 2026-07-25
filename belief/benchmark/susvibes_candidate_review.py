@@ -69,6 +69,8 @@ def evaluate_susvibes_candidate_review(
     reviewer: Callable[..., dict[str, Any]] = review_candidate_patch,
     only_cwes: Iterable[str] = (),
     max_cases: int = 0,
+    instance_ids: Iterable[str] = (),
+    selection_provenance: Mapping[str, str] | None = None,
     thresholds: (
         SusVibesCandidateReviewThresholds
         | Mapping[str, float]
@@ -82,13 +84,44 @@ def evaluate_susvibes_candidate_review(
     corpus = LocalGitCorpus(repository_cache)
     configured_thresholds = _coerce_thresholds(thresholds)
     started = clock()
+    reviewer_provenance = _reviewer_runtime_provenance(reviewer)
+    requested_ids = tuple(str(value) for value in instance_ids)
+    configured_cwes = tuple(str(value) for value in only_cwes)
+    if len(requested_ids) != len(set(requested_ids)):
+        raise ValueError("candidate-review instance IDs must be unique")
+    if requested_ids and (configured_cwes or max_cases):
+        raise ValueError(
+            "explicit instance IDs cannot be combined with only_cwes or "
+            "max_cases"
+        )
+    loaded_cases = load_susvibes_cases(
+        dataset_path,
+        only_cwes=configured_cwes,
+        max_cases=0 if requested_ids else max_cases,
+    )
+    selected_cases = loaded_cases
+    if requested_ids:
+        cases_by_id = {
+            str(case["instance_id"]): case
+            for case in loaded_cases
+        }
+        missing = [
+            instance_id
+            for instance_id in requested_ids
+            if instance_id not in cases_by_id
+        ]
+        if missing:
+            raise ValueError(
+                "candidate-review instance IDs are absent from the dataset: "
+                + ", ".join(missing)
+            )
+        selected_cases = [
+            cases_by_id[instance_id]
+            for instance_id in requested_ids
+        ]
     rows = [
         _evaluate_case(case, corpus, reviewer)
-        for case in load_susvibes_cases(
-            dataset_path,
-            only_cwes=only_cwes,
-            max_cases=max_cases,
-        )
+        for case in selected_cases
     ]
     metrics = _summarize(rows)
     threshold_evaluation = _evaluate_thresholds(
@@ -112,6 +145,7 @@ def evaluate_susvibes_candidate_review(
         "status": "passed" if passed else "failed",
         "exit_code": 0 if passed else 1,
         "cases": rows,
+        "reviewer_provenance": reviewer_provenance,
         "comparability": {
             "susvibes_secpass_equivalent": False,
             "security_tests_executed": False,
@@ -127,6 +161,24 @@ def evaluate_susvibes_candidate_review(
             6,
         ),
     }
+    if requested_ids:
+        selection = {
+            "kind": "explicit_instance_ids",
+            "case_count": len(requested_ids),
+            "instance_ids_sha256": hashlib.sha256(
+                json.dumps(
+                    requested_ids,
+                    separators=(",", ":"),
+                    ensure_ascii=True,
+                ).encode("utf-8")
+            ).hexdigest(),
+        }
+        if selection_provenance:
+            selection["provenance"] = {
+                str(key): str(value)
+                for key, value in sorted(selection_provenance.items())
+            }
+        payload["selection"] = selection
     payload["deterministic_digest"] = _semantic_digest(payload)
     payload["metrics"]["deterministic_digest"] = payload[
         "deterministic_digest"
@@ -678,6 +730,40 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _reviewer_runtime_provenance(
+    reviewer: Callable[..., dict[str, Any]],
+) -> dict[str, Any]:
+    identity = (
+        f"{getattr(reviewer, '__module__', '')}."
+        f"{getattr(reviewer, '__qualname__', type(reviewer).__name__)}"
+    ).strip(".")
+    provenance: dict[str, Any] = {
+        "callable": identity,
+    }
+    if reviewer is not review_candidate_patch:
+        return provenance
+
+    package_root = Path(__file__).resolve().parents[1]
+    source_files = sorted(
+        path
+        for path in package_root.rglob("*.py")
+        if path.is_file()
+    )
+    digest = hashlib.sha256()
+    for path in source_files:
+        relative = path.relative_to(package_root).as_posix()
+        normalized_source = path.read_bytes().replace(b"\r\n", b"\n")
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(normalized_source).digest())
+    provenance.update({
+        "belief_python_file_count": len(source_files),
+        "belief_python_source_sha256": digest.hexdigest(),
+        "source_hash_normalization": "relative_path_nul_lf_normalized_bytes",
+    })
+    return provenance
 
 
 def _semantic_digest(payload: Mapping[str, Any]) -> str:

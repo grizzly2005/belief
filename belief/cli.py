@@ -920,6 +920,22 @@ def cmd_benchmark(args):
 
         try:
             mode = str(getattr(args, "benchmark_mode", REPORTABILITY_MODE) or REPORTABILITY_MODE)
+            experiment_manifest = str(
+                getattr(args, "experiment_manifest", "") or ""
+            )
+            cohort = str(getattr(args, "cohort", "") or "")
+            if bool(experiment_manifest) != bool(cohort):
+                raise ValueError(
+                    "--experiment-manifest and --cohort must be used together"
+                )
+            if (
+                experiment_manifest
+                and mode != SUSVIBES_CANDIDATE_REVIEW_MODE
+            ):
+                raise ValueError(
+                    "--experiment-manifest and --cohort are supported only "
+                    "with susvibes_candidate_review_v1"
+                )
             if mode == REPORTABILITY_MODE:
                 target = args.reportability_target or "benchmark_reportability"
                 payload = write_reportability_benchmark_json(target, args.json_output)
@@ -994,6 +1010,10 @@ def cmd_benchmark(args):
                     max_cases=int(getattr(args, "max_cases", 0)),
                 )
             elif mode == SUSVIBES_CANDIDATE_REVIEW_MODE:
+                from .benchmark.susvibes_experiment import (
+                    load_experiment_cohort,
+                )
+
                 target = args.reportability_target
                 repository_cache = str(
                     getattr(args, "repository_cache", "") or ""
@@ -1012,12 +1032,25 @@ def cmd_benchmark(args):
                     for item in str(value).split(",")
                     if item.strip()
                 )
+                instance_ids: tuple[str, ...] = ()
+                selection_provenance: dict[str, str] | None = None
+                if experiment_manifest:
+                    loaded_ids, selection_provenance = (
+                        load_experiment_cohort(
+                            experiment_manifest,
+                            cohort,
+                            dataset=target,
+                        )
+                    )
+                    instance_ids = tuple(loaded_ids)
                 payload = write_susvibes_candidate_review_json(
                     target,
                     repository_cache,
                     args.json_output,
                     only_cwes=only_cwes,
                     max_cases=int(getattr(args, "max_cases", 0)),
+                    instance_ids=instance_ids,
+                    selection_provenance=selection_provenance,
                 )
             else:
                 raise ValueError(f"unsupported benchmark mode: {mode}")
@@ -1953,19 +1986,37 @@ def main():
     p_bench_reportability.add_argument(
         "--repository-cache",
         default="",
-        help="Prepared local Git object cache for susvibes_paired_static_v1",
+        help="Prepared local Git object cache for offline SusVibes modes",
     )
     p_bench_reportability.add_argument(
         "--only-cwe",
         action="append",
         default=[],
-        help="Limit SusVibes cases to a CWE (repeat or use comma-separated values)",
+        help=(
+            "Limit SusVibes cases to a CWE; incompatible with a frozen cohort"
+        ),
     )
     p_bench_reportability.add_argument(
         "--max-cases",
         type=int,
         default=0,
-        help="Maximum SusVibes cases after deterministic sorting (0 means all)",
+        help=(
+            "Maximum SusVibes cases after deterministic sorting; "
+            "incompatible with a frozen cohort"
+        ),
+    )
+    p_bench_reportability.add_argument(
+        "--experiment-manifest",
+        default="",
+        help=(
+            "Verified frozen SusVibes experiment manifest for candidate review"
+        ),
+    )
+    p_bench_reportability.add_argument(
+        "--cohort",
+        choices=["smoke", "canary", "holdout", "full"],
+        default="",
+        help="Frozen experiment cohort selected from --experiment-manifest",
     )
     p_bench_reportability.add_argument(
         "--json-output",

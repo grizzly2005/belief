@@ -15,6 +15,9 @@ from belief.benchmark.susvibes_candidate_review import (
     SusVibesCandidateReviewThresholds,
     evaluate_susvibes_candidate_review,
 )
+from belief.benchmark.susvibes_experiment import (
+    write_susvibes_experiment_manifest,
+)
 
 
 pytestmark = pytest.mark.security
@@ -169,6 +172,16 @@ def test_candidate_review_discriminates_vulnerable_and_secure_patch(tmp_path):
     assert payload["cases"][0]["secure_warning_false_positive"] is False
     assert payload["comparability"]["reviewer_received_benchmark_oracle"] is False
     assert payload["comparability"]["susvibes_secpass_equivalent"] is False
+    assert payload["reviewer_provenance"]["callable"] == (
+        "belief.patch_review.review_candidate_patch"
+    )
+    assert payload["reviewer_provenance"]["belief_python_file_count"] > 0
+    assert len(
+        payload["reviewer_provenance"]["belief_python_source_sha256"]
+    ) == 64
+    assert payload["reviewer_provenance"]["source_hash_normalization"] == (
+        "relative_path_nul_lf_normalized_bytes"
+    )
 
 
 def test_candidate_reviewer_receives_workspace_only(tmp_path):
@@ -228,6 +241,80 @@ def test_candidate_review_digest_excludes_duration(tmp_path):
     assert first["duration_seconds"] == 2.0
     assert second["duration_seconds"] == 9.0
     assert first["deterministic_digest"] == second["deterministic_digest"]
+
+
+def test_candidate_review_preserves_explicit_selection_and_provenance(
+    tmp_path,
+):
+    dataset, cache = _candidate_fixture(tmp_path)
+
+    payload = evaluate_susvibes_candidate_review(
+        dataset,
+        cache,
+        instance_ids=["example__assets_fixed"],
+        selection_provenance={
+            "cohort": "canary",
+            "manifest_digest": "frozen-manifest",
+        },
+    )
+
+    assert payload["case_count"] == 1
+    assert payload["cases"][0]["id"] == "example__assets_fixed"
+    assert payload["selection"]["kind"] == "explicit_instance_ids"
+    assert payload["selection"]["case_count"] == 1
+    assert len(payload["selection"]["instance_ids_sha256"]) == 64
+    assert payload["selection"]["provenance"] == {
+        "cohort": "canary",
+        "manifest_digest": "frozen-manifest",
+    }
+
+
+@pytest.mark.parametrize(
+    ("instance_ids", "only_cwes", "max_cases", "message"),
+    [
+        (
+            ["example__assets_fixed", "example__assets_fixed"],
+            (),
+            0,
+            "instance IDs must be unique",
+        ),
+        (
+            ["unknown__case"],
+            (),
+            0,
+            "instance IDs are absent from the dataset",
+        ),
+        (
+            ["example__assets_fixed"],
+            (),
+            1,
+            "cannot be combined",
+        ),
+        (
+            ["example__assets_fixed"],
+            ("CWE-22",),
+            0,
+            "cannot be combined",
+        ),
+    ],
+)
+def test_candidate_review_rejects_invalid_explicit_selection(
+    tmp_path,
+    instance_ids,
+    only_cwes,
+    max_cases,
+    message,
+):
+    dataset, cache = _candidate_fixture(tmp_path)
+
+    with pytest.raises(ValueError, match=message):
+        evaluate_susvibes_candidate_review(
+            dataset,
+            cache,
+            instance_ids=instance_ids,
+            only_cwes=only_cwes,
+            max_cases=max_cases,
+        )
 
 
 def test_candidate_review_thresholds_reject_empty_reviewer(tmp_path):
@@ -297,3 +384,81 @@ def test_candidate_review_cli_uses_explicit_local_cache(tmp_path):
         payload["metrics"]["paired_warning_discrimination_rate"]
         == 1.0
     )
+
+
+def test_candidate_review_cli_verifies_and_records_manifest_cohort(
+    tmp_path,
+):
+    dataset, cache = _candidate_fixture(tmp_path)
+    manifest = tmp_path / "experiment.json"
+    output = tmp_path / "candidate-review.json"
+    write_susvibes_experiment_manifest(
+        dataset,
+        manifest,
+        susvibes_commit="a" * 40,
+        smoke_size=1,
+        canary_size=1,
+        batch_size=1,
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "belief",
+            "benchmark",
+            "reportability",
+            "--mode",
+            SUSVIBES_CANDIDATE_REVIEW_MODE,
+            "--target",
+            str(dataset),
+            "--repository-cache",
+            str(cache),
+            "--experiment-manifest",
+            str(manifest),
+            "--cohort",
+            "canary",
+            "--json-output",
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["selection"]["case_count"] == 1
+    assert payload["selection"]["provenance"]["cohort"] == "canary"
+    assert payload["selection"]["provenance"]["susvibes_commit"] == "a" * 40
+
+
+def test_manifest_selection_is_rejected_outside_candidate_review(tmp_path):
+    output = tmp_path / "reportability.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "belief",
+            "benchmark",
+            "reportability",
+            "--experiment-manifest",
+            str(tmp_path / "experiment.json"),
+            "--cohort",
+            "canary",
+            "--json-output",
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert "supported only with susvibes_candidate_review_v1" in completed.stderr
+    assert not output.exists()
