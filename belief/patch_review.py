@@ -32,13 +32,16 @@ from .static_analysis_pipeline import (
 )
 from .semantic.summaries import (
     FUNCTION_SUMMARY_ANALYSIS_SCHEMA_VERSION,
+    FunctionSummaryAnalysis,
     FunctionSummaryLimits,
     analyze_function_summaries,
 )
+from .semantic.flow import analyze_semantic_flow
+from .semantic.observations import SemanticFlowLimits
 
 
 CANDIDATE_PATCH_REVIEW_SCHEMA_VERSION = "belief.candidate_patch_review.v1"
-SEMANTIC_REVIEW_MODES = ("off", "summaries")
+SEMANTIC_REVIEW_MODES = ("off", "summaries", "flow_states")
 
 _GIT_ENV_OVERRIDES = {
     "GIT_ALLOW_PROTOCOL": "",
@@ -103,6 +106,7 @@ def review_candidate_patch(
     max_files: int = 100,
     semantic_mode: str = "summaries",
     semantic_limits: FunctionSummaryLimits | None = None,
+    semantic_flow_limits: SemanticFlowLimits | None = None,
     pipeline: Callable[[Path], Any] | None = None,
     clock: Callable[[], float] = time.perf_counter,
 ) -> dict[str, Any]:
@@ -119,6 +123,10 @@ def review_candidate_patch(
     configured_semantic_limits = (
         semantic_limits
         or FunctionSummaryLimits(max_files=max_files)
+    )
+    configured_flow_limits = (
+        semantic_flow_limits
+        or SemanticFlowLimits(max_files=max_files)
     )
     patch_text = collect_worktree_patch(root) if patch is None else str(patch)
     started = clock()
@@ -161,26 +169,30 @@ def review_candidate_patch(
                     state,
                 )
             if not focus:
+                semantic = _semantic_observation(
+                    state_root,
+                    semantic_mode,
+                    configured_semantic_limits,
+                    configured_flow_limits,
+                )
                 observations[state] = {
                     "analysis_succeeded": True,
                     "errors": materialization_errors,
                     "diagnostics": [],
                     "findings": [],
-                    "function_summary": _function_summary_payload(
-                        state_root,
-                        semantic_mode,
-                        configured_semantic_limits,
-                    ),
+                    "function_summary": semantic[0],
+                    "semantic_flow": semantic[1],
                 }
                 continue
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", SyntaxWarning)
                     result = (pipeline or _default_pipeline)(state_root)
-                    function_summary = _function_summary_payload(
+                    semantic = _semantic_observation(
                         state_root,
                         semantic_mode,
                         configured_semantic_limits,
+                        configured_flow_limits,
                     )
                 observations[state] = {
                     "analysis_succeeded": True,
@@ -191,8 +203,13 @@ def review_candidate_patch(
                             getattr(result, "diagnostics", ()) or ()
                         )
                     ],
-                    "findings": _focused_findings(result, focus),
-                    "function_summary": function_summary,
+                    "findings": _focused_findings(
+                        result,
+                        focus,
+                        supplemental_findings=semantic[2],
+                    ),
+                    "function_summary": semantic[0],
+                    "semantic_flow": semantic[1],
                 }
             except Exception as exc:
                 observations[state] = {
@@ -205,6 +222,11 @@ def review_candidate_patch(
                     "findings": [],
                     "function_summary": {
                         "enabled": semantic_mode != "off",
+                        "mode": semantic_mode,
+                        "analysis_succeeded": False,
+                    },
+                    "semantic_flow": {
+                        "enabled": semantic_mode == "flow_states",
                         "mode": semantic_mode,
                         "analysis_succeeded": False,
                     },
@@ -251,7 +273,8 @@ def review_candidate_patch(
         "semantic_analysis": {
             "mode": semantic_mode,
             "limits": configured_semantic_limits.to_dict(),
-            "affects_verdict": False,
+            "flow_limits": configured_flow_limits.to_dict(),
+            "affects_verdict": semantic_mode == "flow_states",
         },
         "analysis": {
             "baseline": observations["vulnerable"],
@@ -326,18 +349,52 @@ def _default_pipeline(target: Path) -> Any:
     return analyze_static_target(target, options)
 
 
-def _function_summary_payload(
+def _semantic_observation(
     target: Path,
     mode: str,
-    limits: FunctionSummaryLimits,
-) -> dict[str, Any]:
+    summary_limits: FunctionSummaryLimits,
+    flow_limits: SemanticFlowLimits,
+) -> tuple[dict[str, Any], dict[str, Any], tuple[Any, ...]]:
     if mode == "off":
-        return {
+        disabled = {
             "enabled": False,
             "mode": mode,
             "analysis_succeeded": True,
         }
-    result = analyze_function_summaries(target, limits)
+        return disabled, dict(disabled), ()
+    result = analyze_function_summaries(target, summary_limits)
+    summary_payload = _function_summary_payload(result, mode)
+    if mode == "summaries":
+        return (
+            summary_payload,
+            {
+                "enabled": False,
+                "mode": mode,
+                "analysis_succeeded": True,
+            },
+            (),
+        )
+    flow = analyze_semantic_flow(
+        target,
+        summaries=result,
+        limits=flow_limits,
+    )
+    return (
+        summary_payload,
+        {
+            "enabled": True,
+            "mode": mode,
+            "analysis_succeeded": True,
+            **flow.to_dict(),
+        },
+        tuple(concern.to_finding() for concern in flow.concerns),
+    )
+
+
+def _function_summary_payload(
+    result: FunctionSummaryAnalysis,
+    mode: str,
+) -> dict[str, Any]:
     return {
         "enabled": True,
         "mode": mode,
@@ -357,10 +414,15 @@ def _function_summary_payload(
 def _focused_findings(
     result: Any,
     focus: Mapping[str, FocusContext],
+    *,
+    supplemental_findings: Iterable[Any] = (),
 ) -> list[dict[str, Any]]:
     findings = [
         finding
-        for finding in (getattr(result, "findings", ()) or ())
+        for finding in (
+            *(getattr(result, "findings", ()) or ()),
+            *supplemental_findings,
+        )
         if finding_is_focused(finding, focus)
         and str(getattr(finding, "cwe", "") or "").strip()
     ]

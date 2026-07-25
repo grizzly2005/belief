@@ -1051,6 +1051,13 @@ def cmd_benchmark(args):
                     max_cases=int(getattr(args, "max_cases", 0)),
                     instance_ids=instance_ids,
                     selection_provenance=selection_provenance,
+                    reviewer_semantic_mode=str(
+                        getattr(
+                            args,
+                            "candidate_semantic_mode",
+                            "summaries",
+                        )
+                    ),
                 )
             else:
                 raise ValueError(f"unsupported benchmark mode: {mode}")
@@ -1109,6 +1116,7 @@ def cmd_review_patch(args):
             patch,
             include_tests=bool(args.include_tests),
             max_files=int(args.max_files),
+            semantic_mode=str(args.semantic_mode),
         )
         if args.json_output:
             output = Path(args.json_output)
@@ -1913,6 +1921,15 @@ def main():
         help="Maximum changed Python files accepted",
     )
     p_review_patch.add_argument(
+        "--semantic-mode",
+        choices=["off", "summaries", "flow_states"],
+        default="summaries",
+        help=(
+            "Semantic review layer: diagnostics off, function summaries, "
+            "or flow-state verdicts"
+        ),
+    )
+    p_review_patch.add_argument(
         "--include-tests",
         action="store_true",
         help="Include changed Python test files in review",
@@ -2017,6 +2034,12 @@ def main():
         choices=["smoke", "canary", "holdout", "full"],
         default="",
         help="Frozen experiment cohort selected from --experiment-manifest",
+    )
+    p_bench_reportability.add_argument(
+        "--candidate-semantic-mode",
+        choices=["off", "summaries", "flow_states"],
+        default="summaries",
+        help="Semantic layer used by susvibes_candidate_review_v1",
     )
     p_bench_reportability.add_argument(
         "--json-output",

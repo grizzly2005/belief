@@ -14,7 +14,7 @@ from belief.patch_review import (
     collect_worktree_patch,
     review_candidate_patch,
 )
-from belief.semantic import FunctionSummaryLimits
+from belief.semantic import FunctionSummaryLimits, SemanticFlowLimits
 
 
 pytestmark = pytest.mark.security
@@ -198,6 +198,98 @@ def test_review_attaches_bounded_function_summaries(tmp_path):
     assert len(candidate["deterministic_digest"]) == 64
 
 
+def test_flow_state_mode_surfaces_introduced_resource_root_cause(
+    tmp_path,
+):
+    safe = """\
+import zlib
+
+def unpack(payload):
+    if len(payload) > 1024:
+        raise ValueError("large")
+    return zlib.decompress(payload)
+"""
+    vulnerable = """\
+import zlib
+
+def unpack(payload):
+    return zlib.decompress(payload)
+"""
+    repository, target = _repository(tmp_path, safe)
+    target.write_text(vulnerable, encoding="utf-8")
+
+    payload = review_candidate_patch(
+        repository,
+        semantic_mode="flow_states",
+    )
+    flow = payload["analysis"]["candidate"]["semantic_flow"]
+
+    assert payload["semantic_analysis"]["affects_verdict"] is True
+    assert flow["enabled"] is True
+    assert flow["schema_version"] == "belief.semantic_flow_analysis.v1"
+    assert any(
+        row["rule_id"] == "BELIEF-SEM-RESOURCE-BOUND"
+        for row in payload["introduced_findings"]
+    )
+    assert payload["status"] == "review_required"
+
+
+def test_flow_state_mode_resolves_resource_root_cause(tmp_path):
+    vulnerable = """\
+import zlib
+
+def unpack(payload):
+    return zlib.decompress(payload)
+"""
+    safe = """\
+import zlib
+
+def unpack(payload):
+    if len(payload) > 1024:
+        raise ValueError("large")
+    return zlib.decompress(payload)
+"""
+    repository, target = _repository(tmp_path, vulnerable)
+    target.write_text(safe, encoding="utf-8")
+
+    payload = review_candidate_patch(
+        repository,
+        semantic_mode="flow_states",
+    )
+
+    assert any(
+        row["rule_id"] == "BELIEF-SEM-RESOURCE-BOUND"
+        for row in payload["resolved_findings"]
+    )
+    assert not any(
+        row["rule_id"] == "BELIEF-SEM-RESOURCE-BOUND"
+        for row in (
+            payload["introduced_findings"]
+            + payload["residual_findings"]
+        )
+    )
+
+
+def test_flow_state_limits_emit_explicit_gap(tmp_path):
+    repository, target = _repository(tmp_path, SAFE_SOURCE)
+    target.write_text(VULNERABLE_SOURCE, encoding="utf-8")
+
+    payload = review_candidate_patch(
+        repository,
+        semantic_mode="flow_states",
+        semantic_flow_limits=SemanticFlowLimits(max_ast_nodes=1),
+    )
+    gaps = payload["analysis"]["candidate"]["semantic_flow"]["gaps"]
+
+    assert any(
+        gap["code"] == "semantic_flow_ast_node_limit_reached"
+        for gap in gaps
+    )
+    assert payload["analysis"]["candidate"][
+        "analysis_succeeded"
+    ] is True
+
+
 def test_review_can_disable_semantic_summaries(tmp_path):
     repository, target = _repository(tmp_path, SAFE_SOURCE)
     target.write_text(VULNERABLE_SOURCE, encoding="utf-8")
@@ -211,6 +303,11 @@ def test_review_can_disable_semantic_summaries(tmp_path):
         == disabled["counts"]["candidate_actionable"]
     )
     assert disabled["analysis"]["candidate"]["function_summary"] == {
+        "enabled": False,
+        "mode": "off",
+        "analysis_succeeded": True,
+    }
+    assert disabled["analysis"]["candidate"]["semantic_flow"] == {
         "enabled": False,
         "mode": "off",
         "analysis_succeeded": True,

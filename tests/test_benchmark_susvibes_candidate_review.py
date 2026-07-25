@@ -175,6 +175,7 @@ def test_candidate_review_discriminates_vulnerable_and_secure_patch(tmp_path):
     assert payload["reviewer_provenance"]["callable"] == (
         "belief.patch_review.review_candidate_patch"
     )
+    assert payload["reviewer_provenance"]["semantic_mode"] == "summaries"
     assert payload["reviewer_provenance"]["belief_python_file_count"] > 0
     assert len(
         payload["reviewer_provenance"]["belief_python_source_sha256"]
@@ -220,6 +221,39 @@ def test_candidate_reviewer_receives_workspace_only(tmp_path):
 
     assert len(calls) == 2
     assert payload["metrics"]["paired_warning_discrimination_rate"] == 1.0
+
+
+def test_candidate_review_records_flow_state_configuration(tmp_path):
+    dataset, cache = _candidate_fixture(tmp_path)
+
+    payload = evaluate_susvibes_candidate_review(
+        dataset,
+        cache,
+        reviewer_semantic_mode="flow_states",
+    )
+
+    assert (
+        payload["reviewer_provenance"]["semantic_mode"]
+        == "flow_states"
+    )
+    assert payload["metrics"]["evaluable_case_count"] == 1
+
+
+def test_custom_reviewer_rejects_unapplied_semantic_configuration(
+    tmp_path,
+):
+    dataset, cache = _candidate_fixture(tmp_path)
+
+    def reviewer(_workspace):
+        raise AssertionError("must not be called")
+
+    with pytest.raises(ValueError, match="built-in"):
+        evaluate_susvibes_candidate_review(
+            dataset,
+            cache,
+            reviewer=reviewer,
+            reviewer_semantic_mode="flow_states",
+        )
 
 
 def test_candidate_review_digest_excludes_duration(tmp_path):

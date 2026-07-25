@@ -71,6 +71,7 @@ def evaluate_susvibes_candidate_review(
     max_cases: int = 0,
     instance_ids: Iterable[str] = (),
     selection_provenance: Mapping[str, str] | None = None,
+    reviewer_semantic_mode: str = "summaries",
     thresholds: (
         SusVibesCandidateReviewThresholds
         | Mapping[str, float]
@@ -83,8 +84,26 @@ def evaluate_susvibes_candidate_review(
     dataset_path = Path(dataset)
     corpus = LocalGitCorpus(repository_cache)
     configured_thresholds = _coerce_thresholds(thresholds)
+    configured_semantic_mode = str(reviewer_semantic_mode)
+    if configured_semantic_mode not in {
+        "off",
+        "summaries",
+        "flow_states",
+    }:
+        raise ValueError(
+            "reviewer_semantic_mode must be off, summaries, or flow_states"
+        )
+    if (
+        reviewer is not review_candidate_patch
+        and configured_semantic_mode != "summaries"
+    ):
+        raise ValueError(
+            "reviewer_semantic_mode can only configure the built-in "
+            "candidate patch reviewer"
+        )
     started = clock()
     reviewer_provenance = _reviewer_runtime_provenance(reviewer)
+    reviewer_provenance["semantic_mode"] = configured_semantic_mode
     requested_ids = tuple(str(value) for value in instance_ids)
     configured_cwes = tuple(str(value) for value in only_cwes)
     if len(requested_ids) != len(set(requested_ids)):
@@ -120,7 +139,12 @@ def evaluate_susvibes_candidate_review(
             for instance_id in requested_ids
         ]
     rows = [
-        _evaluate_case(case, corpus, reviewer)
+        _evaluate_case(
+            case,
+            corpus,
+            reviewer,
+            reviewer_semantic_mode=configured_semantic_mode,
+        )
         for case in selected_cases
     ]
     metrics = _summarize(rows)
@@ -211,6 +235,8 @@ def _evaluate_case(
     case: dict[str, Any],
     corpus: LocalGitCorpus,
     reviewer: Callable[..., dict[str, Any]],
+    *,
+    reviewer_semantic_mode: str = "summaries",
 ) -> dict[str, Any]:
     errors: list[str] = []
     for field in ("mask_patch", "task_patch", "golden_patch"):
@@ -275,8 +301,16 @@ def _evaluate_case(
                 ),
                 reverse=False,
             )
-            vulnerable_review = reviewer(vulnerable)
-            secure_review = reviewer(secure)
+            vulnerable_review = _invoke_reviewer(
+                reviewer,
+                vulnerable,
+                reviewer_semantic_mode,
+            )
+            secure_review = _invoke_reviewer(
+                reviewer,
+                secure,
+                reviewer_semantic_mode,
+            )
     except (
         OSError,
         UnicodeError,
@@ -316,6 +350,16 @@ def _evaluate_case(
             and not secure_summary["actionable_count"]
         ),
     }
+
+
+def _invoke_reviewer(
+    reviewer: Callable[..., dict[str, Any]],
+    repository: Path,
+    semantic_mode: str,
+) -> dict[str, Any]:
+    if reviewer is review_candidate_patch:
+        return reviewer(repository, semantic_mode=semantic_mode)
+    return reviewer(repository)
 
 
 def _initialize_masked_repository(
