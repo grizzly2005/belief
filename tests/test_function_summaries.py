@@ -166,6 +166,44 @@ def outer(candidate):
     assert _by_name(first)["outer"].callees == ("validate",)
 
 
+def test_sanitizer_summary_tracks_whether_return_value_is_used(
+    tmp_path: Path,
+):
+    _write(
+        tmp_path / "module.py",
+        """
+def sanitize(value):
+    return value.strip()
+
+def ignored(candidate):
+    sanitize(candidate)
+    return candidate
+
+def assigned(candidate):
+    candidate = sanitize(candidate)
+    return candidate
+""",
+    )
+
+    result = analyze_function_summaries(tmp_path)
+    summaries = _by_name(result)
+    ignored = [
+        effect
+        for effect in summaries["ignored"].effects
+        if effect.kind == SummaryKind.SANITIZER and not effect.direct
+    ]
+    assigned = [
+        effect
+        for effect in summaries["assigned"].effects
+        if effect.kind == SummaryKind.SANITIZER and not effect.direct
+    ]
+
+    assert ignored
+    assert all(effect.result_used is False for effect in ignored)
+    assert assigned
+    assert all(effect.result_used is True for effect in assigned)
+
+
 def test_recursive_call_graph_uses_one_scc_and_stabilizes(tmp_path: Path):
     _write(
         tmp_path / "module.py",

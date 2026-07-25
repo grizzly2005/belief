@@ -126,6 +126,7 @@ def test_function_summary_is_versioned_sorted_and_deterministic():
                     parameter_index=0,
                     resource=resource,
                     line=2,
+                    result_used=False,
                 ),
             },
             key=lambda effect: effect.sort_key,
@@ -162,6 +163,7 @@ def test_function_summary_is_versioned_sorted_and_deterministic():
     assert first.schema_version == FUNCTION_SUMMARY_SCHEMA_VERSION
     assert first.deterministic_digest == second.deterministic_digest
     assert first.to_dict()["gaps"][0]["line"] == 2
+    assert first.to_dict()["effects"][0]["result_used"] is False
 
 
 def test_function_summary_rejects_unsorted_effects():

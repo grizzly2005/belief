@@ -20,7 +20,7 @@ from .models import (
 
 
 FUNCTION_SUMMARY_ANALYSIS_SCHEMA_VERSION = (
-    "belief.function_summary_analysis.v1"
+    "belief.function_summary_analysis.v2"
 )
 
 
@@ -120,6 +120,7 @@ class _CallSite:
     raw_name: str
     line: int
     argument_parameters: tuple[int | None, ...]
+    result_used: bool
 
 
 @dataclass(frozen=True)
@@ -339,7 +340,12 @@ def analyze_function_summaries(
         changed = False
         for caller in sorted(records):
             additions: set[FunctionEffect] = set()
-            for callee, argument_parameters, line in call_bindings.get(
+            for (
+                callee,
+                argument_parameters,
+                line,
+                result_used,
+            ) in call_bindings.get(
                 caller,
                 (),
             ):
@@ -350,6 +356,7 @@ def analyze_function_summaries(
                         line=line,
                         via=(callee,),
                         direct=False,
+                        result_used=result_used,
                     )
                 )
                 for effect in sorted(
@@ -386,6 +393,7 @@ def analyze_function_summaries(
                         callee=callee,
                         argument_parameters=argument_parameters,
                         line=line,
+                        result_used=result_used,
                         max_depth=configured.max_call_depth,
                     )
                     if propagated is None:
@@ -542,29 +550,39 @@ def _direct_effects(
 ) -> tuple[FunctionEffect, ...]:
     effects: set[FunctionEffect] = set()
     function_name = node.name.lower()
+    semantic_parameters = tuple(
+        index
+        for name, index in parameters.items()
+        if name not in {"self", "cls"}
+    )
     if any(
         token in function_name
         for token in ("validate", "validator", "is_safe", "is_valid")
     ):
-        effects.add(
-            FunctionEffect(
-                kind=SummaryKind.VALIDATOR,
-                value=node.name,
-                line=node.lineno,
+        for index in semantic_parameters or (None,):
+            effects.add(
+                FunctionEffect(
+                    kind=SummaryKind.VALIDATOR,
+                    value=node.name,
+                    parameter_index=index,
+                    line=node.lineno,
+                )
             )
-        )
     if any(
         token in function_name
         for token in ("sanitize", "escape", "redact", "mask_secret")
     ):
-        effects.add(
-            FunctionEffect(
-                kind=SummaryKind.SANITIZER,
-                value=node.name,
-                line=node.lineno,
+        for index in semantic_parameters or (None,):
+            effects.add(
+                FunctionEffect(
+                    kind=SummaryKind.SANITIZER,
+                    value=node.name,
+                    parameter_index=index,
+                    line=node.lineno,
+                )
             )
-        )
 
+    parents = _parent_map(node)
     for item in _walk_function_body(node):
         if isinstance(item, ast.Return):
             effects.update(_return_effects(item, parameters))
@@ -585,7 +603,13 @@ def _direct_effects(
                 )
             )
         elif isinstance(item, ast.Call):
-            effects.update(_call_effects(item, parameters))
+            effects.update(
+                _call_effects(
+                    item,
+                    parameters,
+                    result_used=_call_result_used(item, parents),
+                )
+            )
         elif isinstance(item, ast.Attribute) and isinstance(
             item.ctx,
             ast.Load,
@@ -796,6 +820,8 @@ def _assignment_effects(
 def _call_effects(
     node: ast.Call,
     parameters: dict[str, int],
+    *,
+    result_used: bool,
 ) -> set[FunctionEffect]:
     name = _call_name(node.func)
     lowered = name.lower()
@@ -817,6 +843,7 @@ def _call_effects(
                     value=name,
                     parameter_index=index,
                     line=node.lineno,
+                    result_used=result_used,
                 )
             )
     if _sanitizer_name(lowered):
@@ -827,6 +854,7 @@ def _call_effects(
                     value=name,
                     parameter_index=index,
                     line=node.lineno,
+                    result_used=result_used,
                 )
             )
     if _validator_name(lowered):
@@ -837,6 +865,7 @@ def _call_effects(
                     value=name,
                     parameter_index=index,
                     line=node.lineno,
+                    result_used=result_used,
                 )
             )
     if isinstance(node.func, ast.Attribute) and node.func.attr in {
@@ -865,6 +894,7 @@ def _call_sites(
     parameters: dict[str, int],
 ) -> tuple[_CallSite, ...]:
     sites = set()
+    parents = _parent_map(node)
     for item in _walk_function_body(node):
         if not isinstance(item, ast.Call):
             continue
@@ -882,6 +912,7 @@ def _call_sites(
                 raw_name=name,
                 line=item.lineno,
                 argument_parameters=tuple(arguments),
+                result_used=_call_result_used(item, parents),
             )
         )
     return tuple(
@@ -891,6 +922,7 @@ def _call_sites(
                 item.raw_name,
                 item.line,
                 _argument_sort_key(item.argument_parameters),
+                item.result_used,
             ),
         )
     )
@@ -902,7 +934,10 @@ def _resolve_call_graph(
     max_edges: int,
 ) -> tuple[
     dict[str, tuple[str, ...]],
-    dict[str, tuple[tuple[str, tuple[int | None, ...], int], ...]],
+    dict[
+        str,
+        tuple[tuple[str, tuple[int | None, ...], int, bool], ...],
+    ],
     int,
 ]:
     by_tail: dict[str, list[str]] = defaultdict(list)
@@ -939,6 +974,7 @@ def _resolve_call_graph(
                         selected,
                         site.argument_parameters,
                         site.line,
+                        site.result_used,
                     )
                 )
     candidate_bindings.sort(
@@ -947,6 +983,7 @@ def _resolve_call_graph(
             item[1],
             _argument_sort_key(item[2]),
             item[3],
+            item[4],
         )
     )
     observed = len(candidate_bindings)
@@ -954,11 +991,19 @@ def _resolve_call_graph(
     edges: dict[str, set[str]] = defaultdict(set)
     bindings: dict[
         str,
-        list[tuple[str, tuple[int | None, ...], int]],
+        list[tuple[str, tuple[int | None, ...], int, bool]],
     ] = defaultdict(list)
-    for caller, callee, argument_parameters, line in selected_bindings:
+    for (
+        caller,
+        callee,
+        argument_parameters,
+        line,
+        result_used,
+    ) in selected_bindings:
         edges[caller].add(callee)
-        bindings[caller].append((callee, argument_parameters, line))
+        bindings[caller].append(
+            (callee, argument_parameters, line, result_used)
+        )
     return (
         {
             caller: tuple(sorted(callees))
@@ -972,6 +1017,7 @@ def _resolve_call_graph(
                         item[0],
                         _argument_sort_key(item[1]),
                         item[2],
+                        item[3],
                     ),
                 )
             )
@@ -993,6 +1039,7 @@ def _propagated_effect(
     callee: str,
     argument_parameters: tuple[int | None, ...],
     line: int,
+    result_used: bool,
     max_depth: int,
 ) -> FunctionEffect | None:
     via = (callee, *effect.via)
@@ -1014,7 +1061,23 @@ def _propagated_effect(
         line=line,
         via=via,
         direct=False,
+        result_used=effect.result_used and result_used,
     )
+
+
+def _parent_map(root: ast.AST) -> dict[ast.AST, ast.AST]:
+    return {
+        child: parent
+        for parent in ast.walk(root)
+        for child in ast.iter_child_nodes(parent)
+    }
+
+
+def _call_result_used(
+    node: ast.Call,
+    parents: dict[ast.AST, ast.AST],
+) -> bool:
+    return not isinstance(parents.get(node), ast.Expr)
 
 
 def _strongly_connected_components(

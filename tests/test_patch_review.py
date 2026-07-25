@@ -192,7 +192,7 @@ def test_review_attaches_bounded_function_summaries(tmp_path):
     assert candidate["analysis_succeeded"] is True
     assert (
         candidate["schema_version"]
-        == "belief.function_summary_analysis.v1"
+        == "belief.function_summary_analysis.v2"
     )
     assert candidate["metrics"]["function_count"] == 1
     assert len(candidate["deterministic_digest"]) == 64

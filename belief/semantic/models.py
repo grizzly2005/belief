@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any
 
 
-FUNCTION_SUMMARY_SCHEMA_VERSION = "belief.function_summary.v1"
+FUNCTION_SUMMARY_SCHEMA_VERSION = "belief.function_summary.v2"
 FLOW_STATE_SCHEMA_VERSION = "belief.flow_state.v1"
 ANALYSIS_GAP_SCHEMA_VERSION = "belief.analysis_gap.v1"
 GUARD_EFFECT_SCHEMA_VERSION = "belief.guard_effect.v1"
@@ -312,6 +312,7 @@ class FunctionEffect:
     line: int | None = None
     via: tuple[str, ...] = ()
     direct: bool = True
+    result_used: bool = True
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, SummaryKind):
@@ -330,6 +331,8 @@ class FunctionEffect:
             self.via,
             allow_empty=True,
         )
+        if not isinstance(self.result_used, bool):
+            raise ValueError("function effect result_used must be boolean")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -341,6 +344,7 @@ class FunctionEffect:
             "line": self.line,
             "via": list(self.via),
             "direct": self.direct,
+            "result_used": self.result_used,
         }
 
     @property
@@ -354,6 +358,7 @@ class FunctionEffect:
             self.line or 0,
             self.via,
             self.direct,
+            self.result_used,
         )
 
 
