@@ -14,6 +14,7 @@ from belief.patch_review import (
     collect_worktree_patch,
     review_candidate_patch,
 )
+from belief.semantic import FunctionSummaryLimits
 
 
 pytestmark = pytest.mark.security
@@ -175,6 +176,85 @@ def test_review_digest_excludes_target_and_duration(tmp_path):
     assert first["duration_seconds"] == 1.0
     assert second["duration_seconds"] == 8.0
     assert first["deterministic_digest"] == second["deterministic_digest"]
+
+
+def test_review_attaches_bounded_function_summaries(tmp_path):
+    repository, target = _repository(tmp_path, SAFE_SOURCE)
+    target.write_text(VULNERABLE_SOURCE, encoding="utf-8")
+
+    payload = review_candidate_patch(repository)
+    semantic = payload["semantic_analysis"]
+    candidate = payload["analysis"]["candidate"]["function_summary"]
+
+    assert semantic["mode"] == "summaries"
+    assert semantic["affects_verdict"] is False
+    assert candidate["enabled"] is True
+    assert candidate["analysis_succeeded"] is True
+    assert (
+        candidate["schema_version"]
+        == "belief.function_summary_analysis.v1"
+    )
+    assert candidate["metrics"]["function_count"] == 1
+    assert len(candidate["deterministic_digest"]) == 64
+
+
+def test_review_can_disable_semantic_summaries(tmp_path):
+    repository, target = _repository(tmp_path, SAFE_SOURCE)
+    target.write_text(VULNERABLE_SOURCE, encoding="utf-8")
+
+    enabled = review_candidate_patch(repository)
+    disabled = review_candidate_patch(repository, semantic_mode="off")
+
+    assert enabled["status"] == disabled["status"]
+    assert (
+        enabled["counts"]["candidate_actionable"]
+        == disabled["counts"]["candidate_actionable"]
+    )
+    assert disabled["analysis"]["candidate"]["function_summary"] == {
+        "enabled": False,
+        "mode": "off",
+        "analysis_succeeded": True,
+    }
+
+
+def test_review_reports_function_summary_limits(tmp_path):
+    baseline = """\
+def first(value):
+    raise NotImplementedError
+"""
+    candidate = """\
+def first(value):
+    return second(value)
+
+def second(value):
+    return value
+"""
+    repository, target = _repository(tmp_path, baseline)
+    target.write_text(candidate, encoding="utf-8")
+
+    payload = review_candidate_patch(
+        repository,
+        semantic_limits=FunctionSummaryLimits(max_functions=1),
+    )
+    gaps = payload["analysis"]["candidate"]["function_summary"]["gaps"]
+
+    assert any(
+        gap["code"] == "function_summary_function_limit_reached"
+        for gap in gaps
+    )
+    assert payload["analysis"]["candidate"][
+        "analysis_succeeded"
+    ] is True
+
+
+def test_review_rejects_unknown_semantic_mode(tmp_path):
+    repository, _target = _repository(tmp_path, SAFE_SOURCE)
+
+    with pytest.raises(ValueError, match="semantic_mode"):
+        review_candidate_patch(
+            repository,
+            semantic_mode="benchmark_project_special_case",
+        )
 
 
 def test_review_cli_writes_json_feedback_and_enforces_gate(tmp_path):

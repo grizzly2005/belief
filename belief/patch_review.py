@@ -30,9 +30,15 @@ from .static_analysis_pipeline import (
     StaticAnalysisOptions,
     analyze_static_target,
 )
+from .semantic.summaries import (
+    FUNCTION_SUMMARY_ANALYSIS_SCHEMA_VERSION,
+    FunctionSummaryLimits,
+    analyze_function_summaries,
+)
 
 
 CANDIDATE_PATCH_REVIEW_SCHEMA_VERSION = "belief.candidate_patch_review.v1"
+SEMANTIC_REVIEW_MODES = ("off", "summaries")
 
 _GIT_ENV_OVERRIDES = {
     "GIT_ALLOW_PROTOCOL": "",
@@ -95,6 +101,8 @@ def review_candidate_patch(
     *,
     include_tests: bool = False,
     max_files: int = 100,
+    semantic_mode: str = "summaries",
+    semantic_limits: FunctionSummaryLimits | None = None,
     pipeline: Callable[[Path], Any] | None = None,
     clock: Callable[[], float] = time.perf_counter,
 ) -> dict[str, Any]:
@@ -103,6 +111,15 @@ def review_candidate_patch(
     root = _repository_root(target)
     if max_files <= 0:
         raise ValueError("max_files must be positive")
+    if semantic_mode not in SEMANTIC_REVIEW_MODES:
+        raise ValueError(
+            "semantic_mode must be one of: "
+            + ", ".join(SEMANTIC_REVIEW_MODES)
+        )
+    configured_semantic_limits = (
+        semantic_limits
+        or FunctionSummaryLimits(max_files=max_files)
+    )
     patch_text = collect_worktree_patch(root) if patch is None else str(patch)
     started = clock()
     parsed_files = parse_security_diff(patch_text)
@@ -127,6 +144,7 @@ def review_candidate_patch(
         temp_root = Path(temp)
         for state in ("vulnerable", "fixed"):
             state_root = temp_root / state
+            state_root.mkdir(parents=True, exist_ok=True)
             focus: dict[str, FocusContext] = {}
             materialization_errors: list[str] = []
             for diff_file in diff_files:
@@ -148,12 +166,22 @@ def review_candidate_patch(
                     "errors": materialization_errors,
                     "diagnostics": [],
                     "findings": [],
+                    "function_summary": _function_summary_payload(
+                        state_root,
+                        semantic_mode,
+                        configured_semantic_limits,
+                    ),
                 }
                 continue
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", SyntaxWarning)
                     result = (pipeline or _default_pipeline)(state_root)
+                    function_summary = _function_summary_payload(
+                        state_root,
+                        semantic_mode,
+                        configured_semantic_limits,
+                    )
                 observations[state] = {
                     "analysis_succeeded": True,
                     "errors": materialization_errors,
@@ -164,6 +192,7 @@ def review_candidate_patch(
                         )
                     ],
                     "findings": _focused_findings(result, focus),
+                    "function_summary": function_summary,
                 }
             except Exception as exc:
                 observations[state] = {
@@ -174,6 +203,11 @@ def review_candidate_patch(
                     ],
                     "diagnostics": [],
                     "findings": [],
+                    "function_summary": {
+                        "enabled": semantic_mode != "off",
+                        "mode": semantic_mode,
+                        "analysis_succeeded": False,
+                    },
                 }
 
     baseline_rows = observations["vulnerable"]["findings"]
@@ -214,6 +248,11 @@ def review_candidate_patch(
             for item in diff_files
         ],
         "excluded_test_files": excluded_files,
+        "semantic_analysis": {
+            "mode": semantic_mode,
+            "limits": configured_semantic_limits.to_dict(),
+            "affects_verdict": False,
+        },
         "analysis": {
             "baseline": observations["vulnerable"],
             "candidate": observations["fixed"],
@@ -285,6 +324,34 @@ def _default_pipeline(target: Path) -> Any:
         security_analysis_profile="patch_review",
     )
     return analyze_static_target(target, options)
+
+
+def _function_summary_payload(
+    target: Path,
+    mode: str,
+    limits: FunctionSummaryLimits,
+) -> dict[str, Any]:
+    if mode == "off":
+        return {
+            "enabled": False,
+            "mode": mode,
+            "analysis_succeeded": True,
+        }
+    result = analyze_function_summaries(target, limits)
+    return {
+        "enabled": True,
+        "mode": mode,
+        "analysis_succeeded": True,
+        "schema_version": FUNCTION_SUMMARY_ANALYSIS_SCHEMA_VERSION,
+        "deterministic_digest": result.deterministic_digest,
+        "metrics": dict(result.metrics),
+        "limits": result.limits.to_dict(),
+        "gaps": [gap.to_dict() for gap in result.gaps],
+        "summaries": [
+            summary.to_dict()
+            for summary in result.summaries
+        ],
+    }
 
 
 def _focused_findings(
@@ -594,6 +661,7 @@ def _semantic_digest(payload: Mapping[str, Any]) -> str:
 
 __all__ = [
     "CANDIDATE_PATCH_REVIEW_SCHEMA_VERSION",
+    "SEMANTIC_REVIEW_MODES",
     "collect_worktree_patch",
     "review_candidate_patch",
     "write_candidate_patch_review_json",
