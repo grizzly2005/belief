@@ -343,39 +343,45 @@ Two independent offline candidate-review runs produced:
 | Metric | Result | Default gate |
 |---|---:|---:|
 | Evaluable cases | 24 / 24 | no analysis errors |
-| Vulnerable candidates warned | 10 / 24 (41.7%) | at least 30% |
+| Vulnerable candidates warned | 12 / 24 (50.0%) | at least 30% |
 | Secure candidates warned | 2 / 24 (8.3%) | at most 25% |
-| Paired warning discrimination | 8 / 24 (33.3%) | at least 30% |
+| Paired warning discrimination | 10 / 24 (41.7%) | at least 30% |
 
 Both runs passed every unchanged default gate, emitted byte-identical case
 rows, and produced the same semantic digest:
-`96ef7b58764c91d5d2323869c9c20e40bf98cd6e1bd8d94d184aec2c02323760`.
-Their durations were 59.50 and 59.84 seconds and are excluded from the digest.
+`193e36656da6c923b4932422c92f01bce540a5bb5e3af0e3982e82ec39e6616f`.
+Their durations were 59.79 and 59.38 seconds and are excluded from the digest.
 The non-overwritten artifact hashes are:
 
-- `belief-susvibes-candidate-review-canary-full-20260725-05.json`:
-  `2180f84d67308a6ab01a781ecff20eabd0c1ce3107c8bb0120ae08a359c81527`;
-- `belief-susvibes-candidate-review-canary-full-20260725-06.json`:
-  `478de22a2e85c4286d8fcf57b143125f909fd2b61520706d197fda0d6db56b73`.
+- `belief-susvibes-candidate-review-canary-full-20260725-07.json`:
+  `5df8da92b0224599eb1c7c172ba158c14f9d3d4172cf2793f107b6850d1df749`;
+- `belief-susvibes-candidate-review-canary-full-20260725-08.json`:
+  `1df3e49769a00d4ed8548a45f0cacf614b4d6516134e7e9800d7e70662a08b2a`.
 
 The artifacts bind the ordered 24-ID selection, dataset, upstream commit,
 experiment manifest, and the default reviewer implementation. The reviewer
 source digest for both runs is
-`74b9e4cf79d35132062a3eb478ff79b24dbc929147f05eae35b8983c7a1cabb0`
+`16eace68f2753bb11b64e5cd0f57cd9dd1ea9eabf4afa3290286dd38da2a6d2b`
 across 836 normalized Python files.
 
-The two additional discriminated pairs use general causal rules rather than
+The four additional discriminated pairs use general causal rules rather than
 dataset labels:
 
 - caller-supplied XML reaching an imported standard-library XML parser is
   warned, while the corresponding `defusedxml` calls are not;
 - a boundary-derived redirect target reaching an HTTP redirect sink is warned
   unless a structurally verified regular-expression sanitizer removes both CR
-  and LF characters from the value used by the sink.
+  and LF characters from the value used by the sink;
+- a route-selected model used by a generic editing view requires both a
+  non-empty permission requirement and a permission policy bound to that same
+  model;
+- forwarding a reusable `Authorization` header to a supplied request requires
+  a dominating same-origin or allowed-domain guard tied to that request.
 
 Negative regressions keep internal subprocess-event XML out of the request
 boundary, reject sanitizer names whose implementation does not remove CR/LF,
-and ignore constant redirect targets.
+ignore constant redirect targets, reject permission policies bound to the
+wrong model, and reject destination guards tied to another request.
 
 The two remaining secure-candidate disagreements are retained. Tryton's nested
 lexical path-containment helper is not yet propagated back to its caller, and
@@ -394,7 +400,7 @@ holdout task was used for tuning or evaluation.
 | Cursor + Claude Fable 5 | 29% | official fair `SecPass`, 200-task Agent Security League |
 | Kimi K3 specialized harness | 23 / 26 | private known-CVE pass@3 rediscovery |
 | BELIEF candidate review | 22 / 71 (31.0%) | offline canonical-patch warning discrimination |
-| BELIEF frozen engineering canary | 8 / 24 (33.3%) | offline canonical-patch warning discrimination; not score-bearing |
+| BELIEF frozen engineering canary | 10 / 24 (41.7%) | offline canonical-patch warning discrimination; not score-bearing |
 
 The BELIEF percentage is numerically above 29%, but it is **not** evidence that
 BELIEF has beaten Fable 5: the denominator, task subset, output, and success

@@ -266,6 +266,67 @@ def test_authentication_only_view_guard_does_not_prove_object_authorization():
     assert len(_access_findings(source)) == 1
 
 
+def test_route_selected_dynamic_model_requires_bound_permission_policy():
+    vulnerable = """
+        class EditView(generic.EditView):
+            def setup(self, request, app_name, model_name, *args, **kwargs):
+                self.model = get_model_from_url_params(app_name, model_name)
+                super().setup(request, app_name, model_name, *args, **kwargs)
+    """
+    fixed = """
+        class EditView(generic.EditView):
+            permission_required = "change"
+
+            def setup(self, request, app_name, model_name, *args, **kwargs):
+                self.model = get_model_from_url_params(app_name, model_name)
+                self.permission_policy = ModelPermissionPolicy(self.model)
+                super().setup(request, app_name, model_name, *args, **kwargs)
+    """
+
+    findings = _access_findings(vulnerable)
+
+    assert len(findings) == 1
+    assert findings[0].scope.class_name == "EditView"
+    assert findings[0].scope.function_name == "setup"
+    assert _access_findings(fixed) == []
+
+
+def test_permission_name_without_model_bound_policy_is_not_sufficient():
+    source = """
+        class EditView(generic.EditView):
+            permission_required = "change"
+
+            def setup(self, request, app_name, model_name, *args, **kwargs):
+                self.model = get_model_from_url_params(app_name, model_name)
+                super().setup(request, app_name, model_name, *args, **kwargs)
+    """
+
+    assert len(_access_findings(source)) == 1
+
+
+def test_permission_policy_for_different_model_is_not_sufficient():
+    source = """
+        class EditView(generic.EditView):
+            permission_required = "change"
+
+            def setup(self, request, app_name, model_name, *args, **kwargs):
+                self.model = get_model_from_url_params(app_name, model_name)
+                self.permission_policy = ModelPermissionPolicy(self.other_model)
+                super().setup(request, app_name, model_name, *args, **kwargs)
+    """
+
+    assert len(_access_findings(source)) == 1
+
+
+def test_static_edit_view_model_does_not_invent_route_selected_access():
+    source = """
+        class EditView(generic.EditView):
+            model = Site
+    """
+
+    assert _access_findings(source) == []
+
+
 def test_sql_builder_fragment_requires_full_match_or_identifier_validation():
     vulnerable = """
         class Query:
@@ -1298,6 +1359,67 @@ def test_constant_redirect_target_is_not_reported():
     """
 
     assert _cwe_findings(source, "CWE-93") == []
+
+
+def test_reusable_authorization_header_requires_destination_scope():
+    vulnerable = """
+        class HttpAuthMiddleware:
+            def process_request(self, request, spider):
+                auth = getattr(self, "auth", None)
+                if auth and b"Authorization" not in request.headers:
+                    request.headers[b"Authorization"] = auth
+    """
+    fixed = """
+        class HttpAuthMiddleware:
+            def process_request(self, request, spider):
+                auth = getattr(self, "auth", None)
+                if auth and b"Authorization" not in request.headers:
+                    if url_is_from_any_domain(
+                        request.url,
+                        [self.credential_domain],
+                    ):
+                        request.headers[b"Authorization"] = auth
+    """
+
+    findings = _cwe_findings(vulnerable, "CWE-522")
+
+    assert len(findings) == 1
+    assert findings[0].source_metadata["dataflow"]["source"] == "auth"
+    assert (
+        findings[0].source_metadata["dataflow"]["sink"]
+        == "request.headers['Authorization']"
+    )
+    assert _cwe_findings(fixed, "CWE-522") == []
+
+
+def test_unrelated_destination_check_does_not_guard_later_auth_header():
+    source = """
+        def process_request(request, auth):
+            if is_same_origin(request.url, TRUSTED_ORIGIN):
+                log_allowed_request(request)
+            request.headers["Authorization"] = auth
+    """
+
+    assert len(_cwe_findings(source, "CWE-522")) == 1
+
+
+def test_destination_guard_for_other_request_does_not_guard_auth_header():
+    source = """
+        def process_request(request, other_request, auth):
+            if is_same_origin(other_request.url, TRUSTED_ORIGIN):
+                request.headers["Authorization"] = auth
+    """
+
+    assert len(_cwe_findings(source, "CWE-522")) == 1
+
+
+def test_non_credential_header_assignment_is_not_auth_scope_finding():
+    source = """
+        def process_request(request, trace_id):
+            request.headers["X-Trace-ID"] = trace_id
+    """
+
+    assert _cwe_findings(source, "CWE-522") == []
 
 
 def test_pipeline_exposes_patch_review_profile_without_changing_default(tmp_path):

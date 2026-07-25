@@ -189,6 +189,9 @@ class SecurityPatternExtractor:
                 self._check_patch_redirect_header_injection(tree, module_scope)
             )
             beliefs.extend(
+                self._check_patch_authorization_header_scope(tree, module_scope)
+            )
+            beliefs.extend(
                 self._check_patch_boundary_option_injection(tree, module_scope)
             )
 
@@ -1913,7 +1916,10 @@ class SecurityPatternExtractor:
                 for child in class_node.body
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
             ]
-            if any(_has_object_authorization_guard(method) for method in methods):
+            if (
+                any(_has_object_authorization_guard(method) for method in methods)
+                or _class_has_dynamic_model_permission_guard(class_node)
+            ):
                 continue
             for method in methods:
                 lookup = _route_selected_object_lookup(method)
@@ -2258,6 +2264,77 @@ class SecurityPatternExtractor:
                         )
                     )
                     break
+        return beliefs
+
+    def _check_patch_authorization_header_scope(
+        self,
+        tree: ast.Module,
+        module_scope: Scope,
+    ) -> list[Belief]:
+        """Detect reusable credentials attached without a destination guard."""
+
+        beliefs: list[Belief] = []
+        class_names = _function_class_names(tree)
+        for function in (
+            candidate
+            for candidate in ast.walk(tree)
+            if isinstance(candidate, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ):
+            assignments = _named_assignments(function)
+            for assignment, request_name, credential_name in (
+                _unguarded_authorization_header_assignments(
+                    function,
+                    assignments=assignments,
+                )
+            ):
+                scope = Scope(
+                    file_path=module_scope.file_path,
+                    function_name=function.name,
+                    class_name=class_names.get(id(function)),
+                    module=module_scope.module,
+                    line_start=function.lineno,
+                    line_end=function.end_lineno,
+                )
+                beliefs.append(
+                    self._make_belief(
+                        "http.authorization_header_scoped_to_destination == true",
+                        (
+                            f"Reusable credential '{credential_name}' reaches "
+                            f"{request_name}.headers['Authorization'] at line "
+                            f"{assignment.lineno} without a same-origin or "
+                            "allowed-domain guard (CWE-522)."
+                        ),
+                        scope,
+                        assignment.lineno,
+                        "high",
+                        "CWE-522",
+                        variables=(credential_name, request_name),
+                        metadata={
+                            "analysis_profile": "patch_review",
+                            "dataflow": {
+                                "source": credential_name,
+                                "source_line": function.lineno,
+                                "sink": (
+                                    f"{request_name}.headers['Authorization']"
+                                ),
+                                "sink_line": assignment.lineno,
+                                "path": [
+                                    credential_name,
+                                    (
+                                        f"{request_name}.headers"
+                                        "['Authorization']"
+                                    ),
+                                ],
+                                "missing_guarantees": [
+                                    (
+                                        "request destination is restricted to "
+                                        "the credential origin"
+                                    )
+                                ],
+                            },
+                        },
+                    )
+                )
         return beliefs
 
     def _check_patch_boundary_option_injection(
@@ -3281,6 +3358,201 @@ def _redirect_source_label(
     if _references_request_context(node):
         return "request redirect target"
     return "redirect target"
+
+
+def _unguarded_authorization_header_assignments(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    assignments: dict[str, ast.AST],
+) -> list[tuple[ast.Assign | ast.AnnAssign, str, str]]:
+    findings: list[tuple[ast.Assign | ast.AnnAssign, str, str]] = []
+    request_names = _function_parameter_names(function) - {"self", "cls"}
+
+    def visit(
+        statements: list[ast.stmt],
+        guarded_requests: set[str],
+    ) -> None:
+        for statement in statements:
+            if isinstance(statement, (ast.Assign, ast.AnnAssign)):
+                value = statement.value
+                if value is not None:
+                    targets = (
+                        statement.targets
+                        if isinstance(statement, ast.Assign)
+                        else [statement.target]
+                    )
+                    for target in targets:
+                        request_name = _authorization_header_request_name(
+                            target
+                        )
+                        if (
+                            not request_name
+                            or request_name not in request_names
+                            or request_name in guarded_requests
+                        ):
+                            continue
+                        credential_name = _credential_source_name(
+                            value,
+                            assignments=assignments,
+                        )
+                        if credential_name:
+                            findings.append(
+                                (statement, request_name, credential_name)
+                            )
+            if isinstance(statement, ast.If):
+                guarded_body = guarded_requests | {
+                    request_name
+                    for request_name in request_names
+                    if _positive_authorization_destination_guard(
+                        statement.test,
+                        request_name,
+                    )
+                }
+                visit(statement.body, guarded_body)
+                visit(statement.orelse, guarded_requests)
+                continue
+            if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
+                visit(statement.body, guarded_requests)
+                visit(statement.orelse, guarded_requests)
+                continue
+            if isinstance(statement, (ast.With, ast.AsyncWith)):
+                visit(statement.body, guarded_requests)
+                continue
+            if isinstance(statement, ast.Try):
+                visit(statement.body, guarded_requests)
+                for handler in statement.handlers:
+                    visit(handler.body, guarded_requests)
+                visit(statement.orelse, guarded_requests)
+                visit(statement.finalbody, guarded_requests)
+
+    visit(function.body, set())
+    return findings
+
+
+def _authorization_header_request_name(node: ast.AST) -> str:
+    if not isinstance(node, ast.Subscript):
+        return ""
+    key = node.slice
+    if not isinstance(key, ast.Constant) or not isinstance(
+        key.value,
+        (bytes, str),
+    ):
+        return ""
+    raw_key = (
+        key.value.decode("latin-1", errors="ignore")
+        if isinstance(key.value, bytes)
+        else key.value
+    )
+    if raw_key.strip().lower() != "authorization":
+        return ""
+    dotted = _ast_dotted_name(node.value)
+    if not dotted.lower().endswith(".headers"):
+        return ""
+    owner = dotted.rsplit(".", 1)[0]
+    return owner.split(".", 1)[0]
+
+
+def _credential_source_name(
+    node: ast.AST,
+    *,
+    assignments: dict[str, ast.AST],
+    seen: set[str] | None = None,
+) -> str:
+    visited = set(seen or ())
+    credential_tokens = {
+        "api_key",
+        "auth",
+        "authorization",
+        "bearer",
+        "credential",
+        "password",
+        "secret",
+        "token",
+    }
+    for candidate in ast.walk(node):
+        dotted = _ast_dotted_name(candidate).lower()
+        normalized = dotted.replace("-", "_")
+        name_tokens = {
+            token
+            for part in normalized.split(".")
+            for token in part.split("_")
+            if token
+        }
+        if dotted and (
+            name_tokens & credential_tokens
+            or any(token in normalized for token in credential_tokens)
+        ):
+            return dotted
+        if not isinstance(candidate, ast.Call):
+            continue
+        short_name = _ast_call_name(candidate).rsplit(".", 1)[-1].lower()
+        if any(token in short_name for token in credential_tokens):
+            return short_name
+    for name in sorted(_referenced_names(node)):
+        if name in visited or name not in assignments:
+            continue
+        visited.add(name)
+        source = _credential_source_name(
+            assignments[name],
+            assignments=assignments,
+            seen=visited,
+        )
+        if source:
+            return name
+    if isinstance(node, ast.Constant) and isinstance(node.value, (bytes, str)):
+        raw = (
+            node.value.decode("latin-1", errors="ignore")
+            if isinstance(node.value, bytes)
+            else node.value
+        )
+        if raw.lower().startswith(("basic ", "bearer ")):
+            return "literal authorization credential"
+    return ""
+
+
+def _positive_authorization_destination_guard(
+    node: ast.AST,
+    request_name: str,
+) -> bool:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return False
+    if isinstance(node, ast.BoolOp):
+        return any(
+            _positive_authorization_destination_guard(value, request_name)
+            for value in node.values
+        )
+    if isinstance(node, ast.Call):
+        short_name = _ast_call_name(node).rsplit(".", 1)[-1].lower()
+        destination_guards = {
+            "host_is_allowed",
+            "is_allowed_host",
+            "is_same_domain",
+            "is_same_origin",
+            "matches_allowed_domain",
+            "same_origin",
+            "url_has_allowed_host_and_scheme",
+            "url_is_from_any_domain",
+        }
+        return (
+            short_name in destination_guards
+            and request_name in _referenced_names(node)
+        )
+    if isinstance(node, ast.Compare) and all(
+        isinstance(operator, (ast.Eq, ast.In, ast.Is))
+        for operator in node.ops
+    ):
+        if request_name not in _referenced_names(node):
+            return False
+        context = " ".join(
+            _ast_dotted_name(candidate).lower()
+            for candidate in ast.walk(node)
+            if _ast_dotted_name(candidate)
+        )
+        return any(
+            token in context
+            for token in ("domain", "host", "hostname", "origin")
+        )
+    return False
 
 
 def _is_record_creation_function(
@@ -4852,6 +5124,9 @@ def _is_web_view_class(node: ast.ClassDef) -> bool:
 def _route_selected_object_lookup(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> ast.Call | None:
+    dynamic_model_lookup = _route_selected_dynamic_model_lookup(node)
+    if dynamic_model_lookup is not None:
+        return dynamic_model_lookup
     if node.name.lower() not in {
         "delete",
         "destroy",
@@ -4875,6 +5150,122 @@ def _route_selected_object_lookup(
         if _call_references_route_selector(call):
             return call
     return None
+
+
+def _route_selected_dynamic_model_lookup(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> ast.Call | None:
+    if node.name.lower() not in {"dispatch", "initialize", "setup"}:
+        return None
+    route_parameters = _function_parameter_names(node) - {
+        "self",
+        "cls",
+        "request",
+        "args",
+        "kwargs",
+    }
+    if not route_parameters:
+        return None
+    for assignment in (
+        candidate
+        for candidate in ast.walk(node)
+        if isinstance(candidate, (ast.Assign, ast.AnnAssign))
+    ):
+        targets = (
+            assignment.targets
+            if isinstance(assignment, ast.Assign)
+            else [assignment.target]
+        )
+        if not any(
+            _self_attribute_name(target) == "model"
+            for target in targets
+        ):
+            continue
+        value = assignment.value
+        if not isinstance(value, ast.Call):
+            continue
+        short_name = _ast_call_name(value).rsplit(".", 1)[-1].lower()
+        name_tokens = {
+            token
+            for token in re.split(r"[^a-z0-9]+", short_name)
+            if token
+        }
+        if "model" not in name_tokens and "model" not in short_name:
+            continue
+        if not (
+            name_tokens & {"find", "get", "load", "lookup", "resolve"}
+            or short_name.startswith(("find_", "get_", "load_", "resolve_"))
+        ):
+            continue
+        if _referenced_names(value) & route_parameters:
+            return value
+    return None
+
+
+def _class_has_dynamic_model_permission_guard(node: ast.ClassDef) -> bool:
+    permission_required = False
+    model_bound_policy = False
+    for candidate in node.body:
+        if isinstance(candidate, (ast.Assign, ast.AnnAssign)):
+            targets = (
+                candidate.targets
+                if isinstance(candidate, ast.Assign)
+                else [candidate.target]
+            )
+            if any(
+                isinstance(target, ast.Name)
+                and target.id == "permission_required"
+                for target in targets
+            ) and _has_nonempty_permission_requirement(candidate.value):
+                permission_required = True
+
+    for method in (
+        child
+        for child in node.body
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ):
+        for assignment in (
+            candidate
+            for candidate in ast.walk(method)
+            if isinstance(candidate, (ast.Assign, ast.AnnAssign))
+        ):
+            targets = (
+                assignment.targets
+                if isinstance(assignment, ast.Assign)
+                else [assignment.target]
+            )
+            if not any(
+                _self_attribute_name(target) == "permission_policy"
+                for target in targets
+            ):
+                continue
+            value = assignment.value
+            if not isinstance(value, ast.Call):
+                continue
+            short_name = _ast_call_name(value).rsplit(".", 1)[-1].lower()
+            if (
+                "permission" in short_name
+                and "policy" in short_name
+                and any(
+                    _self_attribute_name(candidate) == "model"
+                    for candidate in ast.walk(value)
+                )
+            ):
+                model_bound_policy = True
+    return permission_required and model_bound_policy
+
+
+def _has_nonempty_permission_requirement(node: ast.AST | None) -> bool:
+    if isinstance(node, ast.Constant):
+        return isinstance(node.value, str) and bool(node.value.strip())
+    if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
+        return bool(node.elts) and all(
+            isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+            and bool(value.value.strip())
+            for value in node.elts
+        )
+    return False
 
 
 def _call_references_route_selector(node: ast.Call) -> bool:
