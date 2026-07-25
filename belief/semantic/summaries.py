@@ -189,7 +189,12 @@ def analyze_function_summaries(
 
     configured = limits or FunctionSummaryLimits()
     target_path = Path(target).resolve()
-    files = _python_files(target_path)
+    discovered_files = _all_python_files(target_path)
+    files = [
+        path
+        for path in discovered_files
+        if _included_analysis_path(path, target_path)
+    ]
     gaps: set[AnalysisGap] = set()
     if len(files) > configured.max_files:
         gaps.add(
@@ -505,8 +510,9 @@ def analyze_function_summaries(
     )
     metrics = {
         "call_edge_count": sum(len(value) for value in resolved_edges.values()),
-        "discovered_file_count": len(files),
+        "discovered_file_count": len(discovered_files),
         "effect_count": effect_count,
+        "excluded_file_count": len(discovered_files) - len(files),
         "file_count": len(selected_files),
         "fixpoint_iterations": executed_iterations,
         "function_count": len(records),
@@ -1306,7 +1312,7 @@ def _validator_name(name: str) -> bool:
     )
 
 
-def _python_files(target: Path) -> list[Path]:
+def _all_python_files(target: Path) -> list[Path]:
     if target.is_file():
         return [target] if target.suffix.lower() == ".py" else []
     if not target.exists():
@@ -1318,6 +1324,28 @@ def _python_files(target: Path) -> list[Path]:
             if path.is_file()
         ),
         key=lambda path: path.relative_to(target).as_posix(),
+    )
+
+
+def _included_analysis_path(path: Path, target: Path) -> bool:
+    if target.is_file():
+        return True
+    parts = tuple(
+        part.lower()
+        for part in path.relative_to(target).parts[:-1]
+    )
+    return not any(
+        part in {
+            ".git",
+            ".nox",
+            ".tox",
+            "__pycache__",
+            "node_modules",
+            "site-packages",
+        }
+        or part in {"env", "venv"}
+        or part.startswith(".venv")
+        for part in parts
     )
 
 

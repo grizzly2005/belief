@@ -19,6 +19,14 @@ from .summaries import (
     FunctionSummaryLimits,
     analyze_function_summaries,
 )
+from .flow import analyze_semantic_flow
+from .observations import (
+    SEMANTIC_CONCERN_SCHEMA_VERSION,
+    SEMANTIC_FLOW_ANALYSIS_SCHEMA_VERSION,
+    SemanticConcern,
+    SemanticFlowAnalysis,
+    SemanticFlowLimits,
+)
 
 __all__ = [
     "ANALYSIS_GAP_SCHEMA_VERSION",
@@ -35,5 +43,11 @@ __all__ = [
     "RootCauseIdentity",
     "SecurityTransition",
     "SummaryKind",
+    "SEMANTIC_CONCERN_SCHEMA_VERSION",
+    "SEMANTIC_FLOW_ANALYSIS_SCHEMA_VERSION",
+    "SemanticConcern",
+    "SemanticFlowAnalysis",
+    "SemanticFlowLimits",
     "analyze_function_summaries",
+    "analyze_semantic_flow",
 ]

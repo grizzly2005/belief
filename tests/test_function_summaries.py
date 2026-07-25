@@ -298,5 +298,25 @@ def normalize(value):
     assert first.deterministic_digest == second.deterministic_digest
 
 
+def test_summary_scope_excludes_virtual_environment_artifacts(
+    tmp_path: Path,
+):
+    _write(
+        tmp_path / "app.py",
+        "def app(value):\n    return value\n",
+    )
+    _write(
+        tmp_path / ".venv-local" / "site-packages" / "foreign.py",
+        "def foreign(value):\n    return value\n",
+    )
+
+    result = analyze_function_summaries(tmp_path)
+
+    assert [summary.qualified_name for summary in result.summaries] == [
+        "app"
+    ]
+    assert dict(result.metrics)["excluded_file_count"] == 1
+
+
 def json_text(value) -> str:
     return json.dumps(value, sort_keys=True)
