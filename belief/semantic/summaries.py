@@ -890,7 +890,7 @@ def _call_sites(
             key=lambda item: (
                 item.raw_name,
                 item.line,
-                item.argument_parameters,
+                _argument_sort_key(item.argument_parameters),
             ),
         )
     )
@@ -941,7 +941,14 @@ def _resolve_call_graph(
                         site.line,
                     )
                 )
-    candidate_bindings.sort()
+    candidate_bindings.sort(
+        key=lambda item: (
+            item[0],
+            item[1],
+            _argument_sort_key(item[2]),
+            item[3],
+        )
+    )
     observed = len(candidate_bindings)
     selected_bindings = candidate_bindings[:max_edges]
     edges: dict[str, set[str]] = defaultdict(set)
@@ -958,11 +965,26 @@ def _resolve_call_graph(
             for caller, callees in sorted(edges.items())
         },
         {
-            caller: tuple(sorted(values))
+            caller: tuple(
+                sorted(
+                    values,
+                    key=lambda item: (
+                        item[0],
+                        _argument_sort_key(item[1]),
+                        item[2],
+                    ),
+                )
+            )
             for caller, values in sorted(bindings.items())
         },
         observed,
     )
+
+
+def _argument_sort_key(
+    arguments: tuple[int | None, ...],
+) -> tuple[int, ...]:
+    return tuple(-1 if value is None else value for value in arguments)
 
 
 def _propagated_effect(

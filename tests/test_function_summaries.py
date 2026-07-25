@@ -142,6 +142,30 @@ def outer(candidate):
     assert propagated[0].via == ("validate",)
 
 
+def test_call_graph_sort_handles_parameter_and_literal_bindings(
+    tmp_path: Path,
+):
+    _write(
+        tmp_path / "module.py",
+        """
+def validate(value):
+    if not value:
+        raise ValueError("missing")
+    return value
+
+def outer(candidate):
+    validate(candidate)
+    validate("constant")
+""",
+    )
+
+    first = analyze_function_summaries(tmp_path)
+    second = analyze_function_summaries(tmp_path)
+
+    assert first.to_dict() == second.to_dict()
+    assert _by_name(first)["outer"].callees == ("validate",)
+
+
 def test_recursive_call_graph_uses_one_scc_and_stabilizes(tmp_path: Path):
     _write(
         tmp_path / "module.py",
