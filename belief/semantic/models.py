@@ -13,8 +13,8 @@ FUNCTION_SUMMARY_SCHEMA_VERSION = "belief.function_summary.v2"
 FLOW_STATE_SCHEMA_VERSION = "belief.flow_state.v1"
 ANALYSIS_GAP_SCHEMA_VERSION = "belief.analysis_gap.v1"
 GUARD_EFFECT_SCHEMA_VERSION = "belief.guard_effect.v1"
-RESOURCE_IDENTITY_SCHEMA_VERSION = "belief.resource_identity.v1"
-ROOT_CAUSE_IDENTITY_SCHEMA_VERSION = "belief.root_cause_identity.v1"
+RESOURCE_IDENTITY_SCHEMA_VERSION = "belief.resource_identity.v2"
+ROOT_CAUSE_IDENTITY_SCHEMA_VERSION = "belief.root_cause_identity.v2"
 SECURITY_TRANSITION_SCHEMA_VERSION = "belief.security_transition.v1"
 
 
@@ -63,6 +63,16 @@ class ResourceIdentity:
             base = f"{base}.{suffix}"
         return f"{base}@{self.context}" if self.context else base
 
+    @property
+    def semantic_key(self) -> str:
+        """Identity stable across harmless parameter and helper renames."""
+
+        if self.kind == "parameter" and self.context.startswith("input:"):
+            suffix = ".".join(self.path)
+            base = f"{self.kind}:{self.context}"
+            return f"{base}.{suffix}" if suffix else base
+        return self.canonical
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": RESOURCE_IDENTITY_SCHEMA_VERSION,
@@ -71,6 +81,7 @@ class ResourceIdentity:
             "path": list(self.path),
             "context": self.context,
             "canonical": self.canonical,
+            "semantic_key": self.semantic_key,
         }
 
 
@@ -171,9 +182,8 @@ class RootCauseIdentity:
                 "category": self.category,
                 "source_kind": self.source_kind,
                 "sink_kind": self.sink_kind,
-                "resource": self.resource.canonical,
+                "resource": self.resource.semantic_key,
                 "security_property": self.security_property,
-                "context": self.context,
             }
         )
 

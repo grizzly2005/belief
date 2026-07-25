@@ -239,8 +239,23 @@ def resource_for(
     fallback: str = "value",
 ) -> ResourceIdentity:
     if isinstance(node, ast.Name):
-        kind = "parameter" if node.id in parameters else "local"
-        return ResourceIdentity(kind=kind, symbol=node.id)
+        if node.id in {"self", "cls"}:
+            kind = "receiver"
+        else:
+            kind = "parameter" if node.id in parameters else "local"
+        context = ""
+        if kind == "parameter":
+            inputs = [
+                name
+                for name in parameters
+                if name not in {"self", "cls"}
+            ]
+            context = f"input:{inputs.index(node.id)}"
+        return ResourceIdentity(
+            kind=kind,
+            symbol=node.id,
+            context=context,
+        )
     if isinstance(node, ast.Attribute):
         path = []
         current: ast.AST = node
@@ -248,10 +263,27 @@ def resource_for(
             path.append(current.attr)
             current = current.value
         if isinstance(current, ast.Name):
+            kind = (
+                "parameter"
+                if (
+                    current.id in parameters
+                    and current.id not in {"self", "cls"}
+                )
+                else "receiver"
+            )
+            context = ""
+            if kind == "parameter":
+                inputs = [
+                    name
+                    for name in parameters
+                    if name not in {"self", "cls"}
+                ]
+                context = f"input:{inputs.index(current.id)}"
             return ResourceIdentity(
-                kind=("parameter" if current.id in parameters else "receiver"),
+                kind=kind,
                 symbol=current.id,
                 path=tuple(reversed(path)),
+                context=context,
             )
     return ResourceIdentity(
         kind="expression",
@@ -319,6 +351,32 @@ def is_top_level_statement(
     return node in context.node.body
 
 
+def statement_precedes_in_same_block(
+    context: FunctionContractContext,
+    earlier: ast.stmt,
+    later: ast.AST,
+) -> bool:
+    """Return whether an earlier statement dominates a later statement."""
+
+    parents = enclosing_nodes(context.node)
+    later_statement = _nearest_statement(later, parents)
+    if later_statement is None:
+        return False
+    earlier_parent = parents.get(earlier)
+    later_parent = parents.get(later_statement)
+    if earlier_parent is None or earlier_parent is not later_parent:
+        return False
+    for field in ("body", "orelse", "finalbody"):
+        statements = getattr(earlier_parent, field, None)
+        if not isinstance(statements, list):
+            continue
+        if earlier in statements and later_statement in statements:
+            return statements.index(earlier) < statements.index(
+                later_statement
+            )
+    return False
+
+
 def lineage_names(
     context: FunctionContractContext,
     node: ast.AST,
@@ -366,7 +424,7 @@ def has_effective_abortive_summary(
         effect.kind == SummaryKind.ABORTIVE_GUARD
         and effect.parameter_index == parameter_index
         and effect.line is not None
-        and effect.line < before_line
+        and effect.line <= before_line
         and not effect.direct
         and _line_is_top_level_call(context, effect.line)
         for effect in context.summary_effects
@@ -439,6 +497,20 @@ def _single_name_assignment(
     return node.target.id, node.value
 
 
+def _nearest_statement(
+    node: ast.AST,
+    parents: dict[ast.AST, ast.AST],
+) -> ast.stmt | None:
+    current = node
+    if isinstance(current, ast.stmt):
+        return current
+    while current in parents:
+        current = parents[current]
+        if isinstance(current, ast.stmt):
+            return current
+    return None
+
+
 def semantic_digest(value: Any) -> str:
     encoded = json.dumps(
         value,
@@ -467,6 +539,7 @@ __all__ = [
     "referenced_names",
     "resource_for",
     "semantic_digest",
+    "statement_precedes_in_same_block",
     "statement_before",
     "string_constants",
     "walk_function",

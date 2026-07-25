@@ -21,7 +21,7 @@ from .common import (
     make_guard_transition,
     referenced_names,
     resource_for,
-    statement_before,
+    statement_precedes_in_same_block,
     walk_function,
 )
 
@@ -236,7 +236,7 @@ def _analyze_class(
         isinstance(item, (ast.Assign, ast.AnnAssign))
         and any(_target_name(target) == "max_length" for target in _assignment_targets(item))
         for item in context.node.body
-    )
+    ) or _class_has_abortive_length_bound(context)
     for item in context.node.body:
         if not isinstance(item, (ast.Assign, ast.AnnAssign)):
             continue
@@ -348,6 +348,32 @@ def _analyze_class(
     )
 
 
+def _class_has_abortive_length_bound(
+    context: ClassContractContext,
+) -> bool:
+    for method in context.node.body:
+        if not isinstance(
+            method,
+            (ast.FunctionDef, ast.AsyncFunctionDef),
+        ):
+            continue
+        parameters = tuple(
+            argument.arg
+            for argument in (
+                *getattr(method.args, "posonlyargs", ()),
+                *method.args.args,
+            )
+        )
+        if any(
+            isinstance(item, ast.If)
+            and aborts(item.body)
+            and _length_bound(item.test, parameters) is not None
+            for item in walk_function(method)
+        ):
+            return True
+    return False
+
+
 def _length_bound(
     node: ast.AST,
     parameters: tuple[str, ...],
@@ -393,8 +419,11 @@ def _has_length_bound_before(
     for item in walk_function(context.node):
         if (
             isinstance(item, ast.If)
-            and is_top_level_statement(context, item)
-            and statement_before(item, line)
+            and statement_precedes_in_same_block(
+                context,
+                item,
+                resource_node,
+            )
             and aborts(item.body)
         ):
             bound = _length_bound(item.test, context.parameters)
@@ -524,14 +553,36 @@ def _is_recursive_call(
     context: FunctionContractContext,
 ) -> bool:
     if isinstance(node.func, ast.Name):
-        return node.func.id == context.node.name
-    return (
-        bool(context.class_name)
-        and context.qualified_name == f"{context.class_name}.{context.node.name}"
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == context.node.name
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id in {"self", "cls"}
+        selected = node.func.id == context.node.name
+    else:
+        selected = (
+            bool(context.class_name)
+            and context.qualified_name
+            == f"{context.class_name}.{context.node.name}"
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == context.node.name
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id in {"self", "cls"}
+        )
+    return selected and _recursive_call_preserves_input_slot(
+        node,
+        context,
+    )
+
+
+def _recursive_call_preserves_input_slot(
+    node: ast.Call,
+    context: FunctionContractContext,
+) -> bool:
+    inputs = [
+        name
+        for name in context.parameters
+        if name not in {"self", "cls"}
+    ]
+    return any(
+        index < len(inputs)
+        and inputs[index] in referenced_names(argument)
+        for index, argument in enumerate(node.args)
     )
 
 
@@ -688,11 +739,7 @@ def _patterns_from_assignment(
 
 
 def _regex_risk(pattern: str) -> str:
-    if re.search(
-        r"\((?:\?:)?(?:\\.|[^()])*(?<!\\)[*+]"
-        r"(?:\\.|[^()])*\)(?<!\\)[*+{]",
-        pattern,
-    ):
+    if _has_ambiguous_nested_repeat(pattern):
         return "nested repeated group"
     if len(re.findall(r"(?<!\\)\.\*\??", pattern)) >= 2:
         return "multiple unbounded wildcard branches"
@@ -703,13 +750,101 @@ def _regex_risk(pattern: str) -> str:
         left, right = match.groups()
         if left.startswith(right) or right.startswith(left):
             return "overlapping repeated alternatives"
-    if (
-        re.search(r"\[[^\]]*['\"][^\]]*\]", pattern)
-        and ("|'[" in pattern or '|"[' in pattern)
-        and re.search(r"\)\*$", pattern)
-    ):
-        return "overlapping quoted and single-character alternatives"
     return ""
+
+
+def _has_ambiguous_nested_repeat(pattern: str) -> bool:
+    for match in re.finditer(
+        r"\((?:\?:)?((?:\\.|[^()])*)\)(?<!\\)[*+{]",
+        pattern,
+    ):
+        body = match.group(1)
+        if not re.search(
+            r"(?:\\.|[^\\])(?<!\\)[*+{]",
+            body,
+        ):
+            continue
+        if re.search(r"(?<!\\)\.[*+{]", body):
+            return True
+        if not _has_top_level_alternation(body):
+            return True
+        if _has_overlapping_quoted_character_alternative(body):
+            return True
+    return False
+
+
+def _has_top_level_alternation(value: str) -> bool:
+    escaped = False
+    in_character_class = False
+    for character in value:
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\":
+            escaped = True
+            continue
+        if character == "[":
+            in_character_class = True
+            continue
+        if character == "]":
+            in_character_class = False
+            continue
+        if character == "|" and not in_character_class:
+            return True
+    return False
+
+
+def _has_overlapping_quoted_character_alternative(
+    body: str,
+) -> bool:
+    alternatives = _split_top_level_alternatives(body)
+    quoted_starts = {
+        quote
+        for quote in ("'", '"')
+        if any(
+            alternative.lstrip().startswith(quote)
+            for alternative in alternatives
+        )
+    }
+    if not quoted_starts:
+        return False
+    for alternative in alternatives:
+        selected = alternative.strip()
+        if not (
+            selected.startswith("[")
+            and selected.endswith("]")
+        ):
+            continue
+        if any(quote in selected for quote in quoted_starts):
+            return True
+    return False
+
+
+def _split_top_level_alternatives(value: str) -> list[str]:
+    result = []
+    current = []
+    escaped = False
+    in_character_class = False
+    for character in value:
+        if escaped:
+            current.append(character)
+            escaped = False
+            continue
+        if character == "\\":
+            current.append(character)
+            escaped = True
+            continue
+        if character == "[":
+            in_character_class = True
+        elif character == "]":
+            in_character_class = False
+        if character == "|" and not in_character_class:
+            result.append("".join(current))
+            current = []
+        else:
+            current.append(character)
+    result.append("".join(current))
+    return result
 
 
 def _soft_end_anchor(pattern: str) -> bool:

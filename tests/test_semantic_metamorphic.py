@@ -100,6 +100,15 @@ import zlib
 def unpack():
     return zlib.decompress(b"fixed")
 """,
+        """
+import zlib
+def unpack(payload, compressed):
+    if compressed:
+        if len(payload) > 1024:
+            raise ValueError("large")
+        return zlib.decompress(payload)
+    return payload
+""",
     ],
 )
 def test_resource_bound_negative_metamorphs(
@@ -185,6 +194,16 @@ class HeaderBag:
     def put(self, key, value):
         value = sanitize_header(value)
         self.data[key] = value
+""",
+        """
+def reject_controls(candidate):
+    if "\\n" in candidate or "\\r" in candidate:
+        raise ValueError("bad")
+    return candidate
+
+class HeaderBag:
+    def put(self, key, value):
+        self.data[key] = reject_controls(value)
 """,
     ],
 )
@@ -412,6 +431,16 @@ class Service:
             return self.expand(node)
         return expand
 """,
+        """
+class Tokens:
+    def token_index(self, token, start=0):
+        start = (
+            start
+            if isinstance(start, int)
+            else self.token_index(start)
+        )
+        return start + self.tokens[start:].index(token)
+""",
     ],
 )
 def test_recursion_bound_negative_metamorphs(
@@ -529,6 +558,27 @@ import re
 def validate(value):
     return re.fullmatch(r"(a|aa)+$", value)
 """,
+        """
+import re
+def parse_tag(value):
+    return re.fullmatch(
+        r"(?:\\s+\\w+|\\s*=\\s*|\\\".*?\\\"|'.*?')*",
+        value,
+    )
+""",
+        """
+import re
+def validate_atom(value):
+    return re.fullmatch(r"([a-z|~]+)*", value)
+""",
+        """
+import re
+def validate_style(value):
+    return re.fullmatch(
+        r'''([a-z'"]|'[a-z]+'|"[a-z]+")*''',
+        value,
+    )
+""",
     ],
 )
 def test_regex_complexity_positive_metamorphs(
@@ -561,6 +611,32 @@ def validate(value):
     if len(value) > 256:
         raise ValueError("large")
     return re.fullmatch(r"(a+)+$", value)
+""",
+        """
+import re
+class Validator:
+    pattern = re.compile(r"(a+)+$")
+
+    def __call__(self, value):
+        if len(value) > 256:
+            raise ValueError("large")
+        return self.pattern.fullmatch(value)
+""",
+        """
+import re
+def parse_tag(value):
+    return re.fullmatch(
+        r"(?:\\s+\\w+|\\s*=\\s*|\\\"[^\\\"]*?\\\"|'[^']*?'|\\s*,\\s*)*",
+        value,
+    )
+""",
+        """
+import re
+def validate_style(value):
+    return re.fullmatch(
+        r'''([a-z]|'[a-z]+'|"[a-z]+")*''',
+        value,
+    )
 """,
     ],
 )
@@ -685,6 +761,20 @@ def forward(request, client):
     headers.pop("accept", None)
     client.send(headers=headers)
 """,
+        """
+def forward(request, client, debug):
+    headers = dict(request.headers)
+    if debug:
+        headers.pop("authorization", None)
+    client.send(headers=headers)
+""",
+        """
+def forward(request, client, auth_enabled):
+    headers = dict(request.headers)
+    if not auth_enabled:
+        headers.pop("authorization", None)
+    client.send(headers=headers)
+""",
     ],
 )
 def test_credential_header_scope_positive_metamorphs(
@@ -717,6 +807,20 @@ def forward(request, client):
     headers = filter_headers(request.headers)
     client.send(headers=headers)
 """,
+        """
+def forward(request, client):
+    headers = dict(request.headers)
+    if "authorization" in headers:
+        headers.pop("authorization", None)
+    client.send(headers=headers)
+""",
+        """
+def forward(request, client, spider):
+    headers = dict(request.headers)
+    if http_auth_enabled(spider):
+        headers.pop("authorization", None)
+    client.send(headers=headers)
+""",
     ],
 )
 def test_credential_header_scope_negative_metamorphs(
@@ -727,6 +831,73 @@ def test_credential_header_scope_negative_metamorphs(
         tmp_path,
         source,
         "BELIEF-SEM-CREDENTIAL-HEADER-SCOPE",
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+def forward(url, headers):
+    return smuggle_url(url, {"http_headers": headers})
+""",
+        """
+def forward(url, client):
+    url, metadata = unsmuggle_url(url, {})
+    return client.request(
+        url,
+        headers=metadata.get("http_headers", {}),
+    )
+""",
+        """
+def forward(url, client):
+    url, serialized = deserialize_url(url)
+    return client.send(
+        url,
+        headers=serialized["http_headers"],
+    )
+""",
+    ],
+)
+def test_serialized_header_map_positive_metamorphs(
+    tmp_path: Path,
+    source: str,
+):
+    assert _has_contract(
+        tmp_path,
+        source,
+        "BELIEF-SEM-HEADER-MAP-SCOPE",
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+def forward(url, referer):
+    return smuggle_url(url, {"referer": referer})
+""",
+        """
+class Client:
+    def forward(self, url):
+        headers = self.get_param("http_headers").copy()
+        return self.request(url, headers=headers)
+""",
+        """
+def forward(url, client, info):
+    headers = info.get("http_headers")
+    return client.request(url, headers=headers)
+""",
+    ],
+)
+def test_serialized_header_map_negative_metamorphs(
+    tmp_path: Path,
+    source: str,
+):
+    assert not _has_contract(
+        tmp_path,
+        source,
+        "BELIEF-SEM-HEADER-MAP-SCOPE",
     )
 
 
@@ -855,6 +1026,15 @@ def emit(metrics):
 import sys
 def emit(metrics):
     args = redact_argv(sys.argv)
+    metrics({"argv": args})
+""",
+        """
+import sys
+def emit(metrics):
+    args = list(sys.argv)
+    for index, value in enumerate(args):
+        if value.startswith("--secret="):
+            args[index] = "*" * 8
     metrics({"argv": args})
 """,
     ],

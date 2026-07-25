@@ -20,6 +20,7 @@ from .common import (
     make_guard_transition,
     referenced_names,
     resource_for,
+    statement_precedes_in_same_block,
     string_constants,
     walk_function,
 )
@@ -42,7 +43,6 @@ def _analyze_function(
     guards = []
     transitions = []
     items = list(walk_function(context.node))
-    all_strings = {value.lower() for item in items for value in string_constants(item)}
     calls = [item for item in items if isinstance(item, ast.Call)]
     parents = _parent_map(context.node)
 
@@ -85,8 +85,12 @@ def _analyze_function(
             )
         )
 
-    if "http_headers" in all_strings and _forwards_protocol_metadata(calls):
-        line = _first_string_line(items, "http_headers")
+    serialized_header_lines = _serialized_header_map_lines(
+        context,
+        items,
+    )
+    if serialized_header_lines and _forwards_protocol_metadata(calls):
+        line = min(serialized_header_lines)
         concerns.append(
             make_concern(
                 context,
@@ -374,6 +378,17 @@ def _header_storage_concerns(
 ) -> list:
     if "header" not in context.class_name.lower():
         return []
+    if context.node.name.lower() not in {
+        "__setitem__",
+        "add",
+        "append",
+        "put",
+        "replace",
+        "set",
+        "setdefault",
+        "update",
+    }:
+        return []
     try:
         value_index = next(
             index
@@ -396,7 +411,7 @@ def _header_storage_concerns(
                     _has_header_guard_before(
                         context,
                         value_name,
-                        item.lineno,
+                        item,
                     )
                     or has_effective_abortive_summary(
                         context,
@@ -442,16 +457,19 @@ def _header_storage_concerns(
 def _has_header_guard_before(
     context: FunctionContractContext,
     value_name: str,
-    sink_line: int,
+    sink: ast.AST,
 ) -> bool:
     return any(
         isinstance(item, ast.If)
-        and item in context.node.body
-        and item.lineno < sink_line
+        and statement_precedes_in_same_block(
+            context,
+            item,
+            sink,
+        )
         and aborts(item.body)
         and value_name in referenced_names(item.test)
         and bool({"\n", "\r", "\x00"} & string_constants(item.test))
-        for item in context.node.body
+        for item in walk_function(context.node)
     )
 
 
@@ -738,18 +756,226 @@ def _header_removed_before(
     sink_line: int,
     header: str,
 ) -> bool:
+    parents = _parent_map(context.node)
     for item in walk_function(context.node):
         if not isinstance(item, ast.Call):
             continue
         name = call_name(item.func).lower()
-        if (
+        if not (
             name == f"{variable.lower()}.pop"
-            and header in {value.lower() for value in string_constants(item)}
+            and header
+            in {
+                value.lower()
+                for value in string_constants(item)
+            }
             and source_line <= item.lineno < sink_line
-            and _nearest_statement(context.node, item) in context.node.body
+        ):
+            continue
+        statement = _nearest_statement(context.node, item)
+        if statement in context.node.body:
+            return True
+        if _conditional_header_removal_is_effective(
+            context,
+            item,
+            sink_line,
+            header,
+            parents,
         ):
             return True
     return False
+
+
+def _conditional_header_removal_is_effective(
+    context: FunctionContractContext,
+    removal: ast.Call,
+    sink_line: int,
+    header: str,
+    parents: dict[ast.AST, ast.AST],
+) -> bool:
+    sink = next(
+        (
+            item
+            for item in walk_function(context.node)
+            if isinstance(item, ast.Call)
+            and item.lineno == sink_line
+        ),
+        None,
+    )
+    if sink is None:
+        return False
+    current: ast.AST = removal
+    while current in parents:
+        current = parents[current]
+        if not isinstance(current, ast.If):
+            continue
+        text = expression(current.test).lower()
+        strings = {
+            value.lower()
+            for value in string_constants(current.test)
+        }
+        checks_header_presence = (
+            header in strings
+            and (
+                " in " in f" {text} "
+                or ".get(" in text
+            )
+        )
+        checks_credential_source = (
+            any(
+                token in text
+                for token in (
+                    "auth_enabled",
+                    "auth_middleware",
+                    "authorization_enabled",
+                    "credentials_enabled",
+                )
+            )
+            and not text.lstrip().startswith("not ")
+        )
+        if (
+            checks_header_presence
+            or checks_credential_source
+        ) and statement_precedes_in_same_block(
+            context,
+            current,
+            sink,
+        ):
+            return True
+    return False
+
+
+def _serialized_header_map_lines(
+    context: FunctionContractContext,
+    items: list[ast.AST],
+) -> list[int]:
+    carriers = {
+        name
+        for item in items
+        if isinstance(item, (ast.Assign, ast.AnnAssign))
+        for name in _serialized_assignment_targets(item)
+    }
+    carriers.update(
+        name
+        for name in context.parameters
+        if any(
+            token in name.lower()
+            for token in (
+                "metadata",
+                "smuggled",
+                "serialized",
+            )
+        )
+    )
+    lines = []
+    for item in items:
+        if isinstance(item, ast.Subscript):
+            if (
+                _subscript_string(item) == "http_headers"
+                and referenced_names(item.value).intersection(
+                    carriers
+                )
+            ):
+                lines.append(item.lineno)
+        elif isinstance(item, ast.Call):
+            if _call_reads_header_map(item, carriers):
+                lines.append(item.lineno)
+            if (
+                "smuggle" in call_name(item.func).lower()
+                and any(
+                    _mapping_contains_string_key(
+                        argument,
+                        "http_headers",
+                    )
+                    for argument in (
+                        *item.args,
+                        *(
+                            keyword.value
+                            for keyword in item.keywords
+                        ),
+                    )
+                )
+            ):
+                lines.append(item.lineno)
+    return sorted(set(lines))
+
+
+def _serialized_assignment_targets(
+    item: ast.Assign | ast.AnnAssign,
+) -> set[str]:
+    targets = (
+        item.targets
+        if isinstance(item, ast.Assign)
+        else [item.target]
+    )
+    value = item.value
+    if not isinstance(value, ast.Call):
+        return set()
+    name = call_name(value.func).lower()
+    if not any(
+        token in name
+        for token in (
+            "deserialize",
+            "decode_metadata",
+            "unsmuggle",
+        )
+    ):
+        return set()
+    flattened = [
+        selected
+        for target in targets
+        for selected in (
+            target.elts
+            if isinstance(target, (ast.Tuple, ast.List))
+            else [target]
+        )
+    ]
+    return {
+        selected.id
+        for selected in flattened
+        if isinstance(selected, ast.Name)
+        and selected.id.lower()
+        not in {
+            "url",
+            "uri",
+        }
+    }
+
+
+def _call_reads_header_map(
+    node: ast.Call,
+    carriers: set[str],
+) -> bool:
+    if not (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr.lower() == "get"
+        and node.args
+        and "http_headers"
+        in {
+            value.lower()
+            for value in string_constants(node.args[0])
+        }
+    ):
+        return False
+    return bool(
+        referenced_names(node.func.value).intersection(carriers)
+    )
+
+
+def _mapping_contains_string_key(
+    node: ast.AST,
+    key: str,
+) -> bool:
+    return any(
+        isinstance(item, ast.Dict)
+        and any(
+            isinstance(selected, ast.Constant)
+            and isinstance(selected.value, str)
+            and selected.value.lower() == key
+            for selected in item.keys
+            if selected is not None
+        )
+        for item in ast.walk(node)
+    )
 
 
 def _forwards_protocol_metadata(calls: list[ast.Call]) -> bool:
@@ -758,6 +984,7 @@ def _forwards_protocol_metadata(calls: list[ast.Call]) -> bool:
             token in call_name(item.func).lower()
             for token in (
                 "request",
+                "send",
                 "smuggle",
                 "url_result",
                 "webpage",
@@ -765,13 +992,6 @@ def _forwards_protocol_metadata(calls: list[ast.Call]) -> bool:
         )
         for item in calls
     )
-
-
-def _first_string_line(items: list[ast.AST], value: str) -> int:
-    for item in items:
-        if value in {selected.lower() for selected in string_constants(item)}:
-            return getattr(item, "lineno", 1)
-    return 1
 
 
 def _single_assignment(
@@ -846,7 +1066,7 @@ def _contains_raw_sys_argv(node: ast.AST) -> bool:
 
 def _contains_redaction(node: ast.AST) -> bool:
     text = expression(node).lower()
-    return any(
+    named_redaction = any(
         token in text
         for token in (
             "<redacted>",
@@ -855,6 +1075,14 @@ def _contains_redaction(node: ast.AST) -> bool:
             "sanitize",
         )
     )
+    mask_literal = any(
+        isinstance(item, ast.Constant)
+        and isinstance(item.value, str)
+        and bool(item.value)
+        and set(item.value) <= {"*", "x", "X", "•"}
+        for item in ast.walk(node)
+    )
+    return named_redaction or mask_literal
 
 
 def _variable_reaches_mapping_or_call(

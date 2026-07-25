@@ -20,6 +20,19 @@ from .summaries import (
     analyze_function_summaries,
 )
 from .flow import analyze_semantic_flow
+from .evidence import (
+    EVIDENCE_GRAPH_SCHEMA_VERSION,
+    SEMANTIC_COMPARISON_SCHEMA_VERSION,
+    EvidenceEdge,
+    EvidenceGraph,
+    EvidenceGraphLimits,
+    EvidenceNode,
+    SemanticClassification,
+    SemanticComparison,
+    SemanticDelta,
+    build_evidence_graph,
+    compare_semantic_flows,
+)
 from .observations import (
     SEMANTIC_CONCERN_SCHEMA_VERSION,
     SEMANTIC_FLOW_ANALYSIS_SCHEMA_VERSION,
@@ -30,9 +43,14 @@ from .observations import (
 
 __all__ = [
     "ANALYSIS_GAP_SCHEMA_VERSION",
+    "EVIDENCE_GRAPH_SCHEMA_VERSION",
     "FLOW_STATE_SCHEMA_VERSION",
     "FUNCTION_SUMMARY_SCHEMA_VERSION",
     "AnalysisGap",
+    "EvidenceEdge",
+    "EvidenceGraph",
+    "EvidenceGraphLimits",
+    "EvidenceNode",
     "FlowState",
     "FunctionEffect",
     "FunctionSummary",
@@ -43,11 +61,17 @@ __all__ = [
     "RootCauseIdentity",
     "SecurityTransition",
     "SummaryKind",
+    "SEMANTIC_COMPARISON_SCHEMA_VERSION",
     "SEMANTIC_CONCERN_SCHEMA_VERSION",
     "SEMANTIC_FLOW_ANALYSIS_SCHEMA_VERSION",
     "SemanticConcern",
+    "SemanticClassification",
+    "SemanticComparison",
+    "SemanticDelta",
     "SemanticFlowAnalysis",
     "SemanticFlowLimits",
     "analyze_function_summaries",
     "analyze_semantic_flow",
+    "build_evidence_graph",
+    "compare_semantic_flows",
 ]

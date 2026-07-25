@@ -48,6 +48,53 @@ def test_resource_and_root_cause_identity_are_location_independent():
     assert "line" not in first.to_dict()
 
 
+def test_root_cause_identity_survives_helper_and_parameter_rename():
+    before_resource = ResourceIdentity(
+        kind="parameter",
+        symbol="target",
+        context="input:0",
+    )
+    after_resource = ResourceIdentity(
+        kind="parameter",
+        symbol="destination",
+        context="input:0",
+    )
+    other_resource = ResourceIdentity(
+        kind="parameter",
+        symbol="destination",
+        context="input:1",
+    )
+
+    before = RootCauseIdentity(
+        category="unsafe_redirect",
+        source_kind="request_parameter",
+        sink_kind="redirect",
+        resource=before_resource,
+        security_property="same_origin",
+        context="handler",
+    )
+    moved = RootCauseIdentity(
+        category="unsafe_redirect",
+        source_kind="request_parameter",
+        sink_kind="redirect",
+        resource=after_resource,
+        security_property="same_origin",
+        context="redirect_helper",
+    )
+    wrong_resource = RootCauseIdentity(
+        category="unsafe_redirect",
+        source_kind="request_parameter",
+        sink_kind="redirect",
+        resource=other_resource,
+        security_property="same_origin",
+        context="redirect_helper",
+    )
+
+    assert before_resource.semantic_key == after_resource.semantic_key
+    assert before.digest == moved.digest
+    assert before.digest != wrong_resource.digest
+
+
 def test_security_transition_requires_the_same_resource_and_property():
     value = ResourceIdentity(kind="parameter", symbol="value")
     other = ResourceIdentity(kind="parameter", symbol="other")
