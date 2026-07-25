@@ -390,8 +390,95 @@ visible HTML escaping. The evaluator conservatively counts both warnings
 against BELIEF.
 
 This canary is an engineering set selected for CWE breadth. It is not
-prevalence-weighted, score-bearing, or comparable to official `SecPass`, and no
-holdout task was used for tuning or evaluation.
+prevalence-weighted, score-bearing, or comparable to official `SecPass`. The
+canary work did not evaluate IDs designated as holdout after the split; the
+novelty audit below separately accounts for pre-split result artifacts.
+
+### Artifact-unseen generalization audit
+
+A novelty audit performed before generalization scoring found that the
+historical 162-case cohort named `holdout` was not pristine: 64 of its IDs had
+already appeared in result artifacts created before the split was treated as a
+holdout. Together with all 24 canary IDs, 88 unique corpus cases had previously
+been evaluated. Calling the complete 162-case cohort unseen would therefore
+overstate the evidence.
+
+The create-only derivation parsed 40 prior JSON result artifacts but used only
+their `id` or `instance_id` fields. It excluded every previously evaluated
+holdout ID while preserving the parent order, leaving 98 cases across 60
+projects and 47 CWE labels. The final manifest
+`belief-susvibes-v1-artifact-unseen-holdout-20260725-04.json` replays the exact
+40-name input index and rejects a missing or hash-mismatched prior artifact, so
+later result files cannot silently change the cohort. Its SHA-256 is
+`163306bba0bdc4809b44a471ce4d1e9cbbb6d6d4bf5f927f7939f2e458509fb1`
+and its semantic digest is
+`21b1532a27448630777a03908d3106ada0d5cf2c49ffb618adcf080804dd8f7a`.
+The complete parent cache was hydrated without checkout or code execution,
+then verified offline; its manifest SHA-256 is
+`97e4cd762f94275fa335e2532f886bbbd02b086b10b00e35fcfcd78fd8852abb`.
+
+The replayable derivation command is:
+
+```powershell
+python scripts/prepare_susvibes_unseen_holdout.py `
+  --dataset F:\belief-rd\susvibes-main\datasets\default\susvibes_dataset.jsonl `
+  --experiment-manifest F:\belief-rd\results\belief-susvibes-v1-experiment-holdout-20260723.json `
+  --results-dir F:\belief-rd\results `
+  --replay-artifact-index F:\belief-rd\results\belief-susvibes-v1-artifact-unseen-holdout-20260725-03.json `
+  --output F:\belief-rd\results\belief-susvibes-v1-artifact-unseen-holdout-20260725-04.json
+```
+
+The frozen reviewer is then invoked through the normal cohort loader:
+
+```powershell
+python -m belief benchmark reportability `
+  --mode susvibes_candidate_review_v1 `
+  --target F:\belief-rd\susvibes-main\datasets\default\susvibes_dataset.jsonl `
+  --repository-cache F:\belief-rd\repos `
+  --experiment-manifest F:\belief-rd\results\belief-susvibes-v1-artifact-unseen-holdout-20260725-04.json `
+  --cohort holdout `
+  --json-output F:\belief-rd\results\belief-susvibes-candidate-review-artifact-unseen-holdout-20260725-04.json
+```
+
+BELIEF was frozen at commit
+`2c6208fda2fa8fdbb281ae89a196a72a6d57b350`. Three runs, with no reviewer
+change between them, produced:
+
+| Metric | Artifact-unseen result | Default gate |
+|---|---:|---:|
+| Selected cases | 98 | informational |
+| Evaluable cases | 94 / 98 | four reconstruction errors |
+| Vulnerable candidates warned | 14 / 94 (14.9%) | at least 30% |
+| Secure candidates warned | 15 / 94 (16.0%) | at most 25% |
+| Paired warning discrimination | 0 / 94 (0.0%) | at least 30% |
+
+The secure-candidate false-positive gate passed, but both recall and paired
+discrimination failed. The four non-evaluable cases were candidate
+reconstruction failures in one project; they are reported rather than silently
+removed from the selected-case count.
+
+The first two runs emitted byte-identical case rows, identical selection and
+reviewer provenance, and semantic digest
+`f03d21dd79a3e755d2b564c7593ea206f2637456566f25d7a104a65d686e069e`.
+The third run used the replayable final manifest and reproduced the same case
+rows, metrics, selection-ID hash, and reviewer provenance. Its semantic digest
+is `3ff42acf6fdc5480a3fc150c990f09b59866a28f5668080ce7925095fae3f5d4`;
+the difference binds the improved manifest provenance. Durations were 289.36,
+288.93, and 290.79 seconds. The artifact hashes are:
+
+- `belief-susvibes-candidate-review-artifact-unseen-holdout-20260725-02.json`:
+  `8caf1eb49090aa39c8ed645252ae31ae1594ddc413b4259ba3edf67445aac4c4`;
+- `belief-susvibes-candidate-review-artifact-unseen-holdout-20260725-03.json`:
+  `9fa0b82b106d05dc673123c6bef79c5b51e9b3201f8c5ff7898a0a6e829cb8de`;
+- `belief-susvibes-candidate-review-artifact-unseen-holdout-20260725-04.json`:
+  `e61cb04ad782adff20432d29438d16f4be308f0af356d06e3115ed4acd27884a`.
+
+The reviewer provenance remained 836 normalized BELIEF Python files with
+source digest
+`16eace68f2753bb11b64e5cd0f57cd9dd1ea9eabf4afa3290286dd38da2a6d2b`.
+This result rejects the apparent canary improvement as evidence of
+generalization. It is a failed static-feedback experiment, not a `SecPass`
+score and not evidence that BELIEF exceeds Fable 5 or Kimi K3.
 
 ### Comparison boundary
 
@@ -401,11 +488,13 @@ holdout task was used for tuning or evaluation.
 | Kimi K3 specialized harness | 23 / 26 | private known-CVE pass@3 rediscovery |
 | BELIEF candidate review | 22 / 71 (31.0%) | offline canonical-patch warning discrimination |
 | BELIEF frozen engineering canary | 10 / 24 (41.7%) | offline canonical-patch warning discrimination; not score-bearing |
+| BELIEF artifact-unseen audit | 0 / 94 (0.0%) | offline canonical-patch warning discrimination; failed gates |
 
-The BELIEF percentage is numerically above 29%, but it is **not** evidence that
-BELIEF has beaten Fable 5: the denominator, task subset, output, and success
-criterion differ. Kimi's result is also not reproducible from a public corpus
-and pools three runs. Sources:
+The canary percentage is numerically above 29%, but the artifact-unseen result
+shows that it did not generalize. Neither static metric is evidence that BELIEF
+has beaten Fable 5: the denominator, task subset, output, and success criterion
+differ. Kimi's result is also not reproducible from a public corpus and pools
+three runs. Sources:
 
 - <https://www.endorlabs.com/research/ai-code-security-benchmark>
 - <https://www.endorlabs.com/learn/claude-fable-5-take-two-same-model-different-harness-and-a-very-different-result>
