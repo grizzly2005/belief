@@ -480,6 +480,46 @@ This result rejects the apparent canary improvement as evidence of
 generalization. It is a failed static-feedback experiment, not a `SecPass`
 score and not evidence that BELIEF exceeds Fable 5 or Kimi K3.
 
+### Frozen nested development/test protocol
+
+After the aggregate artifact-unseen result was known, but before any
+individual security outcome or successful case was inspected, the 98 IDs were
+split into a new 49-case development cohort and a 49-case reserved test
+cohort. Allocation uses only:
+
+- the instance ID;
+- evaluator-side primary CWE stratum;
+- the baseline `analysis_succeeded` boolean.
+
+The four already-known candidate-reconstruction failures are forced into
+development so the reserved test measures reviewer behavior rather than a
+known evaluator failure. Vulnerable warnings, secure warnings, paired
+outcomes, findings, task text, patches, and source code do not influence the
+allocation.
+
+The development cohort is exposed through the manifest's `canary` key and may
+be inspected and tuned. The reserved test is exposed through `holdout` and
+must not be inspected until the reviewer is frozen. It remains a local static
+generalization test, not a leaderboard or `SecPass` cohort.
+
+Two create-only derivations were byte-identical. The frozen manifest
+`belief-susvibes-v1-nested-dev-test-20260725-01.json` has SHA-256
+`74d916df62428882ae89cc46d10b9d14c01831a6e60826b317cbb77e3ae6631b`
+and semantic digest
+`668b247f6bbe811ece6ae5db07213bab62dadf52c6c0931ea4f5ab6b054a878b`.
+Development covers 30 projects and 30 CWE labels; the reserved test covers 40
+projects and 35 CWE labels.
+
+```powershell
+python scripts/prepare_susvibes_nested_split.py `
+  --dataset F:\belief-rd\susvibes-main\datasets\default\susvibes_dataset.jsonl `
+  --parent-manifest F:\belief-rd\results\belief-susvibes-v1-artifact-unseen-holdout-20260725-04.json `
+  --baseline-result F:\belief-rd\results\belief-susvibes-candidate-review-artifact-unseen-holdout-20260725-04.json `
+  --dev-size 49 `
+  --batch-size 12 `
+  --output F:\belief-rd\results\belief-susvibes-v1-nested-dev-test-20260725-01.json
+```
+
 ### Comparison boundary
 
 | Published or local result | Score | What it measures |
