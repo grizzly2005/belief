@@ -165,6 +165,10 @@ def _validate_manifest_output(
         raise ValueError(
             "cache manifest output must not overwrite a frozen input"
         )
+    if manifest_path.exists():
+        raise ValueError(
+            f"refusing to overwrite cache manifest: {manifest_path}"
+        )
 
 
 def _select_cases(
@@ -490,10 +494,18 @@ def main() -> int:
             allow_network=bool(args.allow_network),
         )
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(
-            json.dumps(payload, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        try:
+            with manifest_path.open(
+                "x",
+                encoding="utf-8",
+                newline="\n",
+            ) as handle:
+                json.dump(payload, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+        except FileExistsError as exc:
+            raise ValueError(
+                f"refusing to overwrite cache manifest: {manifest_path}"
+            ) from exc
     except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
         print(json.dumps({"error": str(exc)}, sort_keys=True), file=sys.stderr)
         return 2

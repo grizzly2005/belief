@@ -382,6 +382,27 @@ prove:
     for the static holdout;
 12. no reserved task identifier or result has been exposed to the reviewer.
 
+The executable gate is implemented by
+`scripts/create_holdout_attestation.py` and the benchmark
+`--holdout-attestation` option. The attestation additionally binds the
+prepared repository-cache manifest, requires the `full` semantic mode, and
+fingerprints the Python executable, runtime version, implementation, and
+installed distributions. Creation and each authorized run require these exact
+values:
+
+```text
+BELIEF_HOLDOUT_AUTHORIZED=YES
+BELIEF_HOLDOUT_NO_NETWORK=YES
+BELIEF_HOLDOUT_STATIC_ONLY=YES
+```
+
+Supplying an attestation with a non-holdout cohort, applying extra CWE or case
+filters to a frozen cohort, changing the cache/runtime/source, selecting a
+different output, reversing the two-run order, or reusing an existing output
+fails before the holdout cohort is loaded. The current failed F result is
+structurally ineligible for `status=ready`; this tooling does not override the
+negative-result stop rule.
+
 The static reserved test then runs twice from the same clean commit with no
 source, configuration, dependency, manifest, or threshold change. Both outputs
 are create-only. Individual reserved results may be inspected only after both

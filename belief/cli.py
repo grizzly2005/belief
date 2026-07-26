@@ -924,6 +924,9 @@ def cmd_benchmark(args):
                 getattr(args, "experiment_manifest", "") or ""
             )
             cohort = str(getattr(args, "cohort", "") or "")
+            holdout_attestation = str(
+                getattr(args, "holdout_attestation", "") or ""
+            )
             if bool(experiment_manifest) != bool(cohort):
                 raise ValueError(
                     "--experiment-manifest and --cohort must be used together"
@@ -935,6 +938,15 @@ def cmd_benchmark(args):
                 raise ValueError(
                     "--experiment-manifest and --cohort are supported only "
                     "with susvibes_candidate_review_v1"
+                )
+            if cohort == "holdout" and not holdout_attestation:
+                raise ValueError(
+                    "--cohort holdout requires --holdout-attestation"
+                )
+            if holdout_attestation and cohort != "holdout":
+                raise ValueError(
+                    "--holdout-attestation is valid only with "
+                    "--cohort holdout"
                 )
             if mode == REPORTABILITY_MODE:
                 target = args.reportability_target or "benchmark_reportability"
@@ -1032,9 +1044,44 @@ def cmd_benchmark(args):
                     for item in str(value).split(",")
                     if item.strip()
                 )
+                max_cases = int(getattr(args, "max_cases", 0))
+                if experiment_manifest and (only_cwes or max_cases):
+                    raise ValueError(
+                        "frozen experiment cohorts cannot be combined "
+                        "with --only-cwe or --max-cases"
+                    )
                 instance_ids: tuple[str, ...] = ()
                 selection_provenance: dict[str, str] | None = None
                 if experiment_manifest:
+                    attestation_provenance: dict[str, str] = {}
+                    if cohort == "holdout":
+                        from .generalization.holdout_attestation import (
+                            authorize_holdout_execution,
+                        )
+
+                        repository = Path(__file__).resolve().parents[1]
+                        attestation_provenance = (
+                            authorize_holdout_execution(
+                                holdout_attestation,
+                                repository=repository,
+                                repository_cache=repository_cache,
+                                dataset=target,
+                                manifest=experiment_manifest,
+                                protocol=(
+                                    repository
+                                    / "docs"
+                                    / "GENERALIZATION_PROTOCOL.md"
+                                ),
+                                output=args.json_output,
+                                reviewer_semantic_mode=str(
+                                    getattr(
+                                        args,
+                                        "candidate_semantic_mode",
+                                        "summaries",
+                                    )
+                                ),
+                            )
+                        )
                     loaded_ids, selection_provenance = (
                         load_experiment_cohort(
                             experiment_manifest,
@@ -1043,12 +1090,17 @@ def cmd_benchmark(args):
                         )
                     )
                     instance_ids = tuple(loaded_ids)
+                    if attestation_provenance:
+                        selection_provenance = {
+                            **(selection_provenance or {}),
+                            **attestation_provenance,
+                        }
                 payload = write_susvibes_candidate_review_json(
                     target,
                     repository_cache,
                     args.json_output,
                     only_cwes=only_cwes,
-                    max_cases=int(getattr(args, "max_cases", 0)),
+                    max_cases=max_cases,
                     instance_ids=instance_ids,
                     selection_provenance=selection_provenance,
                     reviewer_semantic_mode=str(
@@ -2053,6 +2105,14 @@ def main():
         ],
         default="summaries",
         help="Semantic layer used by susvibes_candidate_review_v1",
+    )
+    p_bench_reportability.add_argument(
+        "--holdout-attestation",
+        default="",
+        help=(
+            "Ready create-only attestation required before the frozen "
+            "holdout cohort can be loaded"
+        ),
     )
     p_bench_reportability.add_argument(
         "--json-output",

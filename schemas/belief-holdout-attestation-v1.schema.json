@@ -1,0 +1,478 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://belief.local/schemas/belief-holdout-attestation-v1.schema.json",
+  "title": "BELIEF frozen static holdout attestation v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "mode",
+    "status",
+    "ready_for_unseal",
+    "binding",
+    "development",
+    "validation",
+    "authorization",
+    "boundaries",
+    "deterministic_digest"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "belief.holdout_attestation.v1"
+    },
+    "mode": {
+      "const": "frozen_static_holdout_unseal"
+    },
+    "status": {
+      "const": "ready"
+    },
+    "ready_for_unseal": {
+      "const": true
+    },
+    "binding": {
+      "type": "object",
+      "required": [
+        "repository",
+        "repository_cache",
+        "repository_cache_manifest",
+        "starting_commit",
+        "freeze_commit",
+        "belief_source_sha256",
+        "reviewer_semantic_mode",
+        "runtime",
+        "dataset",
+        "manifest",
+        "protocol",
+        "development_ids_sha256",
+        "development_case_count",
+        "reserved_ids_sha256",
+        "reserved_case_count",
+        "thresholds",
+        "reserved_outputs"
+      ],
+      "properties": {
+        "repository": {
+          "$ref": "#/$defs/path"
+        },
+        "repository_cache": {
+          "$ref": "#/$defs/path"
+        },
+        "repository_cache_manifest": {
+          "$ref": "#/$defs/bound_file"
+        },
+        "starting_commit": {
+          "$ref": "#/$defs/commit"
+        },
+        "freeze_commit": {
+          "$ref": "#/$defs/commit"
+        },
+        "belief_source_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "reviewer_semantic_mode": {
+          "const": "full"
+        },
+        "runtime": {
+          "$ref": "#/$defs/runtime"
+        },
+        "dataset": {
+          "$ref": "#/$defs/bound_file"
+        },
+        "manifest": {
+          "$ref": "#/$defs/bound_semantic_file"
+        },
+        "protocol": {
+          "$ref": "#/$defs/bound_file"
+        },
+        "development_ids_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "development_case_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reserved_ids_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "reserved_case_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "thresholds": {
+          "type": "object",
+          "required": [
+            "maximum_secure_warning_false_positive_rate",
+            "minimum_paired_warning_discrimination_rate",
+            "minimum_vulnerable_warning_recall"
+          ],
+          "properties": {
+            "maximum_secure_warning_false_positive_rate": {
+              "const": 0.25
+            },
+            "minimum_paired_warning_discrimination_rate": {
+              "const": 0.3
+            },
+            "minimum_vulnerable_warning_recall": {
+              "const": 0.3
+            }
+          },
+          "additionalProperties": false
+        },
+        "reserved_outputs": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/path"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "development": {
+      "type": "object",
+      "required": [
+        "artifacts",
+        "thresholds_passed",
+        "f_deterministic_digest"
+      ],
+      "properties": {
+        "artifacts": {
+          "type": "object",
+          "required": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F1",
+            "F2"
+          ],
+          "properties": {
+            "A": {
+              "$ref": "#/$defs/development_artifact"
+            },
+            "B": {
+              "$ref": "#/$defs/development_artifact"
+            },
+            "C": {
+              "$ref": "#/$defs/development_artifact"
+            },
+            "D": {
+              "$ref": "#/$defs/development_artifact"
+            },
+            "E": {
+              "$ref": "#/$defs/development_artifact"
+            },
+            "F1": {
+              "$ref": "#/$defs/development_artifact"
+            },
+            "F2": {
+              "$ref": "#/$defs/development_artifact"
+            }
+          },
+          "additionalProperties": false
+        },
+        "thresholds_passed": {
+          "const": true
+        },
+        "f_deterministic_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "validation": {
+      "type": "object",
+      "required": [
+        "checks"
+      ],
+      "properties": {
+        "checks": {
+          "type": "object",
+          "required": [
+            "anti_overfit",
+            "ci_filter",
+            "first_party_compile",
+            "full_pytest",
+            "limits",
+            "metamorphic",
+            "pip_check_isolated",
+            "ruff",
+            "schema_compatibility",
+            "security_pytest",
+            "self_review"
+          ],
+          "properties": {
+            "anti_overfit": {
+              "$ref": "#/$defs/validation_check"
+            },
+            "ci_filter": {
+              "$ref": "#/$defs/validation_check"
+            },
+            "first_party_compile": {
+              "$ref": "#/$defs/validation_check"
+            },
+            "full_pytest": {
+              "$ref": "#/$defs/validation_check"
+            },
+            "limits": {
+              "$ref": "#/$defs/validation_check"
+            },
+            "metamorphic": {
+              "$ref": "#/$defs/validation_check"
+            },
+            "pip_check_isolated": {
+              "$ref": "#/$defs/validation_check"
+            },
+            "ruff": {
+              "$ref": "#/$defs/validation_check"
+            },
+            "schema_compatibility": {
+              "$ref": "#/$defs/validation_check"
+            },
+            "security_pytest": {
+              "$ref": "#/$defs/validation_check"
+            },
+            "self_review": {
+              "$ref": "#/$defs/validation_check"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "authorization": {
+      "type": "object",
+      "required": [
+        "required_environment",
+        "values_recorded"
+      ],
+      "properties": {
+        "required_environment": {
+          "type": "object",
+          "required": [
+            "BELIEF_HOLDOUT_AUTHORIZED",
+            "BELIEF_HOLDOUT_NO_NETWORK",
+            "BELIEF_HOLDOUT_STATIC_ONLY"
+          ],
+          "properties": {
+            "BELIEF_HOLDOUT_AUTHORIZED": {
+              "const": "YES"
+            },
+            "BELIEF_HOLDOUT_NO_NETWORK": {
+              "const": "YES"
+            },
+            "BELIEF_HOLDOUT_STATIC_ONLY": {
+              "const": "YES"
+            }
+          },
+          "additionalProperties": false
+        },
+        "values_recorded": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "boundaries": {
+      "type": "object",
+      "required": [
+        "artifacts_create_only",
+        "development_gates_passed",
+        "network_disabled",
+        "paid_model_disabled",
+        "protocol_recorded_before_unseal",
+        "reserved_results_inspected_only_after_both_runs",
+        "security_tests_disabled_for_static_holdout",
+        "benchmark_oracle_forwarded_to_reviewer",
+        "holdout_case_details_inspected",
+        "holdout_ids_forwarded_to_reviewer",
+        "holdout_is_secpass_equivalent"
+      ],
+      "properties": {
+        "artifacts_create_only": {
+          "const": true
+        },
+        "development_gates_passed": {
+          "const": true
+        },
+        "network_disabled": {
+          "const": true
+        },
+        "paid_model_disabled": {
+          "const": true
+        },
+        "protocol_recorded_before_unseal": {
+          "const": true
+        },
+        "reserved_results_inspected_only_after_both_runs": {
+          "const": true
+        },
+        "security_tests_disabled_for_static_holdout": {
+          "const": true
+        },
+        "benchmark_oracle_forwarded_to_reviewer": {
+          "const": false
+        },
+        "holdout_case_details_inspected": {
+          "const": false
+        },
+        "holdout_ids_forwarded_to_reviewer": {
+          "const": false
+        },
+        "holdout_is_secpass_equivalent": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "deterministic_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "bound_file": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "bound_semantic_file": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256",
+        "deterministic_digest"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "deterministic_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "python_executable",
+        "python_implementation",
+        "python_version",
+        "installed_distributions_sha256"
+      ],
+      "properties": {
+        "python_executable": {
+          "$ref": "#/$defs/path"
+        },
+        "python_implementation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "python_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "installed_distributions_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "development_artifact": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256",
+        "deterministic_digest",
+        "status",
+        "reviewer_source_sha256"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "deterministic_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer_source_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "validation_check": {
+      "type": "object",
+      "required": [
+        "passed",
+        "exit_code",
+        "command",
+        "artifact",
+        "sha256",
+        "freeze_commit",
+        "belief_source_sha256"
+      ],
+      "properties": {
+        "passed": {
+          "const": true
+        },
+        "exit_code": {
+          "const": 0
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact": {
+          "$ref": "#/$defs/path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "freeze_commit": {
+          "$ref": "#/$defs/commit"
+        },
+        "belief_source_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

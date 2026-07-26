@@ -8,6 +8,7 @@ SCHEMAS = [
     "belief-feedback-v1.schema.json",
     "belief-sft-v1.schema.json",
     "belief-reasoning-v1.schema.json",
+    "belief-holdout-attestation-v1.schema.json",
 ]
 
 

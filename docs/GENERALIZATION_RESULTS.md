@@ -137,3 +137,18 @@ The holdout therefore remains sealed. No further reviewer tuning may use this
 49-case development cohort. Further architecture work requires a newly
 preregistered public development corpus; holdout attestation tooling and
 official-smoke preparation may continue without consuming the reserved cases.
+
+## Post-result sealing control
+
+After recording the negative result, a fail-closed holdout control was added
+without changing reviewer verdict logic. The CLI now refuses to load the
+reserved cohort unless a create-only `belief.holdout_attestation.v1` proves
+that all development gates passed twice and binds the exact clean commit,
+source digest, dataset, nested manifest, prepared Git cache, Python dependency
+fingerprint, validation evidence, thresholds, full semantic mode, and two
+ordered external result paths.
+
+This is a verified prevention mechanism, not a holdout result. The real F1/F2
+artifacts in this report have `status=failed`, so they cannot satisfy the
+attestation validator. No attestation was created, no reserved ID was loaded,
+and the 49-case holdout remains unconsumed.

@@ -379,6 +379,19 @@ def test_cache_manifest_cannot_overwrite_frozen_input(
         )
 
 
+def test_cache_manifest_is_create_only(tmp_path):
+    output = tmp_path / "cache-manifest.json"
+    output.write_text("preserve me\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="refusing to overwrite"):
+        _validate_manifest_output(
+            output,
+            dataset=tmp_path / "dataset.jsonl",
+        )
+
+    assert output.read_text(encoding="utf-8") == "preserve me\n"
+
+
 def test_cache_preparation_refuses_nonempty_non_git_directory(tmp_path):
     repository = tmp_path / "example__assets"
     repository.mkdir()

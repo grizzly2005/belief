@@ -195,6 +195,17 @@ and paired-discrimination gates, so the reserved cohort remains sealed. See
 verified ablations, artifact hashes, limitations, and explicit non-comparability
 with SusVibes `SecPass`, Fable 5, or Kimi.
 
+The CLI now enforces that seal before it loads any holdout IDs:
+`--cohort holdout` requires a verified, external, create-only
+`belief.holdout_attestation.v1` plus `--candidate-semantic-mode full`. The
+attestation binds the clean freeze commit, BELIEF source, dataset, experiment
+manifest, prepared Git cache, Python dependency fingerprint, development
+artifacts, validation evidence, thresholds, and exactly two ordered output
+paths. Candidate-review and cache-manifest writers refuse overwrite. The
+current failed F result cannot produce a ready attestation; this mechanism is
+for a future preregistered experiment that first passes every development
+gate.
+
 ---
 
 ## Toolchain Manager / Orchestrator v1
@@ -530,9 +541,9 @@ python -m pytest -q -m "not slow and not external and not llm"
 
 Current local regression baseline:
 
-- full suite: `910 passed, 31 skipped`;
-- security suite: `456 passed`;
-- non-slow / non-external / non-LLM suite: `910 passed, 31 skipped`.
+- full suite: `924 passed, 31 skipped`;
+- security suite: `470 passed`;
+- non-slow / non-external / non-LLM suite: `924 passed, 31 skipped`.
 
 These numbers may change as the project evolves.
 

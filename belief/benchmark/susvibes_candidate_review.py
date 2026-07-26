@@ -204,7 +204,9 @@ def evaluate_susvibes_candidate_review(
                 for key, value in sorted(selection_provenance.items())
             }
         payload["selection"] = selection
-    payload["deterministic_digest"] = _semantic_digest(payload)
+    payload["deterministic_digest"] = (
+        susvibes_candidate_review_deterministic_digest(payload)
+    )
     payload["metrics"]["deterministic_digest"] = payload[
         "deterministic_digest"
     ]
@@ -225,10 +227,19 @@ def write_susvibes_candidate_review_json(
     )
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    try:
+        with output_path.open(
+            "x",
+            encoding="utf-8",
+            newline="\n",
+        ) as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+    except FileExistsError as exc:
+        raise ValueError(
+            f"refusing to overwrite candidate-review result: "
+            f"{output_path}"
+        ) from exc
     return payload
 
 
@@ -1185,7 +1196,11 @@ def _reviewer_runtime_provenance(
     return provenance
 
 
-def _semantic_digest(payload: Mapping[str, Any]) -> str:
+def susvibes_candidate_review_deterministic_digest(
+    payload: Mapping[str, Any],
+) -> str:
+    """Return the stable semantic digest for a candidate-review result."""
+
     semantic = _without_runtime_metrics({
         str(key): value
         for key, value in payload.items()
@@ -1216,6 +1231,7 @@ def _without_runtime_metrics(value: Any) -> Any:
         "median_review_duration_seconds",
         "maximum_process_peak_rss_bytes",
         "process_peak_rss_bytes",
+        "holdout_run_number",
     }
     if isinstance(value, Mapping):
         return {
@@ -1242,5 +1258,6 @@ __all__ = [
     "SUSVIBES_CANDIDATE_REVIEW_SCHEMA_VERSION",
     "SusVibesCandidateReviewThresholds",
     "evaluate_susvibes_candidate_review",
+    "susvibes_candidate_review_deterministic_digest",
     "write_susvibes_candidate_review_json",
 ]

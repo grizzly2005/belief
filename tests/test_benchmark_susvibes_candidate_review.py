@@ -14,6 +14,7 @@ from belief.benchmark.susvibes_candidate_review import (
     SUSVIBES_CANDIDATE_REVIEW_MODE,
     SusVibesCandidateReviewThresholds,
     evaluate_susvibes_candidate_review,
+    susvibes_candidate_review_deterministic_digest,
 )
 from belief.benchmark.susvibes_experiment import (
     write_susvibes_experiment_manifest,
@@ -503,6 +504,152 @@ def test_candidate_review_cli_verifies_and_records_manifest_cohort(
     assert payload["selection"]["case_count"] == 1
     assert payload["selection"]["provenance"]["cohort"] == "canary"
     assert payload["selection"]["provenance"]["susvibes_commit"] == "a" * 40
+
+
+def test_candidate_review_cli_refuses_holdout_without_attestation(
+    tmp_path,
+):
+    dataset, cache = _candidate_fixture(tmp_path)
+    manifest = tmp_path / "experiment.json"
+    output = tmp_path / "candidate-review.json"
+    write_susvibes_experiment_manifest(
+        dataset,
+        manifest,
+        susvibes_commit="a" * 40,
+        smoke_size=1,
+        canary_size=1,
+        batch_size=1,
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "belief",
+            "benchmark",
+            "reportability",
+            "--mode",
+            SUSVIBES_CANDIDATE_REVIEW_MODE,
+            "--target",
+            str(dataset),
+            "--repository-cache",
+            str(cache),
+            "--experiment-manifest",
+            str(manifest),
+            "--cohort",
+            "holdout",
+            "--json-output",
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert "requires --holdout-attestation" in completed.stderr
+    assert not output.exists()
+
+
+def test_candidate_review_cli_rejects_filters_on_frozen_cohort(
+    tmp_path,
+):
+    dataset, cache = _candidate_fixture(tmp_path)
+    manifest = tmp_path / "experiment.json"
+    output = tmp_path / "candidate-review.json"
+    write_susvibes_experiment_manifest(
+        dataset,
+        manifest,
+        susvibes_commit="a" * 40,
+        smoke_size=1,
+        canary_size=1,
+        batch_size=1,
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "belief",
+            "benchmark",
+            "reportability",
+            "--mode",
+            SUSVIBES_CANDIDATE_REVIEW_MODE,
+            "--target",
+            str(dataset),
+            "--repository-cache",
+            str(cache),
+            "--experiment-manifest",
+            str(manifest),
+            "--cohort",
+            "canary",
+            "--only-cwe",
+            "CWE-22",
+            "--json-output",
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert "frozen experiment cohorts cannot be combined" in completed.stderr
+    assert not output.exists()
+
+
+def test_candidate_review_writer_refuses_overwrite(tmp_path):
+    dataset, cache = _candidate_fixture(tmp_path)
+    output = tmp_path / "candidate-review.json"
+    output.write_text("preserve me\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "belief",
+            "benchmark",
+            "reportability",
+            "--mode",
+            SUSVIBES_CANDIDATE_REVIEW_MODE,
+            "--target",
+            str(dataset),
+            "--repository-cache",
+            str(cache),
+            "--json-output",
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert "refusing to overwrite" in completed.stderr
+    assert output.read_text(encoding="utf-8") == "preserve me\n"
+
+
+def test_candidate_review_digest_excludes_holdout_run_number(tmp_path):
+    dataset, cache = _candidate_fixture(tmp_path)
+    payload = evaluate_susvibes_candidate_review(
+        dataset,
+        cache,
+        instance_ids=("example__assets_fixed",),
+        selection_provenance={"holdout_run_number": "1"},
+    )
+    changed = json.loads(json.dumps(payload))
+    changed["selection"]["provenance"]["holdout_run_number"] = "2"
+
+    assert (
+        susvibes_candidate_review_deterministic_digest(changed)
+        == payload["deterministic_digest"]
+    )
 
 
 def test_manifest_selection_is_rejected_outside_candidate_review(tmp_path):
