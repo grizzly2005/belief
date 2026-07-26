@@ -151,6 +151,7 @@ def make_guard_transition(
     branch: str = "false",
     result_used: bool = True,
     dominates_sink: bool | None = None,
+    column: int | None = None,
 ) -> tuple[GuardEffect, SecurityTransition]:
     material = {
         "file": context.file,
@@ -173,6 +174,9 @@ def make_guard_transition(
         dominates_sink=(abortive if dominates_sink is None else dominates_sink),
         result_used=result_used,
         line=line,
+        column=column,
+        file=context.file,
+        function=context.qualified_name,
     )
     before = FlowState(
         property=property_name,
@@ -197,6 +201,9 @@ def make_guard_transition(
         line=line,
         control_path=(condition,),
         result_used=result_used,
+        column=column,
+        file=context.file,
+        function=context.qualified_name,
     )
     return guard, transition
 

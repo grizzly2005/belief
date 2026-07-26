@@ -1922,11 +1922,18 @@ def main():
     )
     p_review_patch.add_argument(
         "--semantic-mode",
-        choices=["off", "summaries", "flow_states"],
+        choices=[
+            "off",
+            "summaries",
+            "flow_states",
+            "evidence_graph",
+            "full",
+        ],
         default="summaries",
         help=(
             "Semantic review layer: diagnostics off, function summaries, "
-            "or flow-state verdicts"
+            "flow-state verdicts, evidence-graph ablation, or the full "
+            "summary-aware evidence graph"
         ),
     )
     p_review_patch.add_argument(
@@ -2037,7 +2044,13 @@ def main():
     )
     p_bench_reportability.add_argument(
         "--candidate-semantic-mode",
-        choices=["off", "summaries", "flow_states"],
+        choices=[
+            "off",
+            "summaries",
+            "flow_states",
+            "evidence_graph",
+            "full",
+        ],
         default="summaries",
         help="Semantic layer used by susvibes_candidate_review_v1",
     )

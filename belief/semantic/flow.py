@@ -84,9 +84,12 @@ def analyze_semantic_flow(
     *,
     summaries: FunctionSummaryAnalysis | None = None,
     limits: SemanticFlowLimits | None = None,
+    use_summary_effects: bool = True,
 ) -> SemanticFlowAnalysis:
     """Analyze reusable security contracts without network or execution."""
 
+    if not isinstance(use_summary_effects, bool):
+        raise ValueError("use_summary_effects must be boolean")
     configured = limits or SemanticFlowLimits()
     target_path = Path(target).resolve()
     summary_result = summaries or analyze_function_summaries(
@@ -96,7 +99,11 @@ def analyze_semantic_flow(
             max_functions=configured.max_functions,
         ),
     )
-    summary_effects = _summary_effects(summary_result)
+    summary_effects = (
+        _summary_effects(summary_result)
+        if use_summary_effects
+        else {}
+    )
     discovered_files = _all_python_files(target_path)
     files = [path for path in discovered_files if _included_analysis_path(path, target_path)]
     gaps: set[AnalysisGap] = set()
@@ -284,6 +291,7 @@ def analyze_semantic_flow(
         "guard_count": len(guards),
         "parsed_file_count": parsed_file_count,
         "transition_count": len(transitions),
+        "summary_effects_enabled": int(use_summary_effects),
     }
     for category, count in sorted(category_counts.items()):
         metrics[f"concerns_{category}"] = count

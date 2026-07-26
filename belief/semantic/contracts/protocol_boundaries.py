@@ -686,6 +686,7 @@ def _protocol_guard(
         abortive=aborts(node.body),
         branch="false" if aborts(node.body) else "true",
         dominates_sink=is_top_level_statement(context, node),
+        column=node.col_offset,
     )
 
 

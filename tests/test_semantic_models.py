@@ -116,10 +116,18 @@ def test_security_transition_requires_the_same_resource_and_property():
         before=unsafe,
         after=safe,
         line=4,
+        column=8,
+        file="service.py",
+        function="decode",
         control_path=("if len(value) > limit", "raise"),
     )
 
-    assert transition.to_dict()["after"]["value"] == "bounded"
+    payload = transition.to_dict()
+    assert payload["schema_version"] == "belief.security_transition.v2"
+    assert payload["after"]["value"] == "bounded"
+    assert payload["column"] == 8
+    assert payload["file"] == "service.py"
+    assert payload["function"] == "decode"
     with pytest.raises(ValueError, match="after-state resource mismatch"):
         SecurityTransition(
             transition_id="wrong-resource",
@@ -147,12 +155,19 @@ def test_guard_effect_preserves_branch_and_result_use():
         dominates_sink=True,
         result_used=True,
         line=8,
+        column=4,
+        file="redirects.py",
+        function="go",
     )
 
     payload = effect.to_dict()
 
+    assert payload["schema_version"] == "belief.guard_effect.v2"
     assert payload["dominates_sink"] is True
     assert payload["result_used"] is True
+    assert payload["column"] == 4
+    assert payload["file"] == "redirects.py"
+    assert payload["function"] == "go"
 
 
 def test_function_summary_is_versioned_sorted_and_deterministic():

@@ -79,6 +79,7 @@ def _analyze_function(
                 abortive=True,
                 branch="false",
                 dominates_sink=True,
+                column=item.col_offset,
             )
             guards.append(guard)
             transitions.append(transition)
@@ -323,6 +324,7 @@ def _decorator_guard(
             condition=name,
             abortive=True,
             branch="true",
+            column=getattr(decorator, "col_offset", None),
         )
     return None
 

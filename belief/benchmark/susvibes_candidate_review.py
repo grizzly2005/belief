@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import shutil
+import statistics
 import subprocess
 import tempfile
 import time
@@ -26,7 +27,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping
 
 from .susvibes import LocalGitCorpus, load_susvibes_cases, parse_security_diff
-from ..patch_review import review_candidate_patch
+from ..patch_review import (
+    SEMANTIC_REVIEW_MODES,
+    review_candidate_patch,
+)
 
 
 SUSVIBES_CANDIDATE_REVIEW_SCHEMA_VERSION = (
@@ -85,13 +89,10 @@ def evaluate_susvibes_candidate_review(
     corpus = LocalGitCorpus(repository_cache)
     configured_thresholds = _coerce_thresholds(thresholds)
     configured_semantic_mode = str(reviewer_semantic_mode)
-    if configured_semantic_mode not in {
-        "off",
-        "summaries",
-        "flow_states",
-    }:
+    if configured_semantic_mode not in SEMANTIC_REVIEW_MODES:
         raise ValueError(
-            "reviewer_semantic_mode must be off, summaries, or flow_states"
+            "reviewer_semantic_mode must be one of: "
+            + ", ".join(SEMANTIC_REVIEW_MODES)
         )
     if (
         reviewer is not review_candidate_patch
@@ -358,8 +359,114 @@ def _invoke_reviewer(
     semantic_mode: str,
 ) -> dict[str, Any]:
     if reviewer is review_candidate_patch:
-        return reviewer(repository, semantic_mode=semantic_mode)
-    return reviewer(repository)
+        result = reviewer(
+            repository,
+            semantic_mode=semantic_mode,
+        )
+    else:
+        result = reviewer(repository)
+    result["resource_usage"] = {
+        **(
+            result.get("resource_usage")
+            if isinstance(
+                result.get("resource_usage"),
+                Mapping,
+            )
+            else {}
+        ),
+        "process_peak_rss_bytes": (
+            _process_peak_memory_bytes()
+        ),
+    }
+    return result
+
+
+def _process_peak_memory_bytes() -> int:
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class _ProcessMemoryCounters(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("page_fault_count", wintypes.DWORD),
+                    (
+                        "peak_working_set_size",
+                        ctypes.c_size_t,
+                    ),
+                    ("working_set_size", ctypes.c_size_t),
+                    (
+                        "quota_peak_paged_pool_usage",
+                        ctypes.c_size_t,
+                    ),
+                    (
+                        "quota_paged_pool_usage",
+                        ctypes.c_size_t,
+                    ),
+                    (
+                        "quota_peak_nonpaged_pool_usage",
+                        ctypes.c_size_t,
+                    ),
+                    (
+                        "quota_nonpaged_pool_usage",
+                        ctypes.c_size_t,
+                    ),
+                    ("pagefile_usage", ctypes.c_size_t),
+                    ("peak_pagefile_usage", ctypes.c_size_t),
+                ]
+
+            counters = _ProcessMemoryCounters()
+            counters.cb = ctypes.sizeof(counters)
+            psapi = ctypes.WinDLL(
+                "psapi",
+                use_last_error=True,
+            )
+            kernel32 = ctypes.WinDLL(
+                "kernel32",
+                use_last_error=True,
+            )
+            get_current_process = (
+                kernel32.GetCurrentProcess
+            )
+            get_current_process.restype = wintypes.HANDLE
+            get_process_memory_info = (
+                psapi.GetProcessMemoryInfo
+            )
+            get_process_memory_info.argtypes = [
+                wintypes.HANDLE,
+                ctypes.POINTER(_ProcessMemoryCounters),
+                wintypes.DWORD,
+            ]
+            get_process_memory_info.restype = wintypes.BOOL
+            success = get_process_memory_info(
+                get_current_process(),
+                ctypes.byref(counters),
+                counters.cb,
+            )
+            return (
+                int(counters.peak_working_set_size)
+                if success
+                else 0
+            )
+        except (
+            AttributeError,
+            OSError,
+            ValueError,
+            ctypes.ArgumentError,
+        ):
+            return 0
+    try:
+        import resource
+
+        peak = int(
+            resource.getrusage(
+                resource.RUSAGE_SELF
+            ).ru_maxrss
+        )
+        return peak if os.uname().sysname == "Darwin" else peak * 1024
+    except (AttributeError, ImportError, OSError, ValueError):
+        return 0
 
 
 def _initialize_masked_repository(
@@ -485,6 +592,10 @@ def _review_summary(review: Mapping[str, Any]) -> dict[str, Any]:
         for row in review.get(key, [])
         if isinstance(row, Mapping) and row.get("actionable")
     ]
+    resource_usage = review.get("resource_usage")
+    if not isinstance(resource_usage, Mapping):
+        resource_usage = {}
+    evidence = _review_evidence_summary(review)
     return {
         "analysis_succeeded": candidate_succeeded,
         "status": str(review.get("status") or ""),
@@ -497,6 +608,18 @@ def _review_summary(review: Mapping[str, Any]) -> dict[str, Any]:
             row.get("classification") == "residual"
             for row in actionable_rows
         ),
+        "duration_seconds": round(
+            float(review.get("duration_seconds") or 0.0),
+            6,
+        ),
+        "process_peak_rss_bytes": int(
+            resource_usage.get(
+                "process_peak_rss_bytes",
+                0,
+            )
+            or 0
+        ),
+        "semantic_evidence": evidence,
         "findings": [
             {
                 key: row.get(key)
@@ -509,12 +632,119 @@ def _review_summary(review: Mapping[str, Any]) -> dict[str, Any]:
                     "classification",
                 )
             }
+            | {
+                "source": (
+                    row.get("dataflow", {}).get("source")
+                    if isinstance(
+                        row.get("dataflow"),
+                        Mapping,
+                    )
+                    else None
+                ),
+                "sink": (
+                    row.get("dataflow", {}).get("sink")
+                    if isinstance(
+                        row.get("dataflow"),
+                        Mapping,
+                    )
+                    else None
+                ),
+                "missing_guarantees": (
+                    row.get("dataflow", {}).get(
+                        "missing_guarantees",
+                    )
+                    if isinstance(
+                        row.get("dataflow"),
+                        Mapping,
+                    )
+                    else None
+                ),
+            }
             for row in actionable_rows
         ],
         "review_digest": str(
             review.get("deterministic_digest") or ""
         ),
     }
+
+
+def _review_evidence_summary(
+    review: Mapping[str, Any],
+) -> dict[str, Any]:
+    evidence = review.get("semantic_evidence")
+    if not isinstance(evidence, Mapping):
+        return {
+            "enabled": False,
+            "complete": True,
+        }
+    result: dict[str, Any] = {
+        "enabled": bool(evidence.get("enabled")),
+        "complete": bool(
+            evidence.get("complete", True)
+        ),
+    }
+    for label in ("baseline_graph", "candidate_graph"):
+        graph = evidence.get(label)
+        if not isinstance(graph, Mapping):
+            continue
+        metrics = graph.get("metrics")
+        gaps = graph.get("gaps")
+        result[label] = {
+            "deterministic_digest": str(
+                graph.get("deterministic_digest") or ""
+            ),
+            "metrics": (
+                dict(metrics)
+                if isinstance(metrics, Mapping)
+                else {}
+            ),
+            "gap_codes": sorted(
+                str(gap.get("code") or "")
+                for gap in (
+                    gaps
+                    if isinstance(gaps, list)
+                    else []
+                )
+                if isinstance(gap, Mapping)
+                and gap.get("code")
+            ),
+            "gaps": [
+                {
+                    key: gap.get(key)
+                    for key in (
+                        "code",
+                        "stage",
+                        "file",
+                        "function",
+                        "line",
+                        "limit_name",
+                        "limit_value",
+                        "observed_value",
+                    )
+                }
+                for gap in (
+                    gaps
+                    if isinstance(gaps, list)
+                    else []
+                )
+                if isinstance(gap, Mapping)
+            ],
+        }
+    comparison = evidence.get("comparison")
+    if isinstance(comparison, Mapping):
+        metrics = comparison.get("metrics")
+        result["comparison"] = {
+            "deterministic_digest": str(
+                comparison.get("deterministic_digest")
+                or ""
+            ),
+            "metrics": (
+                dict(metrics)
+                if isinstance(metrics, Mapping)
+                else {}
+            ),
+        }
+    return result
 
 
 def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -532,15 +762,47 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         row["paired_warning_discriminated"]
         for row in succeeded
     )
+    precision = _ratio(
+        vulnerable,
+        vulnerable + secure_fp,
+    )
+    recall = _ratio(vulnerable, evaluable)
+    warning_f1 = (
+        round(
+            2 * precision * recall / (precision + recall),
+            6,
+        )
+        if precision + recall
+        else 0.0
+    )
+    reviews = [
+        row[label]
+        for row in succeeded
+        for label in (
+            "vulnerable_candidate",
+            "secure_candidate",
+        )
+    ]
+    durations = [
+        float(review.get("duration_seconds") or 0.0)
+        for review in reviews
+    ]
+    peaks = [
+        int(
+            review.get(
+                "process_peak_rss_bytes",
+                0,
+            )
+            or 0
+        )
+        for review in reviews
+    ]
     return {
         "case_count": count,
         "evaluable_case_count": evaluable,
         "analysis_error_count": count - evaluable,
         "vulnerable_warning_count": vulnerable,
-        "vulnerable_warning_recall": _ratio(
-            vulnerable,
-            evaluable,
-        ),
+        "vulnerable_warning_recall": recall,
         "secure_warning_false_positive_count": secure_fp,
         "secure_warning_false_positive_rate": _ratio(
             secure_fp,
@@ -551,7 +813,120 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
             paired,
             evaluable,
         ),
+        "warning_precision": precision,
+        "warning_f1": warning_f1,
+        "median_review_duration_seconds": (
+            round(statistics.median(durations), 6)
+            if durations
+            else 0.0
+        ),
+        "maximum_process_peak_rss_bytes": (
+            max(peaks, default=0)
+        ),
+        "vulnerable_finding_localization": (
+            _finding_localization(
+                [
+                    finding
+                    for row in succeeded
+                    for finding in row[
+                        "vulnerable_candidate"
+                    ]["findings"]
+                ]
+            )
+        ),
+        "secure_finding_localization": (
+            _finding_localization(
+                [
+                    finding
+                    for row in succeeded
+                    for finding in row[
+                        "secure_candidate"
+                    ]["findings"]
+                ]
+            )
+        ),
+        "evidence_graph": _aggregate_evidence_metrics(
+            reviews
+        ),
         "category_breakdown": _category_breakdown(succeeded),
+    }
+
+
+def _finding_localization(
+    findings: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    count = len(findings)
+    fields = (
+        "file",
+        "function",
+        "source",
+        "sink",
+    )
+    result = {
+        "finding_count": count,
+    }
+    for field in fields:
+        localized = sum(
+            bool(finding.get(field))
+            for finding in findings
+        )
+        result[f"with_{field}_count"] = localized
+        result[f"with_{field}_rate"] = _ratio(
+            localized,
+            count,
+        )
+    return result
+
+
+def _aggregate_evidence_metrics(
+    reviews: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    enabled = [
+        review.get("semantic_evidence")
+        for review in reviews
+        if isinstance(
+            review.get("semantic_evidence"),
+            Mapping,
+        )
+        and review["semantic_evidence"].get("enabled")
+    ]
+    complete = sum(
+        bool(evidence.get("complete"))
+        for evidence in enabled
+    )
+    metric_totals: defaultdict[str, int] = defaultdict(int)
+    gap_codes: defaultdict[str, int] = defaultdict(int)
+    for evidence in enabled:
+        candidate = evidence.get("candidate_graph")
+        if not isinstance(candidate, Mapping):
+            continue
+        metrics = candidate.get("metrics")
+        if isinstance(metrics, Mapping):
+            for key, value in metrics.items():
+                if isinstance(value, int) and not isinstance(
+                    value,
+                    bool,
+                ):
+                    metric_totals[str(key)] += value
+        for code in candidate.get("gap_codes", []):
+            gap_codes[str(code)] += 1
+    return {
+        "enabled_review_count": len(enabled),
+        "complete_review_count": complete,
+        "complete_review_rate": _ratio(
+            complete,
+            len(enabled),
+        ),
+        "incomplete_review_count": len(enabled) - complete,
+        "candidate_metric_totals": dict(
+            sorted(metric_totals.items())
+        ),
+        "gap_code_counts": dict(sorted(gap_codes.items())),
+        "limit_hit_count": sum(
+            count
+            for code, count in gap_codes.items()
+            if "limit" in code
+        ),
     }
 
 
@@ -811,11 +1186,11 @@ def _reviewer_runtime_provenance(
 
 
 def _semantic_digest(payload: Mapping[str, Any]) -> str:
-    semantic = {
-        key: value
+    semantic = _without_runtime_metrics({
+        str(key): value
         for key, value in payload.items()
         if key not in {"duration_seconds", "deterministic_digest"}
-    }
+    })
     metrics = semantic.get("metrics")
     if isinstance(metrics, Mapping):
         semantic["metrics"] = {
@@ -833,6 +1208,32 @@ def _semantic_digest(payload: Mapping[str, Any]) -> str:
         ensure_ascii=True,
     )
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _without_runtime_metrics(value: Any) -> Any:
+    runtime_keys = {
+        "duration_seconds",
+        "median_review_duration_seconds",
+        "maximum_process_peak_rss_bytes",
+        "process_peak_rss_bytes",
+    }
+    if isinstance(value, Mapping):
+        return {
+            str(key): _without_runtime_metrics(selected)
+            for key, selected in value.items()
+            if str(key) not in runtime_keys
+        }
+    if isinstance(value, list):
+        return [
+            _without_runtime_metrics(selected)
+            for selected in value
+        ]
+    if isinstance(value, tuple):
+        return [
+            _without_runtime_metrics(selected)
+            for selected in value
+        ]
+    return value
 
 
 __all__ = [

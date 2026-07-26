@@ -168,6 +168,16 @@ def test_candidate_review_discriminates_vulnerable_and_secure_patch(tmp_path):
         payload["metrics"]["paired_warning_discrimination_rate"]
         == 1.0
     )
+    assert payload["metrics"]["warning_precision"] == 1.0
+    assert payload["metrics"]["warning_f1"] == 1.0
+    assert payload["metrics"]["median_review_duration_seconds"] >= 0.0
+    assert payload["metrics"]["maximum_process_peak_rss_bytes"] >= 0
+    assert payload["metrics"]["vulnerable_finding_localization"][
+        "with_file_rate"
+    ] == 1.0
+    assert payload["metrics"]["evidence_graph"][
+        "enabled_review_count"
+    ] == 0
     assert payload["cases"][0]["vulnerable_warned"] is True
     assert payload["cases"][0]["secure_warning_false_positive"] is False
     assert payload["comparability"]["reviewer_received_benchmark_oracle"] is False
@@ -237,6 +247,32 @@ def test_candidate_review_records_flow_state_configuration(tmp_path):
         == "flow_states"
     )
     assert payload["metrics"]["evaluable_case_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["evidence_graph", "full"],
+)
+def test_candidate_review_accepts_evidence_modes(
+    tmp_path,
+    mode,
+):
+    dataset, cache = _candidate_fixture(tmp_path)
+
+    payload = evaluate_susvibes_candidate_review(
+        dataset,
+        cache,
+        reviewer_semantic_mode=mode,
+    )
+
+    assert payload["reviewer_provenance"]["semantic_mode"] == mode
+    assert payload["metrics"]["evaluable_case_count"] == 1
+    assert payload["metrics"]["evidence_graph"][
+        "enabled_review_count"
+    ] == 2
+    assert payload["metrics"]["evidence_graph"][
+        "complete_review_count"
+    ] == 2
 
 
 def test_custom_reviewer_rejects_unapplied_semantic_configuration(

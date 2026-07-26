@@ -9,11 +9,14 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Iterable
 
-from .models import AnalysisGap
+from .models import AnalysisGap, SummaryKind
 from .observations import SemanticConcern, SemanticFlowAnalysis
+from .summaries import FunctionSummaryAnalysis
 
 
-EVIDENCE_GRAPH_SCHEMA_VERSION = "belief.evidence_graph.v1"
+EVIDENCE_GRAPH_SCHEMA_VERSION = (
+    "belief.semantic_evidence_graph.v1"
+)
 SEMANTIC_COMPARISON_SCHEMA_VERSION = "belief.semantic_comparison.v1"
 
 
@@ -32,6 +35,7 @@ class EvidenceGraphLimits:
 
     max_nodes: int = 10_000
     max_edges: int = 20_000
+    max_paths: int = 5_000
 
     def __post_init__(self) -> None:
         for name, value in self.to_dict().items():
@@ -46,6 +50,7 @@ class EvidenceGraphLimits:
         return {
             "max_nodes": self.max_nodes,
             "max_edges": self.max_edges,
+            "max_paths": self.max_paths,
         }
 
 
@@ -58,6 +63,13 @@ class EvidenceNode:
     file: str = ""
     function: str = ""
     line: int | None = None
+    column: int | None = None
+    symbol: str = ""
+    value: str = ""
+    call_context: str = ""
+    proof_type: str = ""
+    provenance: tuple[str, ...] = ()
+    confidence: float | None = None
     attributes: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
@@ -69,12 +81,10 @@ class EvidenceNode:
         ):
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{label} must be non-empty")
-        if self.line is not None and (
-            not isinstance(self.line, int)
-            or isinstance(self.line, bool)
-            or self.line <= 0
-        ):
-            raise ValueError("evidence node line must be positive")
+        _validate_optional_position(self.line, "line")
+        _validate_optional_position(self.column, "column", zero=True)
+        _validate_provenance(self.provenance)
+        _validate_confidence(self.confidence)
         _validate_attributes(self.attributes)
 
     @property
@@ -86,6 +96,7 @@ class EvidenceNode:
             self.file,
             self.function,
             self.line or 0,
+            self.column if self.column is not None else -1,
             self.node_id,
         )
 
@@ -98,6 +109,13 @@ class EvidenceNode:
             "file": self.file,
             "function": self.function,
             "line": self.line,
+            "column": self.column,
+            "symbol": self.symbol,
+            "value": self.value,
+            "call_context": self.call_context,
+            "proof_type": self.proof_type,
+            "provenance": list(self.provenance),
+            "confidence": self.confidence,
             "attributes": dict(self.attributes),
         }
 
@@ -108,6 +126,8 @@ class EvidenceEdge:
     target: str
     kind: str
     state: str
+    provenance: tuple[str, ...] = ()
+    confidence: float | None = None
     attributes: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
@@ -119,6 +139,8 @@ class EvidenceEdge:
         ):
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{label} must be non-empty")
+        _validate_provenance(self.provenance)
+        _validate_confidence(self.confidence)
         _validate_attributes(self.attributes)
 
     @property
@@ -129,6 +151,8 @@ class EvidenceEdge:
                 "target": self.target,
                 "kind": self.kind,
                 "state": self.state,
+                "provenance": list(self.provenance),
+                "confidence": self.confidence,
                 "attributes": dict(self.attributes),
             }
         )
@@ -140,6 +164,8 @@ class EvidenceEdge:
             self.kind,
             self.source,
             self.target,
+            self.provenance,
+            self.confidence if self.confidence is not None else -1.0,
             self.attributes,
         )
 
@@ -150,7 +176,65 @@ class EvidenceEdge:
             "target": self.target,
             "kind": self.kind,
             "state": self.state,
+            "provenance": list(self.provenance),
+            "confidence": self.confidence,
             "attributes": dict(self.attributes),
+        }
+
+
+@dataclass(frozen=True)
+class EvidencePath:
+    path_id: str
+    kind: str
+    state: str
+    node_ids: tuple[str, ...]
+    edge_ids: tuple[str, ...]
+    complete: bool
+    confidence: float | None = None
+
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("path ID", self.path_id),
+            ("path kind", self.kind),
+            ("path state", self.state),
+        ):
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"{label} must be non-empty")
+        if len(self.node_ids) < 2:
+            raise ValueError(
+                "evidence path must contain at least two nodes"
+            )
+        if len(self.edge_ids) != len(self.node_ids) - 1:
+            raise ValueError(
+                "evidence path edges must connect consecutive nodes"
+            )
+        if any(not value for value in self.node_ids):
+            raise ValueError("evidence path node IDs must be non-empty")
+        if any(not value for value in self.edge_ids):
+            raise ValueError("evidence path edge IDs must be non-empty")
+        if not isinstance(self.complete, bool):
+            raise ValueError("evidence path completeness must be boolean")
+        _validate_confidence(self.confidence)
+
+    @property
+    def sort_key(self) -> tuple[Any, ...]:
+        return (
+            self.state,
+            self.kind,
+            self.node_ids,
+            self.edge_ids,
+            self.path_id,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path_id": self.path_id,
+            "kind": self.kind,
+            "state": self.state,
+            "node_ids": list(self.node_ids),
+            "edge_ids": list(self.edge_ids),
+            "complete": self.complete,
+            "confidence": self.confidence,
         }
 
 
@@ -160,10 +244,12 @@ class EvidenceGraph:
     state: str
     nodes: tuple[EvidenceNode, ...]
     edges: tuple[EvidenceEdge, ...]
+    paths: tuple[EvidencePath, ...]
     gaps: tuple[AnalysisGap, ...]
     limits: EvidenceGraphLimits
     metrics: tuple[tuple[str, int], ...]
     flow_digest: str
+    summary_digest: str = ""
     schema_version: str = field(
         default=EVIDENCE_GRAPH_SCHEMA_VERSION,
         init=False,
@@ -191,12 +277,53 @@ class EvidenceGraph:
         if len({edge.edge_id for edge in self.edges}) != len(self.edges):
             raise ValueError("evidence graph edges must be unique")
         if tuple(
+            sorted(self.paths, key=lambda item: item.sort_key)
+        ) != self.paths:
+            raise ValueError("evidence graph paths must be sorted")
+        edges_by_id = {
+            edge.edge_id: edge
+            for edge in self.edges
+        }
+        edge_ids = set(edges_by_id)
+        if len({path.path_id for path in self.paths}) != len(
+            self.paths
+        ):
+            raise ValueError("evidence graph path IDs must be unique")
+        if any(
+            set(path.node_ids) - node_ids
+            or set(path.edge_ids) - edge_ids
+            for path in self.paths
+        ):
+            raise ValueError(
+                "evidence graph path references unknown evidence"
+            )
+        if any(
+            any(
+                edges_by_id[edge_id].source
+                != path.node_ids[index]
+                or edges_by_id[edge_id].target
+                != path.node_ids[index + 1]
+                for index, edge_id in enumerate(
+                    path.edge_ids
+                )
+            )
+            for path in self.paths
+        ):
+            raise ValueError(
+                "evidence graph path order is inconsistent"
+            )
+        if tuple(
             sorted(self.gaps, key=lambda gap: gap.sort_key)
         ) != self.gaps:
             raise ValueError("evidence graph gaps must be sorted")
         if tuple(sorted(set(self.metrics))) != self.metrics:
             raise ValueError("evidence graph metrics must be sorted")
         _validate_digest(self.flow_digest, "flow digest")
+        if self.summary_digest:
+            _validate_digest(
+                self.summary_digest,
+                "summary digest",
+            )
 
     @property
     def deterministic_digest(self) -> str:
@@ -209,10 +336,12 @@ class EvidenceGraph:
             "state": self.state,
             "nodes": [node.to_dict() for node in self.nodes],
             "edges": [edge.to_dict() for edge in self.edges],
+            "paths": [path.to_dict() for path in self.paths],
             "gaps": [gap.to_dict() for gap in self.gaps],
             "limits": self.limits.to_dict(),
             "metrics": dict(self.metrics),
             "flow_digest": self.flow_digest,
+            "summary_digest": self.summary_digest,
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -343,6 +472,7 @@ def build_evidence_graph(
     flow: SemanticFlowAnalysis,
     state: str,
     *,
+    summaries: FunctionSummaryAnalysis | None = None,
     limits: EvidenceGraphLimits | None = None,
 ) -> EvidenceGraph:
     """Build a bounded graph from one semantic-flow observation."""
@@ -350,7 +480,10 @@ def build_evidence_graph(
     configured = limits or EvidenceGraphLimits()
     nodes: dict[str, EvidenceNode] = {}
     edges: dict[str, EvidenceEdge] = {}
+    paths: dict[str, EvidencePath] = {}
     gaps = set(flow.gaps)
+    if summaries is not None:
+        gaps.update(summaries.gaps)
 
     for concern in flow.concerns:
         concern_id = _node_id(
@@ -368,44 +501,137 @@ def build_evidence_graph(
                 file=concern.file,
                 function=concern.function,
                 line=concern.line,
+                symbol=concern.contract_id,
+                value=concern.evidence,
+                call_context=concern.function,
+                proof_type="semantic_contract",
+                provenance=(
+                    "belief.semantic",
+                    f"contract:{concern.contract_id}",
+                ),
+                confidence=concern.confidence,
                 attributes=(
                     ("category", concern.category),
                     ("contract_id", concern.contract_id),
                     ("cwe", concern.cwe),
+                    (
+                        "missing_states",
+                        ",".join(concern.missing_states),
+                    ),
                 ),
             ),
         )
-        related = (
+        source_id = _node_id(
+            state,
+            "source",
+            f"{concern.deterministic_digest}:source",
+        )
+        sink_id = _node_id(
+            state,
+            "sink",
+            f"{concern.deterministic_digest}:sink",
+        )
+        resource_id = _node_id(
+            state,
+            "resource",
             (
-                "resource",
-                concern.resource.semantic_key,
-                "affects_resource",
+                f"{concern.file}:{concern.function}:"
+                f"{concern.resource.semantic_key}"
             ),
-            ("source", concern.source, "originates_from"),
-            ("sink", concern.sink, "reaches_sink"),
         )
-        for kind, identity, edge_kind in related:
-            node_id = _node_id(state, kind, identity)
-            _add_node(
-                nodes,
-                EvidenceNode(
-                    node_id=node_id,
-                    kind=kind,
-                    state=state,
-                    semantic_identity=identity,
-                    file=concern.file,
-                    function=concern.function,
+        _add_node(
+            nodes,
+            _concern_related_node(
+                concern,
+                node_id=source_id,
+                kind="source",
+                identity=concern.source,
+                state=state,
+            ),
+        )
+        _add_node(
+            nodes,
+            _concern_related_node(
+                concern,
+                node_id=sink_id,
+                kind="sink",
+                identity=concern.sink,
+                state=state,
+            ),
+        )
+        _add_node(
+            nodes,
+            EvidenceNode(
+                node_id=resource_id,
+                kind="resource",
+                state=state,
+                semantic_identity=(
+                    concern.resource.semantic_key
                 ),
-            )
-            _add_edge(
-                edges,
-                EvidenceEdge(
-                    source=concern_id,
-                    target=node_id,
-                    kind=edge_kind,
-                    state=state,
+                file=concern.file,
+                function=concern.function,
+                line=concern.line,
+                symbol=concern.resource.symbol,
+                value=concern.resource.semantic_key,
+                call_context=concern.function,
+                proof_type="resource_identity",
+                provenance=("belief.semantic",),
+                confidence=concern.confidence,
+            ),
+        )
+        source_edge = EvidenceEdge(
+            source=source_id,
+            target=concern_id,
+            kind="value_flow",
+            state=state,
+            provenance=("belief.semantic",),
+            confidence=concern.confidence,
+        )
+        sink_edge = EvidenceEdge(
+            source=concern_id,
+            target=sink_id,
+            kind="reaches_sink",
+            state=state,
+            provenance=("belief.semantic",),
+            confidence=concern.confidence,
+        )
+        resource_edge = EvidenceEdge(
+            source=concern_id,
+            target=resource_id,
+            kind="resource_bound_to",
+            state=state,
+            provenance=("belief.semantic",),
+            confidence=concern.confidence,
+        )
+        for edge in (
+            source_edge,
+            sink_edge,
+            resource_edge,
+        ):
+            _add_edge(edges, edge)
+        _add_path(
+            paths,
+            EvidencePath(
+                path_id=_path_id(
+                    state,
+                    concern.contract_id,
+                    (source_id, concern_id, sink_id),
                 ),
-            )
+                kind="source_to_sink",
+                state=state,
+                node_ids=(
+                    source_id,
+                    concern_id,
+                    sink_id,
+                ),
+                edge_ids=(
+                    source_edge.edge_id,
+                    sink_edge.edge_id,
+                ),
+                complete=True,
+                confidence=concern.confidence,
+            ),
+        )
         for missing in sorted(set(concern.missing_states)):
             node_id = _node_id(
                 state,
@@ -421,6 +647,13 @@ def build_evidence_graph(
                     semantic_identity=missing,
                     file=concern.file,
                     function=concern.function,
+                    line=concern.line,
+                    symbol=missing,
+                    value="missing",
+                    call_context=concern.function,
+                    proof_type="missing_security_state",
+                    provenance=("belief.semantic",),
+                    confidence=concern.confidence,
                 ),
             )
             _add_edge(
@@ -430,15 +663,29 @@ def build_evidence_graph(
                     target=node_id,
                     kind="missing_guarantee",
                     state=state,
+                    provenance=("belief.semantic",),
+                    confidence=concern.confidence,
                 ),
             )
+
+    if summaries is not None:
+        _add_summary_evidence(
+            summaries,
+            state,
+            nodes,
+            edges,
+            paths,
+        )
 
     for guard in flow.guards:
         guard_id = _node_id(state, "guard", guard.guard_id)
         resource_id = _node_id(
             state,
             "resource",
-            guard.resource.semantic_key,
+            (
+                f"{guard.file}:{guard.function}:"
+                f"{guard.resource.semantic_key}"
+            ),
         )
         _add_node(
             nodes,
@@ -447,8 +694,17 @@ def build_evidence_graph(
                 kind="guard",
                 state=state,
                 semantic_identity=guard.guard_id,
+                file=guard.file,
+                function=guard.function,
                 line=guard.line,
+                column=guard.column,
+                symbol=guard.effect,
+                value=guard.state_value,
+                proof_type="guard_effect",
+                provenance=("belief.semantic",),
                 attributes=(
+                    ("abortive", str(guard.abortive).lower()),
+                    ("branch", guard.branch),
                     ("dominates_sink", str(guard.dominates_sink).lower()),
                     ("result_used", str(guard.result_used).lower()),
                     ("state_property", guard.state_property),
@@ -463,6 +719,14 @@ def build_evidence_graph(
                 kind="resource",
                 state=state,
                 semantic_identity=guard.resource.semantic_key,
+                file=guard.file,
+                function=guard.function,
+                line=guard.line,
+                column=guard.column,
+                symbol=guard.resource.symbol,
+                value=guard.resource.semantic_key,
+                proof_type="resource_identity",
+                provenance=("belief.semantic",),
             ),
         )
         _add_edge(
@@ -470,8 +734,9 @@ def build_evidence_graph(
             EvidenceEdge(
                 source=guard_id,
                 target=resource_id,
-                kind="guards_resource",
+                kind="guarded_by",
                 state=state,
+                provenance=("belief.semantic",),
             ),
         )
 
@@ -484,7 +749,10 @@ def build_evidence_graph(
         resource_id = _node_id(
             state,
             "resource",
-            transition.resource.semantic_key,
+            (
+                f"{transition.file}:{transition.function}:"
+                f"{transition.resource.semantic_key}"
+            ),
         )
         _add_node(
             nodes,
@@ -493,7 +761,18 @@ def build_evidence_graph(
                 kind="transition",
                 state=state,
                 semantic_identity=transition.transition_id,
+                file=transition.file,
+                function=transition.function,
                 line=transition.line,
+                column=transition.column,
+                symbol=transition.kind,
+                value=(
+                    f"{transition.before.value}"
+                    f"->{transition.after.value}"
+                ),
+                call_context=transition.before.context,
+                proof_type="security_state_transition",
+                provenance=("belief.semantic",),
                 attributes=(
                     ("after", transition.after.value),
                     ("before", transition.before.value),
@@ -509,6 +788,15 @@ def build_evidence_graph(
                 kind="resource",
                 state=state,
                 semantic_identity=transition.resource.semantic_key,
+                file=transition.file,
+                function=transition.function,
+                line=transition.line,
+                column=transition.column,
+                symbol=transition.resource.symbol,
+                value=transition.resource.semantic_key,
+                call_context=transition.before.context,
+                proof_type="resource_identity",
+                provenance=("belief.semantic",),
             ),
         )
         _add_edge(
@@ -518,6 +806,7 @@ def build_evidence_graph(
                 target=resource_id,
                 kind="transitions_resource",
                 state=state,
+                provenance=("belief.semantic",),
             ),
         )
 
@@ -557,6 +846,35 @@ def build_evidence_graph(
             )
         )
         ordered_edges = ordered_edges[: configured.max_edges]
+    selected_edge_ids = {
+        edge.edge_id
+        for edge in ordered_edges
+    }
+    ordered_paths = sorted(
+        (
+            path
+            for path in paths.values()
+            if set(path.node_ids) <= selected_ids
+            and set(path.edge_ids) <= selected_edge_ids
+        ),
+        key=lambda item: item.sort_key,
+    )
+    observed_path_count = len(ordered_paths)
+    if observed_path_count > configured.max_paths:
+        gaps.add(
+            AnalysisGap(
+                code="evidence_graph_path_limit_reached",
+                stage="evidence_graph",
+                reason=(
+                    "Evidence paths beyond the hard limit "
+                    "were discarded"
+                ),
+                limit_name="max_paths",
+                limit_value=configured.max_paths,
+                observed_value=observed_path_count,
+            )
+        )
+        ordered_paths = ordered_paths[: configured.max_paths]
 
     metrics = {
         "edge_count": len(ordered_edges),
@@ -564,23 +882,339 @@ def build_evidence_graph(
         "node_count": len(ordered_nodes),
         "observed_edge_count": observed_edge_count,
         "observed_node_count": observed_node_count,
+        "observed_path_count": observed_path_count,
+        "path_count": len(ordered_paths),
+        "summary_count": (
+            len(summaries.summaries)
+            if summaries is not None
+            else 0
+        ),
     }
+    if summaries is not None:
+        summary_metrics = dict(summaries.metrics)
+        metrics["summary_gap_count"] = len(summaries.gaps)
+        metrics["summary_excluded_out_of_focus_gap_count"] = (
+            summary_metrics.get(
+                "excluded_out_of_focus_gap_count",
+                0,
+            )
+        )
+    for kind, count in sorted(
+        Counter(node.kind for node in ordered_nodes).items()
+    ):
+        metrics[f"nodes_{kind}"] = count
+    for kind, count in sorted(
+        Counter(edge.kind for edge in ordered_edges).items()
+    ):
+        metrics[f"edges_{kind}"] = count
+    for kind, count in sorted(
+        Counter(path.kind for path in ordered_paths).items()
+    ):
+        metrics[f"paths_{kind}"] = count
     return EvidenceGraph(
         target=flow.target,
         state=state,
         nodes=tuple(ordered_nodes),
         edges=tuple(ordered_edges),
+        paths=tuple(ordered_paths),
         gaps=tuple(sorted(gaps, key=lambda gap: gap.sort_key)),
         limits=configured,
         metrics=tuple(sorted(metrics.items())),
         flow_digest=flow.deterministic_digest,
+        summary_digest=(
+            summaries.deterministic_digest
+            if summaries is not None
+            else ""
+        ),
     )
+
+
+def _concern_related_node(
+    concern: SemanticConcern,
+    *,
+    node_id: str,
+    kind: str,
+    identity: str,
+    state: str,
+) -> EvidenceNode:
+    return EvidenceNode(
+        node_id=node_id,
+        kind=kind,
+        state=state,
+        semantic_identity=identity,
+        file=concern.file,
+        function=concern.function,
+        line=concern.line,
+        symbol=identity,
+        value=identity,
+        call_context=concern.function,
+        proof_type=f"semantic_{kind}",
+        provenance=(
+            "belief.semantic",
+            f"contract:{concern.contract_id}",
+        ),
+        confidence=concern.confidence,
+    )
+
+
+def _add_summary_evidence(
+    summaries: FunctionSummaryAnalysis,
+    state: str,
+    nodes: dict[str, EvidenceNode],
+    edges: dict[str, EvidenceEdge],
+    paths: dict[str, EvidencePath],
+) -> None:
+    summaries_by_name = {
+        summary.qualified_name: summary
+        for summary in summaries.summaries
+    }
+    for summary in summaries.summaries:
+        function_identity = _function_identity(
+            summary.file,
+            summary.qualified_name,
+        )
+        function_id = _node_id(
+            state,
+            "function",
+            function_identity,
+        )
+        lines = [
+            effect.line
+            for effect in summary.effects
+            if effect.line is not None
+        ]
+        function_line = min(lines) if lines else None
+        _add_node(
+            nodes,
+            EvidenceNode(
+                node_id=function_id,
+                kind="function",
+                state=state,
+                semantic_identity=function_identity,
+                file=summary.file,
+                function=summary.qualified_name,
+                line=function_line,
+                symbol=summary.qualified_name,
+                value="complete" if summary.complete else "incomplete",
+                call_context=summary.qualified_name,
+                proof_type="function_summary",
+                provenance=("belief.function_summary",),
+                attributes=(
+                    ("complete", str(summary.complete).lower()),
+                    ("iterations", str(summary.iterations)),
+                    ("scc_id", str(summary.scc_id)),
+                ),
+            ),
+        )
+        for callee in summary.callees:
+            callee_summary = summaries_by_name.get(callee)
+            callee_identity = _function_identity(
+                (
+                    callee_summary.file
+                    if callee_summary is not None
+                    else summary.file
+                ),
+                callee,
+            )
+            callee_id = _node_id(
+                state,
+                "function",
+                callee_identity,
+            )
+            _add_node(
+                nodes,
+                EvidenceNode(
+                    node_id=callee_id,
+                    kind="function",
+                    state=state,
+                    semantic_identity=callee_identity,
+                    file=summary.file,
+                    function=callee,
+                    symbol=callee,
+                    value="callee",
+                    call_context=summary.qualified_name,
+                    proof_type="call_graph",
+                    provenance=("belief.function_summary",),
+                ),
+            )
+            edge = EvidenceEdge(
+                source=function_id,
+                target=callee_id,
+                kind="invokes",
+                state=state,
+                provenance=("belief.function_summary",),
+            )
+            _add_edge(edges, edge)
+            _add_path(
+                paths,
+                EvidencePath(
+                    path_id=_path_id(
+                        state,
+                        "invokes",
+                        (function_id, callee_id),
+                    ),
+                    kind="call",
+                    state=state,
+                    node_ids=(function_id, callee_id),
+                    edge_ids=(edge.edge_id,),
+                    complete=summary.complete,
+                ),
+            )
+        for effect in summary.effects:
+            effect_material = _semantic_digest(
+                effect.to_dict()
+            )
+            effect_kind = _effect_node_kind(effect.kind)
+            effect_id = _node_id(
+                state,
+                effect_kind,
+                f"{function_identity}:{effect_material}",
+            )
+            _add_node(
+                nodes,
+                EvidenceNode(
+                    node_id=effect_id,
+                    kind=effect_kind,
+                    state=state,
+                    semantic_identity=effect_material,
+                    file=summary.file,
+                    function=summary.qualified_name,
+                    line=effect.line,
+                    symbol=effect.value or effect.kind.value,
+                    value=effect.value,
+                    call_context=effect.context,
+                    proof_type=effect.kind.value,
+                    provenance=(
+                        "belief.function_summary",
+                        (
+                            "direct"
+                            if effect.direct
+                            else "propagated"
+                        ),
+                    ),
+                    attributes=(
+                        ("direct", str(effect.direct).lower()),
+                        (
+                            "parameter_index",
+                            (
+                                str(effect.parameter_index)
+                                if effect.parameter_index
+                                is not None
+                                else ""
+                            ),
+                        ),
+                        (
+                            "result_used",
+                            str(effect.result_used).lower(),
+                        ),
+                        ("via", ",".join(effect.via)),
+                    ),
+                ),
+            )
+            summary_edge = EvidenceEdge(
+                source=function_id,
+                target=effect_id,
+                kind="has_effect",
+                state=state,
+                provenance=("belief.function_summary",),
+            )
+            _add_edge(edges, summary_edge)
+            node_ids = [function_id, effect_id]
+            edge_ids = [summary_edge.edge_id]
+            if effect.resource is not None:
+                resource_id = _node_id(
+                    state,
+                    "resource",
+                    (
+                        f"{function_identity}:"
+                        f"{effect.resource.semantic_key}"
+                    ),
+                )
+                _add_node(
+                    nodes,
+                    EvidenceNode(
+                        node_id=resource_id,
+                        kind="resource",
+                        state=state,
+                        semantic_identity=(
+                            effect.resource.semantic_key
+                        ),
+                        file=summary.file,
+                        function=summary.qualified_name,
+                        line=effect.line,
+                        symbol=effect.resource.symbol,
+                        value=effect.resource.semantic_key,
+                        call_context=effect.context,
+                        proof_type="resource_identity",
+                        provenance=(
+                            "belief.function_summary",
+                        ),
+                    ),
+                )
+                resource_edge = EvidenceEdge(
+                    source=effect_id,
+                    target=resource_id,
+                    kind="acts_on",
+                    state=state,
+                    provenance=(
+                        "belief.function_summary",
+                    ),
+                )
+                _add_edge(edges, resource_edge)
+                node_ids.append(resource_id)
+                edge_ids.append(resource_edge.edge_id)
+            _add_path(
+                paths,
+                EvidencePath(
+                    path_id=_path_id(
+                        state,
+                        effect.kind.value,
+                        tuple(node_ids),
+                    ),
+                    kind="summary_effect",
+                    state=state,
+                    node_ids=tuple(node_ids),
+                    edge_ids=tuple(edge_ids),
+                    complete=summary.complete,
+                ),
+            )
+
+
+def _function_identity(file: str, qualified_name: str) -> str:
+    if "::" in qualified_name:
+        return qualified_name
+    return f"{file}::{qualified_name}"
+
+
+def _effect_node_kind(kind: SummaryKind) -> str:
+    return {
+        SummaryKind.SOURCE: "source",
+        SummaryKind.SINK: "sink",
+        SummaryKind.SANITIZER: "sanitizer",
+        SummaryKind.VALIDATOR: "guard",
+        SummaryKind.PREDICATE_GUARD: "guard",
+        SummaryKind.ABORTIVE_GUARD: "guard",
+        SummaryKind.PASSTHROUGH_ARGUMENT: "argument",
+        SummaryKind.TRANSFORMED_ARGUMENT: "transform",
+        SummaryKind.RETURN_FROM_PARAMETER: "return",
+        SummaryKind.RETURN_FROM_RECEIVER: "return",
+        SummaryKind.RECEIVER_OR_FIELD_READ: "field",
+        SummaryKind.RECEIVER_OR_FIELD_WRITE: "field",
+        SummaryKind.COLLECTION_INSERT: "collection",
+        SummaryKind.COLLECTION_EXTRACT: "collection",
+        SummaryKind.WRAPPER: "call",
+        SummaryKind.CONSTANT: "value",
+        SummaryKind.IDENTITY: "value",
+        SummaryKind.UNKNOWN: "unknown",
+    }.get(kind, "summary_effect")
 
 
 def compare_semantic_flows(
     baseline: SemanticFlowAnalysis,
     candidate: SemanticFlowAnalysis,
     *,
+    baseline_summaries: FunctionSummaryAnalysis | None = None,
+    candidate_summaries: FunctionSummaryAnalysis | None = None,
     graph_limits: EvidenceGraphLimits | None = None,
 ) -> SemanticComparison:
     """Classify semantic root causes without line-based pairing."""
@@ -588,11 +1222,13 @@ def compare_semantic_flows(
     baseline_graph = build_evidence_graph(
         baseline,
         "baseline",
+        summaries=baseline_summaries,
         limits=graph_limits,
     )
     candidate_graph = build_evidence_graph(
         candidate,
         "candidate",
+        summaries=candidate_summaries,
         limits=graph_limits,
     )
     baseline_groups = _concern_groups(baseline.concerns)
@@ -781,7 +1417,12 @@ def _add_node(
     values: dict[str, EvidenceNode],
     node: EvidenceNode,
 ) -> None:
-    values.setdefault(node.node_id, node)
+    current = values.get(node.node_id)
+    if current is None or (
+        current.proof_type == "call_graph"
+        and node.proof_type == "function_summary"
+    ):
+        values[node.node_id] = node
 
 
 def _add_edge(
@@ -791,12 +1432,33 @@ def _add_edge(
     values.setdefault(edge.edge_id, edge)
 
 
+def _add_path(
+    values: dict[str, EvidencePath],
+    path: EvidencePath,
+) -> None:
+    values.setdefault(path.path_id, path)
+
+
 def _node_id(state: str, kind: str, identity: str) -> str:
     return _semantic_digest(
         {
             "state": state,
             "kind": kind,
             "identity": identity,
+        }
+    )
+
+
+def _path_id(
+    state: str,
+    kind: str,
+    node_ids: tuple[str, ...],
+) -> str:
+    return _semantic_digest(
+        {
+            "state": state,
+            "kind": kind,
+            "node_ids": list(node_ids),
         }
     )
 
@@ -810,6 +1472,49 @@ def _validate_attributes(
         raise ValueError("evidence attribute keys must be unique")
     if any(not key or not isinstance(value, str) for key, value in attributes):
         raise ValueError("evidence attributes must be text")
+
+
+def _validate_optional_position(
+    value: int | None,
+    label: str,
+    *,
+    zero: bool = False,
+) -> None:
+    minimum = 0 if zero else 1
+    if value is not None and (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value < minimum
+    ):
+        raise ValueError(
+            f"evidence {label} must be at least {minimum}"
+        )
+
+
+def _validate_provenance(
+    values: tuple[str, ...],
+) -> None:
+    if len(set(values)) != len(values) or any(
+        not isinstance(value, str)
+        or not value
+        for value in values
+    ):
+        raise ValueError(
+            "evidence provenance must contain unique text"
+        )
+
+
+def _validate_confidence(
+    value: float | None,
+) -> None:
+    if value is not None and (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0.0 <= float(value) <= 1.0
+    ):
+        raise ValueError(
+            "evidence confidence must be between zero and one"
+        )
 
 
 def _validate_digest(value: str, label: str) -> None:
@@ -837,6 +1542,7 @@ __all__ = [
     "EvidenceGraph",
     "EvidenceGraphLimits",
     "EvidenceNode",
+    "EvidencePath",
     "SemanticClassification",
     "SemanticComparison",
     "SemanticDelta",

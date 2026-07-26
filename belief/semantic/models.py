@@ -12,10 +12,12 @@ from typing import Any
 FUNCTION_SUMMARY_SCHEMA_VERSION = "belief.function_summary.v2"
 FLOW_STATE_SCHEMA_VERSION = "belief.flow_state.v1"
 ANALYSIS_GAP_SCHEMA_VERSION = "belief.analysis_gap.v1"
-GUARD_EFFECT_SCHEMA_VERSION = "belief.guard_effect.v1"
+GUARD_EFFECT_SCHEMA_VERSION = "belief.guard_effect.v2"
 RESOURCE_IDENTITY_SCHEMA_VERSION = "belief.resource_identity.v2"
 ROOT_CAUSE_IDENTITY_SCHEMA_VERSION = "belief.root_cause_identity.v2"
-SECURITY_TRANSITION_SCHEMA_VERSION = "belief.security_transition.v1"
+SECURITY_TRANSITION_SCHEMA_VERSION = (
+    "belief.security_transition.v2"
+)
 
 
 class SummaryKind(str, Enum):
@@ -129,6 +131,9 @@ class GuardEffect:
     dominates_sink: bool = False
     result_used: bool = True
     line: int | None = None
+    column: int | None = None
+    file: str = ""
+    function: str = ""
 
     def __post_init__(self) -> None:
         _require_text("guard ID", self.guard_id)
@@ -138,6 +143,10 @@ class GuardEffect:
         if self.branch not in {"true", "false", "both"}:
             raise ValueError("guard branch must be true, false, or both")
         _optional_positive_line(self.line)
+        _optional_non_negative_position(
+            self.column,
+            "column",
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -152,6 +161,9 @@ class GuardEffect:
             "dominates_sink": self.dominates_sink,
             "result_used": self.result_used,
             "line": self.line,
+            "column": self.column,
+            "file": self.file,
+            "function": self.function,
         }
 
 
@@ -212,6 +224,9 @@ class SecurityTransition:
     line: int | None = None
     control_path: tuple[str, ...] = ()
     result_used: bool = True
+    column: int | None = None
+    file: str = ""
+    function: str = ""
 
     def __post_init__(self) -> None:
         _require_text("transition ID", self.transition_id)
@@ -223,6 +238,10 @@ class SecurityTransition:
         if self.before.property != self.after.property:
             raise ValueError("transition state property mismatch")
         _optional_positive_line(self.line)
+        _optional_non_negative_position(
+            self.column,
+            "column",
+        )
         _validate_text_tuple(
             "transition control path",
             self.control_path,
@@ -240,6 +259,9 @@ class SecurityTransition:
             "line": self.line,
             "control_path": list(self.control_path),
             "result_used": self.result_used,
+            "column": self.column,
+            "file": self.file,
+            "function": self.function,
         }
 
 
@@ -498,6 +520,20 @@ def _optional_positive_line(value: int | None) -> None:
         or value <= 0
     ):
         raise ValueError("line must be a positive integer")
+
+
+def _optional_non_negative_position(
+    value: int | None,
+    label: str,
+) -> None:
+    if value is not None and (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value < 0
+    ):
+        raise ValueError(
+            f"{label} must be a non-negative integer"
+        )
 
 
 __all__ = [

@@ -77,6 +77,7 @@ def _analyze_function(
             abortive=True,
             branch="false",
             dominates_sink=is_top_level_statement(context, item),
+            column=item.col_offset,
         )
         guards.append(guard)
         transitions.append(transition)

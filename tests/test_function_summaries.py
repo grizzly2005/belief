@@ -227,8 +227,17 @@ def right(value):
     assert metrics["recursive_scc_count"] == 1
     assert summaries["left"].scc_id == summaries["right"].scc_id
     assert not any(
-        gap.code == "function_summary_fixpoint_limit_reached"
+        gap.code
+        in {
+            "function_summary_fixpoint_limit_reached",
+            "function_summary_call_depth_limit_reached",
+        }
         for gap in result.gaps
+    )
+    assert all(
+        len(effect.via) <= 2
+        for summary in summaries.values()
+        for effect in summary.effects
     )
 
 

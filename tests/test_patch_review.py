@@ -14,7 +14,11 @@ from belief.patch_review import (
     collect_worktree_patch,
     review_candidate_patch,
 )
-from belief.semantic import FunctionSummaryLimits, SemanticFlowLimits
+from belief.semantic import (
+    EvidenceGraphLimits,
+    FunctionSummaryLimits,
+    SemanticFlowLimits,
+)
 
 
 pytestmark = pytest.mark.security
@@ -288,6 +292,316 @@ def test_flow_state_limits_emit_explicit_gap(tmp_path):
     assert payload["analysis"]["candidate"][
         "analysis_succeeded"
     ] is True
+
+
+def test_evidence_graph_mode_emits_paths_and_comparison(
+    tmp_path,
+):
+    safe = """\
+import zlib
+
+def unpack(payload):
+    if len(payload) > 1024:
+        raise ValueError("large")
+    return zlib.decompress(payload)
+"""
+    vulnerable = """\
+import zlib
+
+def unpack(payload):
+    return zlib.decompress(payload)
+"""
+    repository, target = _repository(tmp_path, safe)
+    target.write_text(vulnerable, encoding="utf-8")
+
+    payload = review_candidate_patch(
+        repository,
+        semantic_mode="evidence_graph",
+    )
+    evidence = payload["semantic_evidence"]
+
+    assert evidence["enabled"] is True
+    assert evidence["analysis_succeeded"] is True
+    assert evidence["candidate_graph"]["paths"]
+    assert evidence["comparison"]["complete"] is True
+    assert evidence["explanation"].startswith(
+        "Semantic comparison is complete"
+    )
+    assert any(
+        row["rule_id"] == "BELIEF-SEM-RESOURCE-BOUND"
+        and row["classification"] == "introduced"
+        for row in payload["introduced_findings"]
+    )
+
+
+def test_semantic_comparison_survives_helper_and_parameter_rename(
+    tmp_path,
+):
+    repository, target = _repository(
+        tmp_path,
+        """\
+def go(target):
+    return redirect(target)
+""",
+    )
+    target.write_text(
+        """\
+def redirect_helper(destination):
+    return redirect(destination)
+""",
+        encoding="utf-8",
+    )
+
+    payload = review_candidate_patch(
+        repository,
+        semantic_mode="evidence_graph",
+    )
+    semantic_rows = [
+        row
+        for row in payload["residual_findings"]
+        if row["semantic_analysis"]
+    ]
+
+    assert len(semantic_rows) == 1
+    assert semantic_rows[0]["classification"] == "residual"
+    assert not any(
+        row["semantic_analysis"]
+        for row in payload["introduced_findings"]
+    )
+
+
+def test_full_mode_uses_summaries_while_graph_ablation_does_not(
+    tmp_path,
+):
+    baseline = """\
+class HeaderBag:
+    def put(self, key, value):
+        raise NotImplementedError
+"""
+    candidate = """\
+def reject_controls(candidate):
+    if "\\n" in candidate or "\\r" in candidate:
+        raise ValueError("bad")
+    return candidate
+
+class HeaderBag:
+    def put(self, key, value):
+        self.data[key] = reject_controls(value)
+"""
+    repository, target = _repository(tmp_path, baseline)
+    target.write_text(candidate, encoding="utf-8")
+
+    graph_only = review_candidate_patch(
+        repository,
+        semantic_mode="evidence_graph",
+    )
+    full = review_candidate_patch(
+        repository,
+        semantic_mode="full",
+    )
+
+    assert any(
+        row["rule_id"]
+        == "BELIEF-SEM-HEADER-CONTROL-CHARS"
+        for row in graph_only["introduced_findings"]
+    )
+    assert not any(
+        row["rule_id"]
+        == "BELIEF-SEM-HEADER-CONTROL-CHARS"
+        for row in (
+            full["introduced_findings"]
+            + full["residual_findings"]
+        )
+    )
+    assert (
+        graph_only["semantic_analysis"][
+            "flow_uses_summaries"
+        ]
+        is False
+    )
+    assert (
+        full["semantic_analysis"]["flow_uses_summaries"]
+        is True
+    )
+    assert full["semantic_analysis"]["limits"][
+        "max_summaries_per_function"
+    ] == 128
+    assert full["semantic_analysis"]["limits"][
+        "max_call_depth"
+    ] == 16
+    assert full["semantic_evidence"]["candidate_graph"][
+        "summary_digest"
+    ]
+    assert "function" in {
+        node["kind"]
+        for node in full["semantic_evidence"][
+            "candidate_graph"
+        ]["nodes"]
+    }
+
+
+def test_full_mode_excludes_unrelated_summary_gaps_from_verdict(
+    tmp_path,
+):
+    baseline = """\
+def noisy_sanitize(value):
+    return value
+
+def target(value):
+    return 1
+"""
+    candidate = """\
+def noisy_sanitize(value):
+    return value
+
+def target(value):
+    return 2
+"""
+    repository, target = _repository(tmp_path, baseline)
+    target.write_text(candidate, encoding="utf-8")
+
+    payload = review_candidate_patch(
+        repository,
+        semantic_mode="full",
+        semantic_limits=FunctionSummaryLimits(
+            max_summaries_per_function=1,
+        ),
+    )
+    raw_summary = payload["analysis"]["candidate"][
+        "function_summary"
+    ]
+    graph = payload["semantic_evidence"]["candidate_graph"]
+
+    assert any(
+        gap["code"]
+        == "function_summary_per_function_limit_reached"
+        for gap in raw_summary["gaps"]
+    )
+    assert graph["gaps"] == []
+    assert graph["metrics"]["summary_count"] == 1
+    assert graph["metrics"]["summary_gap_count"] == 0
+    assert (
+        graph["metrics"][
+            "summary_excluded_out_of_focus_gap_count"
+        ]
+        >= 1
+    )
+    assert payload["semantic_evidence"]["complete"] is True
+    assert payload["status"] == "passed"
+
+
+def test_full_mode_rejects_missing_focused_summary(
+    tmp_path,
+):
+    baseline = """\
+def first(value):
+    return value
+
+def target(value):
+    return 1
+"""
+    candidate = """\
+def first(value):
+    return value
+
+def target(value):
+    return 2
+"""
+    repository, target = _repository(tmp_path, baseline)
+    target.write_text(candidate, encoding="utf-8")
+
+    payload = review_candidate_patch(
+        repository,
+        semantic_mode="full",
+        semantic_limits=FunctionSummaryLimits(
+            max_functions=1,
+        ),
+    )
+
+    assert payload["semantic_evidence"]["complete"] is False
+    assert payload["status"] == "review_required"
+    assert any(
+        gap["code"]
+        == "function_summary_focused_function_missing"
+        for gap in payload["semantic_evidence"][
+            "candidate_graph"
+        ]["gaps"]
+    )
+
+
+def test_full_mode_preserves_global_convergence_gap(
+    tmp_path,
+):
+    baseline = """\
+def helper(value):
+    return value
+
+def target(value):
+    return helper(value)
+"""
+    candidate = """\
+def helper(value):
+    return value
+
+def target(value):
+    return helper(value) if value else value
+"""
+    repository, target = _repository(tmp_path, baseline)
+    target.write_text(candidate, encoding="utf-8")
+
+    payload = review_candidate_patch(
+        repository,
+        semantic_mode="full",
+        semantic_limits=FunctionSummaryLimits(
+            max_scc_iterations=1,
+        ),
+    )
+
+    assert payload["semantic_evidence"]["complete"] is False
+    assert payload["status"] == "review_required"
+    assert any(
+        gap["code"]
+        == "function_summary_fixpoint_limit_reached"
+        for gap in payload["semantic_evidence"][
+            "candidate_graph"
+        ]["gaps"]
+    )
+
+
+def test_incomplete_evidence_never_becomes_secure_pass(
+    tmp_path,
+):
+    vulnerable = """\
+def go(target):
+    return redirect(target)
+"""
+    safe = """\
+def go(target):
+    if not is_safe(target):
+        raise ValueError("external")
+    return redirect(target)
+"""
+    repository, target = _repository(tmp_path, vulnerable)
+    target.write_text(safe, encoding="utf-8")
+
+    payload = review_candidate_patch(
+        repository,
+        semantic_mode="full",
+        semantic_evidence_limits=EvidenceGraphLimits(
+            max_nodes=1,
+            max_edges=1,
+            max_paths=1,
+        ),
+    )
+
+    assert payload["semantic_evidence"]["complete"] is False
+    assert payload["status"] == "review_required"
+    assert payload["counts"]["inconclusive_actionable"] >= 1
+    assert any(
+        row["classification"] == "inconclusive"
+        and row["rule_id"] == "BELIEF-SEM-ANALYSIS-GAP"
+        for row in payload["introduced_findings"]
+    )
 
 
 def test_review_can_disable_semantic_summaries(tmp_path):

@@ -373,7 +373,12 @@ def analyze_function_summaries(
                         SummaryKind.WRAPPER,
                     }:
                         continue
-                    observed_depth = len(effect.via) + 1
+                    observed_depth = len(
+                        _canonical_propagation_path(
+                            callee,
+                            effect.via,
+                        )
+                    )
                     if observed_depth > configured.max_call_depth:
                         function_gaps[caller].add(
                             AnalysisGap(
@@ -1048,7 +1053,10 @@ def _propagated_effect(
     result_used: bool,
     max_depth: int,
 ) -> FunctionEffect | None:
-    via = (callee, *effect.via)
+    via = _canonical_propagation_path(
+        callee,
+        effect.via,
+    )
     if len(via) > max_depth:
         return None
     parameter_index = None
@@ -1069,6 +1077,16 @@ def _propagated_effect(
         direct=False,
         result_used=effect.result_used and result_used,
     )
+
+
+def _canonical_propagation_path(
+    callee: str,
+    existing: tuple[str, ...],
+) -> tuple[str, ...]:
+    if callee not in existing:
+        return (callee, *existing)
+    cycle_start = existing.index(callee)
+    return (callee, *existing[:cycle_start])
 
 
 def _parent_map(root: ast.AST) -> dict[ast.AST, ast.AST]:
