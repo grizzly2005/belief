@@ -7,6 +7,12 @@ BELIEF starting commit:
 PatchEval upstream commit:
 `217401d06684e8baa0847574b9faf83b0898f379`
 
+Amendment 1, 2026-07-25: after aggregate-only schema verification reported
+70 Python records across 48 repositories, the protocol added a binding for the
+clean BELIEF preparation-tool commit. No case identity, repository identity,
+CVE, CWE, description, patch, function, image, source, test, or outcome had
+been displayed. The eligibility, split, gates, and stop rules were unchanged.
+
 This protocol defines the next BELIEF generalization track after the failed
 SusVibes nested-development result. It is independent of the 49 SusVibes
 development cases already used. It does not authorize opening or running the
@@ -74,6 +80,7 @@ The preparation phase must bind:
 - the PatchEval Git commit above;
 - SHA-256 of `patcheval/datasets/patcheval_verified.json`;
 - the exact BELIEF starting commit above;
+- the clean BELIEF preparation-tool commit used to create the manifest;
 - SHA-256 of this protocol;
 - SHA-256 of the pinned SusVibes dataset used only for project-overlap
   exclusion;
@@ -235,4 +242,3 @@ Stop and record `FAILURE` rather than changing the protocol when:
 - a dynamic prerequisite would expose credentials, host sessions, or
   unrelated user files;
 - the official comparator's task set or anti-cheating scorer is unavailable.
-
