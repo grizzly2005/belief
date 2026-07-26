@@ -206,6 +206,13 @@ current failed F result cannot produce a ready attestation; this mechanism is
 for a future preregistered experiment that first passes every development
 gate.
 
+Further reviewer development has moved to the separately preregistered,
+project-disjoint
+[`PatchEval-Verified protocol`](docs/PATCHEVAL_VERIFIED_PROTOCOL.md). Its
+source commit and split algorithm were frozen before local case inspection.
+PatchEval is an independent engineering corpus, not a substitute for the
+Agent Security League score.
+
 ---
 
 ## Toolchain Manager / Orchestrator v1
