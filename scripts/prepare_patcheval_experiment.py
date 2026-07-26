@@ -219,6 +219,9 @@ def main() -> int:
                 "python_record_count": payload["source"][
                     "python_record_count"
                 ],
+                "python_required_field_ineligible_count": payload[
+                    "source"
+                ]["python_required_field_ineligible_count"],
                 "reserved_case_count": cohorts["reserved"][
                     "case_count"
                 ],

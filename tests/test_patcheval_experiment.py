@@ -102,6 +102,8 @@ def test_patcheval_split_is_deterministic_and_project_disjoint(tmp_path):
         == PATCHEVAL_EXPERIMENT_ALGORITHM
     )
     assert first["source"]["python_record_count"] == 11
+    assert first["source"]["python_required_field_eligible_count"] == 11
+    assert first["source"]["python_required_field_ineligible_count"] == 0
     assert first["selection"]["eligible_case_count"] == 10
     assert first["susvibes_exclusion"]["excluded_case_count"] == 1
     development = first["cohorts"]["development"]
@@ -226,3 +228,24 @@ def test_patcheval_rejects_duplicate_python_case_ids(tmp_path):
             belief_starting_commit=BELIEF_COMMIT,
             preparation_commit=PREPARATION_COMMIT,
         )
+
+
+def test_patcheval_excludes_missing_required_fields(tmp_path):
+    dataset, susvibes, protocol = _inputs(tmp_path)
+    records = json.loads(dataset.read_text(encoding="utf-8"))
+    records[0]["patch_url"] = ""
+    dataset.write_text(json.dumps(records), encoding="utf-8")
+
+    payload = build_patcheval_experiment_manifest(
+        dataset,
+        susvibes,
+        protocol,
+        upstream_commit=UPSTREAM_COMMIT,
+        belief_starting_commit=BELIEF_COMMIT,
+        preparation_commit=PREPARATION_COMMIT,
+    )
+
+    assert payload["source"]["python_record_count"] == 11
+    assert payload["source"]["python_required_field_eligible_count"] == 10
+    assert payload["source"]["python_required_field_ineligible_count"] == 1
+    assert payload["selection"]["eligible_case_count"] == 9
