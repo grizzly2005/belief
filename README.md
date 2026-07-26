@@ -211,7 +211,10 @@ project-disjoint
 [`PatchEval-Verified protocol`](docs/PATCHEVAL_VERIFIED_PROTOCOL.md). Its
 source commit and split algorithm were frozen before local case inspection.
 PatchEval is an independent engineering corpus, not a substitute for the
-Agent Security League score.
+Agent Security League score. The static-corpus
+[`preflight result`](docs/PATCHEVAL_VERIFIED_RESULT.md) was negative: all 70
+Python records lacked the preregistered canonical-patch URL, so no threshold
+was relaxed and no static case was consumed.
 
 ---
 
