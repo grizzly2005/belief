@@ -150,6 +150,8 @@ def test_ready_preflight_is_bound_and_never_reports_secret(tmp_path):
     assert payload["binding"]["cohort_case_count"] == 1
     assert payload["binding"]["start_index"] == 0
     assert payload["binding"]["requested_num_instances"] == 1
+    assert payload["binding"]["feedback_mode"] == "belief"
+    assert payload["binding"]["max_stop_blocks"] == 1
     assert payload["boundaries"]["docker_started"] is False
     assert payload["comparability"]["susvibes_secpass_measured"] is False
     warnings = [
@@ -187,6 +189,49 @@ def test_ready_preflight_is_bound_and_never_reports_secret(tmp_path):
     )
     assert provenance["report_digest"] == written["report_digest"]
     assert len(provenance["report_sha256"]) == 64
+
+
+def test_ready_preflight_binds_true_no_feedback_control(tmp_path):
+    kwargs, fixture = _ready_kwargs(tmp_path)
+    root, dataset, manifest, runner, results = fixture
+    kwargs.update({
+        "feedback_mode": "none",
+        "max_stop_blocks": 0,
+    })
+    report = tmp_path / "baseline-preflight.json"
+
+    written = write_susvibes_agent_preflight(report, **kwargs)
+    provenance = load_ready_susvibes_agent_preflight(
+        report,
+        susvibes_root=root,
+        dataset=dataset,
+        experiment_manifest=manifest,
+        cohort="smoke",
+        results_dir=results,
+        model="claude-fable-5",
+        claude_version="2.1.218",
+        runner_path=runner,
+        feedback_mode="none",
+        max_stop_blocks=0,
+    )
+
+    assert written["binding"]["feedback_mode"] == "none"
+    assert written["binding"]["max_stop_blocks"] == 0
+    assert provenance["feedback_mode"] == "none"
+    with pytest.raises(ValueError, match="feedback_mode|max_stop_blocks"):
+        load_ready_susvibes_agent_preflight(
+            report,
+            susvibes_root=root,
+            dataset=dataset,
+            experiment_manifest=manifest,
+            cohort="smoke",
+            results_dir=results,
+            model="claude-fable-5",
+            claude_version="2.1.218",
+            runner_path=runner,
+            feedback_mode="belief",
+            max_stop_blocks=1,
+        )
 
 
 def test_preflight_reports_all_environment_blockers(tmp_path):

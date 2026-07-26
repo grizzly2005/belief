@@ -74,11 +74,19 @@ def _write_batch(
     model: str = "claude-fable-5",
     suspected: int = 0,
     verified_preflight: bool = True,
+    schema_version: int = 2,
+    feedback_mode: str = "belief",
+    max_stop_blocks: int = 1,
 ) -> Path:
     run_dir.mkdir()
     start_index = all_ids.index(ids[0])
     assert all_ids[start_index:start_index + len(ids)] == ids
-    model_name = f"belief-claude-hook/{model}"
+    assert schema_version in {2, 3}
+    model_name = (
+        f"claude-code-baseline/{model}"
+        if feedback_mode == "none"
+        else f"belief-claude-hook/{model}"
+    )
     records = []
     tasks = []
     for index, instance_id in enumerate(ids):
@@ -107,9 +115,28 @@ def _write_batch(
         patch_bytes = patch.encode("utf-8")
         (task_dir / "result.json").write_text(
             json.dumps({
-                "schema_version": "belief.susvibes_agent_result.v2",
+                "schema_version": (
+                    f"belief.susvibes_agent_result.v{schema_version}"
+                ),
                 "instance_id": instance_id,
                 "model": model,
+                **(
+                    {
+                        "feedback_mode": feedback_mode,
+                        "max_stop_blocks": max_stop_blocks,
+                        "belief_feedback": {
+                            "enabled": feedback_mode == "belief",
+                            "configured_max_blocks": max_stop_blocks,
+                            "review_count": 0,
+                            "state_count": 0,
+                            "feedback_block_count": 0,
+                            "feedback_delivered": False,
+                            "terminal_statuses": [],
+                        },
+                    }
+                    if schema_version == 3
+                    else {}
+                ),
                 "model_identity_status": "matched",
                 "automatic_model_fallback_configured": False,
                 "claude_code_version": "2.1.218",
@@ -127,6 +154,23 @@ def _write_batch(
                     "result_event_count": 1,
                     "result_subtypes_observed": ["success"],
                     "result_error_observed": False,
+                    **(
+                        {
+                            "result_accounting": {
+                                "total_cost_usd": 0.1,
+                                "duration_ms": 1000,
+                                "duration_api_ms": 800,
+                                "num_turns": 1,
+                                "usage": {
+                                    "input_tokens": 100,
+                                    "output_tokens": 20,
+                                },
+                                "invalid_fields": [],
+                            },
+                        }
+                        if schema_version == 3
+                        else {}
+                    ),
                 },
                 "policy_violation_suspected": index < suspected,
                 "model_patch_sha256": hashlib.sha256(
@@ -155,7 +199,21 @@ def _write_batch(
     ).hexdigest()
     (run_dir / "plan.json").write_text(
         json.dumps({
-            "schema_version": "belief.susvibes_agent_plan.v2",
+            "schema_version": (
+                f"belief.susvibes_agent_plan.v{schema_version}"
+            ),
+            **(
+                {
+                    "mode": (
+                        "claude_code_without_belief_feedback"
+                        if feedback_mode == "none"
+                        else "claude_code_with_belief_stop_hook"
+                    ),
+                    "feedback_mode": feedback_mode,
+                }
+                if schema_version == 3
+                else {}
+            ),
             "results_dir": str(run_dir.resolve()),
             "dataset_sha256": selection["dataset_sha256"],
             "susvibes_commit": selection["susvibes_commit"],
@@ -173,6 +231,14 @@ def _write_batch(
                 "start_index": start_index,
                 "num_instances": len(ids),
                 "selected_instance_ids_sha256": task_digest,
+                **(
+                    {
+                        "feedback_mode": feedback_mode,
+                        "max_stop_blocks": max_stop_blocks,
+                    }
+                    if schema_version == 3
+                    else {}
+                ),
             },
             "model": model,
             "model_selection": {
@@ -181,7 +247,7 @@ def _write_batch(
                 "automatic_fallback_configured": False,
             },
             "claude_code_version": "2.1.218",
-            "max_stop_blocks": 1,
+            "max_stop_blocks": max_stop_blocks,
             "task_count": len(ids),
             "tasks": tasks,
             "boundaries": {
@@ -196,6 +262,15 @@ def _write_batch(
                 "browser_integration_enabled": False,
                 "session_persistence_enabled": False,
                 "automatic_model_fallback_configured": False,
+                **(
+                    {
+                        "belief_stop_hook_enabled": (
+                            feedback_mode == "belief"
+                        ),
+                    }
+                    if schema_version == 3
+                    else {}
+                ),
             },
         }, indent=2, sort_keys=True)
         + "\n",
@@ -203,13 +278,38 @@ def _write_batch(
     )
     (run_dir / "summary.json").write_text(
         json.dumps({
-            "schema_version": "belief.susvibes_agent_run.v2",
+            "schema_version": (
+                f"belief.susvibes_agent_run.v{schema_version}"
+            ),
             "task_count": len(ids),
             "successful_agent_runs": len(ids),
             "model_identity_verified_runs": len(ids),
             "model_refusal_observed_count": 0,
             "api_retry_event_count": 0,
             "automatic_model_fallback_configured": False,
+            **(
+                {
+                    "feedback_mode": feedback_mode,
+                    "max_stop_blocks": max_stop_blocks,
+                    "belief_feedback_review_count": 0,
+                    "belief_feedback_block_count": 0,
+                    "belief_feedback_delivered_runs": 0,
+                    "accounting": {
+                        "reported_total_cost_usd": round(
+                            0.1 * len(ids),
+                            12,
+                        ),
+                        "cost_reported_task_count": len(ids),
+                        "input_tokens": 100 * len(ids),
+                        "output_tokens": 20 * len(ids),
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "invalid_accounting_task_count": 0,
+                    },
+                }
+                if schema_version == 3
+                else {}
+            ),
             "policy_violation_suspected_count": suspected,
             "predictions": str(predictions.resolve()),
         }, indent=2, sort_keys=True)
@@ -273,6 +373,34 @@ def test_merge_validates_batches_and_restores_frozen_order(tmp_path):
         output.read_bytes()
     ).hexdigest()
     assert json.loads(provenance.read_text(encoding="utf-8")) == payload
+
+
+def test_merge_accepts_explicit_no_feedback_arm(tmp_path):
+    dataset, manifest, ids, selection = _experiment(tmp_path)
+    baseline = _write_batch(
+        tmp_path / "baseline",
+        ids=ids,
+        all_ids=ids,
+        selection=selection,
+        schema_version=3,
+        feedback_mode="none",
+        max_stop_blocks=0,
+    )
+
+    payload = write_merged_susvibes_predictions(
+        tmp_path / "baseline-predictions.jsonl",
+        tmp_path / "baseline-provenance.json",
+        experiment_manifest=manifest,
+        dataset=dataset,
+        cohort="full",
+        run_dirs=[baseline],
+    )
+
+    assert payload["execution"]["feedback_mode"] == "none"
+    assert payload["execution"]["max_stop_blocks"] == 0
+    assert payload["execution"]["model_name_or_path"].startswith(
+        "claude-code-baseline/"
+    )
 
 
 def test_merge_rejects_duplicate_predictions(tmp_path):

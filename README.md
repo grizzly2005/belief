@@ -172,10 +172,13 @@ python -m belief review-patch `
 ```
 
 For an end-to-end `FuncPass` / `SecPass` experiment, the Claude Code adapter
-adds a bounded BELIEF Stop hook to the official SusVibes Docker harness. It is
-dry-run only unless a deterministic public experiment manifest and matching
-ready preflight report are provided together with both execution and network
-acknowledgement flags. The preflight never starts Docker or calls a model. See
+supports a true no-feedback control and a bounded BELIEF `Stop`-feedback arm
+inside the official SusVibes Docker harness. A create-only preregistration
+locks the same smoke tasks, model, CLI version, and arms `none/0` versus
+`belief/1`. Execution remains disabled unless a deterministic public
+experiment manifest and matching arm-specific ready preflight are provided
+together with both execution and network acknowledgement flags. Neither
+preregistration nor preflight starts Docker or calls a model. See
 [`benchmark_susvibes/AGENT_HARNESS.md`](benchmark_susvibes/AGENT_HARNESS.md).
 Official evaluator summaries can then be checked against the frozen cohort and
 compared across repeated runs with `scripts/score_susvibes_agent.py`; its

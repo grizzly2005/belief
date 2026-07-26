@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run Claude Code on SusVibes with bounded BELIEF security Stop hooks.
+"""Run paired Claude Code SusVibes arms with optional BELIEF Stop feedback.
 
 The default is a no-network dry run. Real execution additionally requires a
 verified experiment cohort, a matching ready preflight report, and explicit
@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import importlib
 import json
+import math
 import os
 import re
 import shlex
@@ -54,19 +55,25 @@ ALLOWED_TOOLS = (
     "Grep",
     "NotebookEdit",
 )
-AGENT_PLAN_SCHEMA_VERSION = "belief.susvibes_agent_plan.v2"
-AGENT_RESULT_SCHEMA_VERSION = "belief.susvibes_agent_result.v2"
-AGENT_RUN_SCHEMA_VERSION = "belief.susvibes_agent_run.v2"
+AGENT_PLAN_SCHEMA_VERSION = "belief.susvibes_agent_plan.v3"
+AGENT_RESULT_SCHEMA_VERSION = "belief.susvibes_agent_result.v3"
+AGENT_RUN_SCHEMA_VERSION = "belief.susvibes_agent_run.v3"
 _CONTAINER_IDENTIFIER_RE = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+)
+_ACCOUNTING_USAGE_FIELDS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
 )
 
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Run a bounded, anti-cheating Claude Code + BELIEF security "
-            "feedback attempt on pinned SusVibes tasks."
+            "Run a bounded, anti-cheating Claude Code SusVibes arm with "
+            "optional BELIEF security feedback."
         )
     )
     parser.add_argument(
@@ -142,6 +149,14 @@ def _arguments() -> argparse.Namespace:
         default=1,
         choices=[0, 1, 2, 3],
         help="Maximum BELIEF repair continuations in the same attempt",
+    )
+    parser.add_argument(
+        "--feedback-mode",
+        choices=["none", "belief"],
+        default="belief",
+        help=(
+            "Use anti-cheating policy only, or enable BELIEF Stop feedback"
+        ),
     )
     parser.add_argument(
         "--keep-workspace",
@@ -231,6 +246,28 @@ def load_agent_tasks(
     return tasks[start_index:start_index + num_instances]
 
 
+def _validate_feedback_configuration(
+    feedback_mode: str,
+    max_stop_blocks: int,
+) -> None:
+    if feedback_mode == "none" and max_stop_blocks == 0:
+        return
+    if feedback_mode == "belief" and 1 <= max_stop_blocks <= 3:
+        return
+    raise ValueError(
+        "feedback configuration is invalid: mode 'none' requires zero "
+        "Stop blocks; mode 'belief' requires one to three"
+    )
+
+
+def _prediction_model_path(feedback_mode: str, model: str) -> str:
+    if feedback_mode == "none":
+        return f"claude-code-baseline/{model}"
+    if feedback_mode == "belief":
+        return f"belief-claude-hook/{model}"
+    raise ValueError(f"unsupported feedback mode: {feedback_mode}")
+
+
 def build_sanitized_plan(
     dataset: Path,
     tasks: list[dict[str, str]],
@@ -238,6 +275,7 @@ def build_sanitized_plan(
     susvibes_commit: str,
     model: str,
     claude_version: str,
+    feedback_mode: str,
     max_stop_blocks: int,
     results_dir: Path,
     workspace_root: Path,
@@ -246,9 +284,15 @@ def build_sanitized_plan(
 ) -> dict[str, Any]:
     """Build a provenance plan with hashes, not benchmark oracle fields."""
 
+    _validate_feedback_configuration(feedback_mode, max_stop_blocks)
+    stop_hook_enabled = feedback_mode == "belief"
     return {
         "schema_version": AGENT_PLAN_SCHEMA_VERSION,
-        "mode": "claude_code_with_belief_stop_hook",
+        "mode": (
+            "claude_code_with_belief_stop_hook"
+            if stop_hook_enabled
+            else "claude_code_without_belief_feedback"
+        ),
         "dataset": dataset.name,
         "dataset_sha256": _sha256_file(dataset),
         "susvibes_commit": susvibes_commit,
@@ -259,6 +303,7 @@ def build_sanitized_plan(
             "automatic_fallback_configured": False,
         },
         "claude_code_version": claude_version,
+        "feedback_mode": feedback_mode,
         "max_stop_blocks": max_stop_blocks,
         "results_dir": str(results_dir),
         "workspace_root": str(workspace_root),
@@ -294,6 +339,7 @@ def build_sanitized_plan(
             "automatic_model_fallback_configured": False,
             "docker_auto_start": False,
             "parallel_workers": 1,
+            "belief_stop_hook_enabled": stop_hook_enabled,
         },
     }
 
@@ -344,6 +390,15 @@ def _summarize_agent_stream(output: bytes) -> dict[str, Any]:
     result_events = 0
     result_subtypes: set[str] = set()
     result_error_observed = False
+    accounting: dict[str, Any] = {
+        "total_cost_usd": None,
+        "duration_ms": None,
+        "duration_api_ms": None,
+        "num_turns": None,
+        "usage": {},
+        "invalid_fields": [],
+    }
+    invalid_accounting_fields: set[str] = set()
 
     def capture(message: Mapping[str, Any]) -> None:
         model = message.get("model")
@@ -390,6 +445,51 @@ def _summarize_agent_stream(output: bytes) -> dict[str, Any]:
                 or event.get("is_error") is True
             )
             capture(event)
+            for field in (
+                "total_cost_usd",
+                "duration_ms",
+                "duration_api_ms",
+                "num_turns",
+            ):
+                if field not in event:
+                    continue
+                value = event.get(field)
+                integer_required = field != "total_cost_usd"
+                valid = (
+                    isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and math.isfinite(float(value))
+                    and value >= 0
+                    and (
+                        not integer_required
+                        or isinstance(value, int)
+                    )
+                )
+                if valid:
+                    accounting[field] = value
+                else:
+                    invalid_accounting_fields.add(field)
+            if "usage" in event:
+                usage = event.get("usage")
+                if not isinstance(usage, Mapping):
+                    invalid_accounting_fields.add("usage")
+                else:
+                    sanitized_usage: dict[str, int] = {}
+                    for field in _ACCOUNTING_USAGE_FIELDS:
+                        if field not in usage:
+                            continue
+                        value = usage.get(field)
+                        if (
+                            not isinstance(value, int)
+                            or isinstance(value, bool)
+                            or value < 0
+                        ):
+                            invalid_accounting_fields.add(
+                                f"usage.{field}"
+                            )
+                            continue
+                        sanitized_usage[field] = value
+                    accounting["usage"] = sanitized_usage
         if event.get("type") == "stream_event":
             stream_event = event.get("event")
             if isinstance(stream_event, Mapping):
@@ -400,6 +500,7 @@ def _summarize_agent_stream(output: bytes) -> dict[str, Any]:
                 if isinstance(delta, Mapping):
                     capture(delta)
 
+    accounting["invalid_fields"] = sorted(invalid_accounting_fields)
     return {
         "valid_json_event_count": valid_events,
         "invalid_json_line_count": invalid_lines,
@@ -411,6 +512,52 @@ def _summarize_agent_stream(output: bytes) -> dict[str, Any]:
         "result_event_count": result_events,
         "result_subtypes_observed": sorted(result_subtypes),
         "result_error_observed": result_error_observed,
+        "result_accounting": accounting,
+    }
+
+
+def _aggregate_agent_accounting(
+    results: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    total_cost = 0.0
+    cost_count = 0
+    input_tokens = 0
+    output_tokens = 0
+    cache_creation_tokens = 0
+    cache_read_tokens = 0
+    invalid_count = 0
+    for result in results:
+        stream = result.get("agent_stream")
+        if not isinstance(stream, Mapping):
+            raise ValueError("agent result stream metadata is missing")
+        accounting = stream.get("result_accounting")
+        if not isinstance(accounting, Mapping):
+            raise ValueError("agent result accounting is missing")
+        cost = accounting.get("total_cost_usd")
+        if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+            total_cost += float(cost)
+            cost_count += 1
+        usage = accounting.get("usage")
+        if isinstance(usage, Mapping):
+            input_tokens += int(usage.get("input_tokens", 0) or 0)
+            output_tokens += int(usage.get("output_tokens", 0) or 0)
+            cache_creation_tokens += int(
+                usage.get("cache_creation_input_tokens", 0) or 0
+            )
+            cache_read_tokens += int(
+                usage.get("cache_read_input_tokens", 0) or 0
+            )
+        invalid_fields = accounting.get("invalid_fields")
+        if isinstance(invalid_fields, list) and invalid_fields:
+            invalid_count += 1
+    return {
+        "reported_total_cost_usd": round(total_cost, 12),
+        "cost_reported_task_count": cost_count,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_creation_input_tokens": cache_creation_tokens,
+        "cache_read_input_tokens": cache_read_tokens,
+        "invalid_accounting_task_count": invalid_count,
     }
 
 
@@ -434,9 +581,11 @@ def _run_task(
     workspace_root: Path,
     model: str,
     claude_version: str,
+    feedback_mode: str,
     max_stop_blocks: int,
     keep_workspace: bool,
 ) -> dict[str, Any]:
+    _validate_feedback_configuration(feedback_mode, max_stop_blocks)
     DockerIntegration, user_prompt_template = _load_official_harness(
         susvibes_root
     )
@@ -510,7 +659,8 @@ def _run_task(
 
         _install_belief_hook_bundle(container)
         settings = build_claude_hook_settings(
-            "/opt/belief/scripts/belief_claude_hook.py"
+            "/opt/belief/scripts/belief_claude_hook.py",
+            include_stop_hook=feedback_mode == "belief",
         )
         _copy_json_to_container(
             container,
@@ -545,7 +695,28 @@ def _run_task(
         stderr_path = task_dir / "agent.stderr.txt"
         stdout_path.write_bytes(agent.stdout)
         stderr_path.write_bytes(agent.stderr)
-        _copy_hook_reports(container, task_dir / "hook-reports")
+        belief_feedback = _empty_belief_feedback(
+            enabled=feedback_mode == "belief",
+            configured_max_blocks=max_stop_blocks,
+        )
+        if feedback_mode == "belief":
+            hook_reports = task_dir / "hook-reports"
+            hook_state = task_dir / "hook-state"
+            _copy_hook_directory(
+                container,
+                "/tmp/belief-hook-reports",
+                hook_reports,
+            )
+            _copy_hook_directory(
+                container,
+                "/tmp/belief-hook-state",
+                hook_state,
+            )
+            belief_feedback = _summarize_belief_feedback(
+                hook_reports,
+                hook_state,
+                configured_max_blocks=max_stop_blocks,
+            )
 
         patch = _prediction_patch(Path(workspace))
         stream_metadata = _summarize_agent_stream(agent.stdout)
@@ -565,7 +736,7 @@ def _run_task(
         record = {
             "instance_id": task["instance_id"],
             "model_name_or_path": (
-                f"belief-claude-hook/{model}"
+                _prediction_model_path(feedback_mode, model)
             ),
             "model_patch": patch,
         }
@@ -574,6 +745,8 @@ def _run_task(
             "instance_id": task["instance_id"],
             "image_name": task["image_name"],
             "model": model,
+            "feedback_mode": feedback_mode,
+            "max_stop_blocks": max_stop_blocks,
             "model_identity_status": model_identity,
             "automatic_model_fallback_configured": False,
             "claude_code_version": claude_version,
@@ -587,6 +760,7 @@ def _run_task(
             ).hexdigest(),
             "model_patch_bytes": len(patch.encode("utf-8")),
             "workspace_sanitization": sanitization,
+            "belief_feedback": belief_feedback,
             "duration_seconds": round(
                 time.perf_counter() - started,
                 6,
@@ -786,12 +960,21 @@ def _docker(
     return completed
 
 
-def _copy_hook_reports(container: str, destination: Path) -> None:
+def _copy_hook_directory(
+    container: str,
+    source: str,
+    destination: Path,
+) -> None:
     if not _CONTAINER_IDENTIFIER_RE.fullmatch(container):
         raise ValueError("invalid Docker container identifier")
+    if source not in {
+        "/tmp/belief-hook-reports",
+        "/tmp/belief-hook-state",
+    }:
+        raise ValueError("invalid BELIEF hook artifact source")
     exists = _docker_exec(
         container,
-        "test -d /tmp/belief-hook-reports",
+        f"test -d {source}",
         timeout=10,
     )
     if exists.returncode:
@@ -799,10 +982,82 @@ def _copy_hook_reports(container: str, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=False)
     _docker(
         "cp",
-        f"{container}:/tmp/belief-hook-reports/.",
+        f"{container}:{source}/.",
         str(destination),
         timeout=60,
     )
+
+
+def _empty_belief_feedback(
+    *,
+    enabled: bool,
+    configured_max_blocks: int,
+) -> dict[str, Any]:
+    return {
+        "enabled": enabled,
+        "configured_max_blocks": configured_max_blocks,
+        "review_count": 0,
+        "state_count": 0,
+        "feedback_block_count": 0,
+        "feedback_delivered": False,
+        "terminal_statuses": [],
+    }
+
+
+def _summarize_belief_feedback(
+    report_dir: Path,
+    state_dir: Path,
+    *,
+    configured_max_blocks: int,
+) -> dict[str, Any]:
+    reports = (
+        sorted(report_dir.rglob("*.json"))
+        if report_dir.is_dir()
+        else []
+    )
+    states = (
+        sorted(state_dir.rglob("*.json"))
+        if state_dir.is_dir()
+        else []
+    )
+    block_count = 0
+    statuses: set[str] = set()
+    for state_path in states:
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"invalid BELIEF hook state artifact: {state_path}"
+            ) from exc
+        if not isinstance(state, Mapping):
+            raise ValueError(
+                f"invalid BELIEF hook state artifact: {state_path}"
+            )
+        raw_blocks = state.get("block_count")
+        if (
+            not isinstance(raw_blocks, int)
+            or isinstance(raw_blocks, bool)
+            or not 0 <= raw_blocks <= configured_max_blocks
+        ):
+            raise ValueError(
+                f"invalid BELIEF hook block count: {state_path}"
+            )
+        block_count += raw_blocks
+        status = state.get("status")
+        if not isinstance(status, str) or not status:
+            raise ValueError(
+                f"invalid BELIEF hook terminal status: {state_path}"
+            )
+        statuses.add(status)
+    return {
+        "enabled": True,
+        "configured_max_blocks": configured_max_blocks,
+        "review_count": len(reports),
+        "state_count": len(states),
+        "feedback_block_count": block_count,
+        "feedback_delivered": block_count > 0,
+        "terminal_statuses": sorted(statuses),
+    }
 
 
 def _prediction_patch(repository: Path) -> str:
@@ -1100,6 +1355,12 @@ def main() -> int:
             args.model or os.environ.get("ANTHROPIC_MODEL") or ""
         ).strip()
         claude_version = str(args.claude_version).strip()
+        feedback_mode = str(args.feedback_mode)
+        max_stop_blocks = int(args.max_stop_blocks)
+        _validate_feedback_configuration(
+            feedback_mode,
+            max_stop_blocks,
+        )
         preflight: dict[str, Any] = {
             "status": "not_required_for_dry_run",
         }
@@ -1144,6 +1405,8 @@ def main() -> int:
                     model=model,
                     claude_version=claude_version,
                     runner_path=Path(__file__).resolve(),
+                    feedback_mode=feedback_mode,
+                    max_stop_blocks=max_stop_blocks,
                 ),
             }
         plan = build_sanitized_plan(
@@ -1152,7 +1415,8 @@ def main() -> int:
             susvibes_commit=susvibes_commit,
             model=model,
             claude_version=claude_version,
-            max_stop_blocks=int(args.max_stop_blocks),
+            feedback_mode=feedback_mode,
+            max_stop_blocks=max_stop_blocks,
             results_dir=results_dir,
             workspace_root=workspace_root,
             selection=selection,
@@ -1191,7 +1455,8 @@ def main() -> int:
                 workspace_root=workspace_root,
                 model=model,
                 claude_version=claude_version,
-                max_stop_blocks=int(args.max_stop_blocks),
+                feedback_mode=feedback_mode,
+                max_stop_blocks=max_stop_blocks,
                 keep_workspace=bool(args.keep_workspace),
             ))
         predictions = [
@@ -1225,6 +1490,21 @@ def main() -> int:
                 for result in results
             ),
             "automatic_model_fallback_configured": False,
+            "feedback_mode": feedback_mode,
+            "max_stop_blocks": max_stop_blocks,
+            "accounting": _aggregate_agent_accounting(results),
+            "belief_feedback_review_count": sum(
+                result["belief_feedback"]["review_count"]
+                for result in results
+            ),
+            "belief_feedback_block_count": sum(
+                result["belief_feedback"]["feedback_block_count"]
+                for result in results
+            ),
+            "belief_feedback_delivered_runs": sum(
+                result["belief_feedback"]["feedback_delivered"]
+                for result in results
+            ),
             "policy_violation_suspected_count": sum(
                 result["policy_violation_suspected"]
                 for result in results

@@ -152,3 +152,41 @@ This is a verified prevention mechanism, not a holdout result. The real F1/F2
 artifacts in this report have `status=failed`, so they cannot satisfy the
 attestation validator. No attestation was created, no reserved ID was loaded,
 and the 49-case holdout remains unconsumed.
+
+## Official paired-smoke preparation
+
+### Verified
+
+- Agent artifacts now use explicit v3 schemas that distinguish a true
+  no-feedback control (`feedback_mode=none`, zero Stop blocks) from a BELIEF
+  treatment (`feedback_mode=belief`, one to three bounded Stop blocks).
+- Both arms retain the same history-removal, web/Git anti-cheating policy,
+  model pin, CLI pin, prompt, timeout, pass@1 semantics, and sequential
+  execution.
+- The control settings omit the `Stop` hook entirely. A zero-budget BELIEF
+  review is no longer mislabeled as a no-feedback baseline.
+- Ready preflight reports bind the feedback mode and budget. The prediction
+  merger rejects mixed arms and validates actual review/block telemetry.
+- Result streams retain validated provider-reported cost, token, duration, and
+  turn accounting when those fields are emitted; raw stdout remains the source
+  artifact.
+- A create-only `belief.susvibes_paired_agent_preregistration.v1` generator
+  freezes the same three smoke tasks by ordered digest, two distinct output
+  paths, arms A=`none/0` and B=`belief/1`, and the no-union scoring rule.
+- Post-control validation: 941 tests passed and 31 skipped in the full/CI
+  filter; 487 security tests passed; Ruff, first-party Python compilation, and
+  repository-isolated dependency consistency passed.
+
+### Not tested
+
+- No paired preregistration is itself an execution result.
+- No Docker image, model API, functional test, or hidden security test was run
+  while adding these controls.
+- `FuncPass`, `SecPass`, marginal cost, and marginal runtime therefore remain
+  unmeasured until separately authorized arm-specific preflights and runs.
+
+### Not comparable
+
+- A three-task development smoke can validate the pipeline and expose obvious
+  regressions, but cannot establish a leaderboard win over Fable 5, Kimi, or
+  any other system.

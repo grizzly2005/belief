@@ -1,10 +1,10 @@
 # BELIEF-assisted SusVibes agent harness
 
 This harness is the path from BELIEF's offline static measurements to a real
-SusVibes `FuncPass` / `SecPass` experiment. It runs a coding agent inside the
-official task image, reviews the candidate diff at the agent's Stop boundary,
-and can return one bounded, oracle-free security repair request in the same
-attempt.
+SusVibes `FuncPass` / `SecPass` experiment. It runs paired coding-agent arms
+inside the official task image. The control keeps the anti-cheating policy but
+has no `Stop` hook; the treatment reviews the candidate diff at `Stop` and can
+return one bounded, oracle-free security repair request in the same attempt.
 
 It does **not** claim a `SecPass` score until the emitted predictions have been
 evaluated by SusVibes' functional and hidden security tests.
@@ -20,8 +20,9 @@ alone:
 - harness comparison:
   <https://www.endorlabs.com/learn/claude-fable-5-take-two-same-model-different-harness-and-a-very-different-result>
 
-BELIEF's experiment is consequently named
-`belief-claude-hook/<exact-model-id>` in prediction records.
+Prediction records distinguish
+`claude-code-baseline/<exact-model-id>` from
+`belief-claude-hook/<exact-model-id>`. They must be evaluated separately.
 
 ## Target model identity
 
@@ -88,12 +89,16 @@ At Claude's `Stop` event:
 5. Claude repairs the same candidate in the same session.
 6. A repeated identical patch or the configured block limit ends the loop.
 
-The default is one repair continuation. `--max-stop-blocks` accepts `0` to
-`3`; a larger value changes the harness budget and must be recorded when
-comparing scores.
+The treatment default is one repair continuation. It requires
+`--feedback-mode belief` and one to three `--max-stop-blocks`. A true control
+requires `--feedback-mode none --max-stop-blocks 0`; in that mode the settings
+contain only the common `PreToolUse` anti-cheating hook, so BELIEF never reviews
+the patch or emits a `Stop` message. The preflight, plan, task result, run
+summary, and merger all bind this distinction.
 
-Hook state and full review reports live outside the candidate workspace and
-are copied into the task result artifacts after the run.
+Hook state and full review reports live outside the candidate workspace, are
+copied into the task result artifacts after the run, and are summarized into
+validated review/block telemetry.
 
 ## Safe dry run
 
@@ -107,6 +112,8 @@ python scripts/run_susvibes_belief_claude.py `
   --susvibes-root F:\belief-rd\susvibes-main `
   --results-dir F:\belief-rd\agent-runs\trial-001 `
   --model claude-fable-5 `
+  --feedback-mode belief `
+  --max-stop-blocks 1 `
   --plan-output F:\belief-rd\results\agent-plan-001.json
 ```
 
@@ -132,6 +139,27 @@ instance IDs. Neither the CWE strata nor project metadata cross the agent
 boundary. The holdout is the exact complement of the 24-case engineering
 canary and is frozen before any canary-driven harness tuning.
 
+Before any paid smoke, create a paired preregistration. It binds a clean BELIEF
+commit and runner hash, the exact three-task smoke slice, model and CLI version,
+two distinct future result directories, and arms A=`none/0` and B=`belief/1`.
+It records only the ordered task-ID digest, not task IDs or problem text:
+
+```powershell
+python scripts/prepare_susvibes_paired_smoke.py `
+  --susvibes-root F:\belief-rd\susvibes-v1.0 `
+  --experiment-manifest F:\belief-rd\results\susvibes-experiment-001.json `
+  --baseline-results-dir F:\belief-rd\agent-runs\smoke-a-baseline `
+  --belief-results-dir F:\belief-rd\agent-runs\smoke-b-belief `
+  --baseline-preflight-report F:\belief-rd\results\smoke-a-preflight.json `
+  --belief-preflight-report F:\belief-rd\results\smoke-b-preflight.json `
+  --model claude-fable-5 `
+  --num-instances 3 `
+  --output F:\belief-rd\results\paired-smoke-preregistration.json
+```
+
+This command requires both source checkouts to be clean, is create-only, and
+does not start Docker, call a model, or execute benchmark tests.
+
 Use the frozen selection even for the dry run:
 
 ```powershell
@@ -142,6 +170,8 @@ python scripts/run_susvibes_belief_claude.py `
   --num-instances 3 `
   --results-dir F:\belief-rd\agent-runs\smoke-001 `
   --model claude-fable-5 `
+  --feedback-mode belief `
+  --max-stop-blocks 1 `
   --plan-output F:\belief-rd\results\smoke-plan-001.json
 ```
 
@@ -153,9 +183,9 @@ execution was performed.
 
 ## Read-only execution preflight
 
-Before execution, create a report bound to the exact checkout, dataset,
-experiment manifest, cohort, results directory, model, Claude Code version,
-and runner SHA-256:
+Before execution, create one report per arm. Each report is bound to the exact
+checkout, dataset, experiment manifest, cohort, results directory, model,
+Claude Code version, feedback mode, feedback budget, and runner SHA-256:
 
 ```powershell
 python scripts/preflight_susvibes_agent.py `
@@ -166,9 +196,16 @@ python scripts/preflight_susvibes_agent.py `
   --results-dir F:\belief-rd\agent-runs\smoke-001 `
   --model claude-fable-5 `
   --claude-version 2.1.218 `
+  --feedback-mode belief `
+  --max-stop-blocks 1 `
   --acknowledge-agent-network `
   --output F:\belief-rd\results\smoke-preflight-001.json
 ```
+
+For arm A, use its preregistered paths with
+`--feedback-mode none --max-stop-blocks 0`. For arm B, use
+`--feedback-mode belief --max-stop-blocks 1`. A report from one arm is rejected
+by the other.
 
 The preflight never starts Docker, pulls an image, calls a model, or reports a
 credential value. It checks an already-running Docker daemon read-only and
@@ -196,11 +233,15 @@ python scripts/run_susvibes_belief_claude.py `
   --results-dir F:\belief-rd\agent-runs\smoke-001 `
   --model claude-fable-5 `
   --claude-version 2.1.218 `
+  --feedback-mode belief `
   --max-stop-blocks 1 `
   --num-instances 3 `
   --execute `
   --allow-agent-network
 ```
+
+Run each arm against its own matching report and result directory. Neither
+command may reuse the other arm's output.
 
 The runner:
 
@@ -215,8 +256,8 @@ The runner:
 - pins the exact model through the CLI and configures no automatic fallback;
 - restricts built-in tools, disables MCP servers, browser integration, skills,
   lower-scope settings, auto-memory, and session persistence;
-- preserves complete stdout, stderr, hook reports, patch hashes, and
-  provenance;
+- preserves complete stdout, stderr, hook reports and state, patch hashes,
+  actual feedback-block counts, and provider-reported cost/token accounting;
 - emits official three-field prediction JSONL.
 
 Network acknowledgement is necessary because Docker may pull the task image,
@@ -240,13 +281,14 @@ python scripts/merge_susvibes_predictions.py `
   --provenance-output F:\belief-rd\results\holdout-repeat-a-merge.json
 ```
 
-The merger rejects missing or duplicate tasks, mixed models or feedback
-budgets, dry-run plans, mismatched preflight slices, unverified observed model
-identity, configured fallbacks, malformed stream output, modified task
-results, unexpected agent-visible fields, and plan/result/prediction hash
-inconsistencies. `--allow-partial` exists only for explicitly incomplete
-diagnostics. Refusals, API retries, and suspected anti-cheating cases remain in
-the provenance; suspected cases are never silently dropped to improve a score.
+The merger rejects missing or duplicate tasks, mixed models, feedback modes,
+or feedback budgets, dry-run plans, mismatched preflight slices, unverified
+observed model identity, configured fallbacks, malformed stream output,
+modified task results, unexpected agent-visible fields, and
+plan/result/prediction hash inconsistencies. `--allow-partial` exists only for
+explicitly incomplete diagnostics. Refusals, API retries, and suspected
+anti-cheating cases remain in the provenance; suspected cases are never
+silently dropped to improve a score.
 
 ## Official evaluation
 
@@ -262,10 +304,12 @@ python -m susvibes.eval.core `
 ```
 
 Keep generation and evaluation run IDs, dataset hash, SusVibes commit, exact
-model ID, Claude Code version, feedback budget, prediction file, and evaluator
-summary together. Use at least two independent full runs before interpreting a
-small score difference; the public methodology reports meaningful run-to-run
-variance.
+model ID, Claude Code version, feedback mode and budget, prediction file, and
+evaluator summary together. Evaluate A and B independently on the same ordered
+tasks and report `delta FuncPass`, `delta SecPass`, duration, cost, patch size,
+regressions, and timeouts. Never use the union of successful cases as a score.
+Use at least two independent full runs before interpreting a small score
+difference; the public methodology reports meaningful run-to-run variance.
 
 ## Validated scorecard
 

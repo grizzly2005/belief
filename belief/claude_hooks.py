@@ -34,8 +34,9 @@ def build_claude_hook_settings(
     python_command: str = "python3",
     stop_timeout_seconds: int = 60,
     policy_timeout_seconds: int = 10,
+    include_stop_hook: bool = True,
 ) -> dict[str, Any]:
-    """Build portable Claude settings for BELIEF Stop and policy hooks."""
+    """Build portable Claude settings for policy and optional BELIEF feedback."""
 
     if not 1 <= stop_timeout_seconds <= 600:
         raise ValueError("stop_timeout_seconds must be between 1 and 600")
@@ -45,33 +46,33 @@ def build_claude_hook_settings(
         str(python_command),
         str(hook_script),
     ])
-    return {
-        "hooks": {
-            "PreToolUse": [
-                {
-                    "matcher": "Bash|WebFetch|WebSearch",
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": command,
-                            "timeout": policy_timeout_seconds,
-                        }
-                    ],
-                }
-            ],
-            "Stop": [
-                {
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": command,
-                            "timeout": stop_timeout_seconds,
-                        }
-                    ]
-                }
-            ],
-        }
+    hooks: dict[str, Any] = {
+        "PreToolUse": [
+            {
+                "matcher": "Bash|WebFetch|WebSearch",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": command,
+                        "timeout": policy_timeout_seconds,
+                    }
+                ],
+            }
+        ],
     }
+    if include_stop_hook:
+        hooks["Stop"] = [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": command,
+                        "timeout": stop_timeout_seconds,
+                    }
+                ]
+            }
+        ]
+    return {"hooks": hooks}
 
 
 def handle_claude_hook(

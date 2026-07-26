@@ -71,6 +71,24 @@ def _arguments() -> argparse.Namespace:
         help="Pinned @anthropic-ai/claude-code version",
     )
     parser.add_argument(
+        "--feedback-mode",
+        choices=["none", "belief"],
+        default="belief",
+        help=(
+            "Paired arm: anti-cheating policy only, or bounded BELIEF "
+            "Stop feedback"
+        ),
+    )
+    parser.add_argument(
+        "--max-stop-blocks",
+        type=int,
+        choices=[0, 1, 2, 3],
+        default=1,
+        help=(
+            "Must be zero for --feedback-mode none and positive for belief"
+        ),
+    )
+    parser.add_argument(
         "--minimum-free-gib",
         type=float,
         default=None,
@@ -129,6 +147,8 @@ def main() -> int:
             results_dir=Path(args.results_dir).resolve(),
             model=str(args.model),
             claude_version=str(args.claude_version),
+            feedback_mode=str(args.feedback_mode),
+            max_stop_blocks=int(args.max_stop_blocks),
             minimum_free_gib=args.minimum_free_gib,
             acknowledge_agent_network=bool(
                 args.acknowledge_agent_network
