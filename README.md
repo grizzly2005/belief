@@ -188,6 +188,13 @@ Completed batch directories are assembled with
 `scripts/merge_susvibes_predictions.py`, which verifies their ready-preflight
 binding and refuses duplicate, missing, mixed-model, or tampered results.
 
+The preregistered 49-case development experiment is now closed. The final
+full semantic variant was deterministic but failed its secure-false-positive
+and paired-discrimination gates, so the reserved cohort remains sealed. See
+[`docs/GENERALIZATION_RESULTS.md`](docs/GENERALIZATION_RESULTS.md) for the
+verified ablations, artifact hashes, limitations, and explicit non-comparability
+with SusVibes `SecPass`, Fable 5, or Kimi.
+
 ---
 
 ## Toolchain Manager / Orchestrator v1
@@ -523,9 +530,9 @@ python -m pytest -q -m "not slow and not external and not llm"
 
 Current local regression baseline:
 
-- full suite: `637 passed, 31 skipped`;
-- security suite: `183 passed`;
-- non-slow / non-external / non-LLM suite: `637 passed, 31 skipped`.
+- full suite: `910 passed, 31 skipped`;
+- security suite: `456 passed`;
+- non-slow / non-external / non-LLM suite: `910 passed, 31 skipped`.
 
 These numbers may change as the project evolves.
 
