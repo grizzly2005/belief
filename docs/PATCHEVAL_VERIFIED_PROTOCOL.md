@@ -13,6 +13,12 @@ clean BELIEF preparation-tool commit. No case identity, repository identity,
 CVE, CWE, description, patch, function, image, source, test, or outcome had
 been displayed. The eligibility, split, gates, and stop rules were unchanged.
 
+Amendment 2, 2026-07-25: after the create-only preparation correctly found no
+eligible static Python record, the manifest format was changed to preserve an
+aggregate `ineligible` result instead of returning only an error. Eligibility
+was not relaxed, and no case or repository identity, security metadata,
+source, test, patch, image, or outcome was displayed.
+
 This protocol defines the next BELIEF generalization track after the failed
 SusVibes nested-development result. It is independent of the 49 SusVibes
 development cases already used. It does not authorize opening or running the

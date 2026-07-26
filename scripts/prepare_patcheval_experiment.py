@@ -229,12 +229,13 @@ def main() -> int:
                     "repository_count"
                 ],
                 "schema_version": payload["schema_version"],
+                "status": payload["status"],
             },
             indent=2,
             sort_keys=True,
         )
     )
-    return 0
+    return 0 if payload["eligible_for_architecture_tuning"] else 1
 
 
 if __name__ == "__main__":

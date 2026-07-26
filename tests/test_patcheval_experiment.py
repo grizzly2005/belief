@@ -104,6 +104,12 @@ def test_patcheval_split_is_deterministic_and_project_disjoint(tmp_path):
     assert first["source"]["python_record_count"] == 11
     assert first["source"]["python_required_field_eligible_count"] == 11
     assert first["source"]["python_required_field_ineligible_count"] == 0
+    assert all(
+        value == 0
+        for value in first["source"][
+            "python_ineligibility_counts"
+        ].values()
+    )
     assert first["selection"]["eligible_case_count"] == 10
     assert first["susvibes_exclusion"]["excluded_case_count"] == 1
     development = first["cohorts"]["development"]
@@ -118,10 +124,13 @@ def test_patcheval_manifest_does_not_copy_reference_metadata(tmp_path):
     serialized = json.dumps(payload, sort_keys=True)
 
     assert "secret description" not in serialized
-    assert "patch_url" not in serialized
     assert "vul_func" not in serialized
     assert "fix_func" not in serialized
-    assert "image_url" not in serialized
+    assert (
+        "https://github.com/independent/project-0/commit"
+        not in serialized
+    )
+    assert "ghcr.io/example/case-" not in serialized
     assert "independent/project" not in serialized
     assert "overlap/project" not in serialized
 
@@ -176,7 +185,10 @@ def test_patcheval_writer_is_create_only(tmp_path):
 
 
 def test_patcheval_development_loader_rebuilds_inputs(tmp_path):
-    payload, dataset, susvibes, protocol = _build(tmp_path)
+    payload, dataset, susvibes, protocol = _build(
+        tmp_path,
+        repository_count=60,
+    )
     manifest = tmp_path / "manifest.json"
     manifest.write_text(
         json.dumps(payload, sort_keys=True),
@@ -248,4 +260,31 @@ def test_patcheval_excludes_missing_required_fields(tmp_path):
     assert payload["source"]["python_record_count"] == 11
     assert payload["source"]["python_required_field_eligible_count"] == 10
     assert payload["source"]["python_required_field_ineligible_count"] == 1
+    assert payload["source"]["python_ineligibility_counts"][
+        "missing_patch_url"
+    ] == 1
     assert payload["selection"]["eligible_case_count"] == 9
+
+
+def test_patcheval_records_ineligible_empty_split(tmp_path):
+    dataset, susvibes, protocol = _inputs(tmp_path)
+    records = json.loads(dataset.read_text(encoding="utf-8"))
+    for record in records:
+        if record["programing_language"] == "Python":
+            record["patch_url"] = None
+    dataset.write_text(json.dumps(records), encoding="utf-8")
+
+    payload = build_patcheval_experiment_manifest(
+        dataset,
+        susvibes,
+        protocol,
+        upstream_commit=UPSTREAM_COMMIT,
+        belief_starting_commit=BELIEF_COMMIT,
+        preparation_commit=PREPARATION_COMMIT,
+    )
+
+    assert payload["status"] == "ineligible"
+    assert payload["eligible_for_architecture_tuning"] is False
+    assert payload["selection"]["eligible_case_count"] == 0
+    assert payload["cohorts"]["development"]["case_ids"] == []
+    assert payload["cohorts"]["reserved"]["case_ids"] == []

@@ -61,7 +61,7 @@ def build_patcheval_experiment_manifest(
         == "python"
         for record in records
     )
-    python_cases, ineligible_required_field_count = (
+    python_cases, ineligible_counts = (
         _eligible_python_cases(records)
     )
     susvibes_projects = _load_susvibes_projects(susvibes_path)
@@ -75,11 +75,6 @@ def build_patcheval_experiment_manifest(
         for case in python_cases
         if case["repository"] in susvibes_projects
     ]
-    if not independent:
-        raise ValueError(
-            "no project-disjoint Python PatchEval cases remain"
-        )
-
     seed = hashlib.sha256(
         "\0".join(
             (
@@ -150,8 +145,9 @@ def build_patcheval_experiment_manifest(
             "python_record_count": python_record_count,
             "python_required_field_eligible_count": len(python_cases),
             "python_required_field_ineligible_count": (
-                ineligible_required_field_count
+                python_record_count - len(python_cases)
             ),
+            "python_ineligibility_counts": ineligible_counts,
         },
         "belief": {
             "starting_commit": normalized_belief,
@@ -207,6 +203,11 @@ def build_patcheval_experiment_manifest(
             "dynamic_tests_executed": False,
         },
     }
+    payload["status"] = (
+        "ready"
+        if payload["eligible_for_architecture_tuning"]
+        else "ineligible"
+    )
     payload["deterministic_digest"] = _semantic_digest(payload)
     return payload
 
@@ -224,6 +225,8 @@ def validate_patcheval_experiment_manifest(
         PATCHEVAL_EXPERIMENT_ALGORITHM
     ):
         raise ValueError("unsupported PatchEval selection algorithm")
+    if payload.get("status") not in {"ready", "ineligible"}:
+        raise ValueError("invalid PatchEval experiment status")
     recorded = _sha256(
         payload.get("deterministic_digest"),
         "PatchEval manifest digest",
@@ -297,6 +300,9 @@ def validate_patcheval_experiment_manifest(
         expected_eligibility
     ):
         raise ValueError("PatchEval minimum eligibility mismatch")
+    expected_status = "ready" if expected_eligibility else "ineligible"
+    if payload.get("status") != expected_status:
+        raise ValueError("PatchEval status does not match minimums")
     boundaries = _mapping(payload, "boundaries")
     required_true = (
         "manifest_is_evaluator_side",
@@ -369,6 +375,10 @@ def load_patcheval_development_cohort(
         "PatchEval experiment manifest",
     )
     validated = validate_patcheval_experiment_manifest(payload)
+    if validated["status"] != "ready":
+        raise ValueError(
+            "PatchEval corpus is ineligible for architecture tuning"
+        )
     source = _mapping(validated, "source")
     belief = _mapping(validated, "belief")
     rebuilt = build_patcheval_experiment_manifest(
@@ -398,10 +408,16 @@ def load_patcheval_development_cohort(
 
 def _eligible_python_cases(
     records: list[Any],
-) -> tuple[list[dict[str, str]], int]:
+) -> tuple[list[dict[str, str]], dict[str, int]]:
     cases: list[dict[str, str]] = []
     seen_ids: set[str] = set()
-    ineligible_count = 0
+    ineligible_counts = {
+        "invalid_repository": 0,
+        "missing_cve_id": 0,
+        "missing_image_url": 0,
+        "missing_patch_url": 0,
+        "missing_repository": 0,
+    }
     for record in records:
         if not isinstance(record, Mapping):
             raise ValueError("PatchEval records must be objects")
@@ -410,27 +426,27 @@ def _eligible_python_cases(
         ):
             continue
         required = {
-            key: record.get(key)
-            for key in (
-                "cve_id",
-                "repo",
-                "patch_url",
-                "image_url",
-            )
+            "cve_id": record.get("cve_id"),
+            "image_url": record.get("image_url"),
+            "patch_url": record.get("patch_url"),
+            "repository": record.get("repo"),
         }
-        if any(
-            not isinstance(value, str) or not value.strip()
-            for value in required.values()
-        ):
-            ineligible_count += 1
+        missing = [
+            key
+            for key, value in required.items()
+            if not isinstance(value, str) or not value.strip()
+        ]
+        if missing:
+            for key in missing:
+                ineligible_counts[f"missing_{key}"] += 1
             continue
         case_id = str(required["cve_id"]).strip()
         try:
             repository = _normalize_repository(
-                str(required["repo"]).strip()
+                str(required["repository"]).strip()
             )
         except ValueError:
-            ineligible_count += 1
+            ineligible_counts["invalid_repository"] += 1
             continue
         if case_id in seen_ids:
             raise ValueError("PatchEval Python case IDs must be unique")
@@ -439,9 +455,7 @@ def _eligible_python_cases(
             "case_id": case_id,
             "repository": repository,
         })
-    if not cases:
-        raise ValueError("PatchEval dataset has no eligible Python cases")
-    return cases, ineligible_count
+    return cases, ineligible_counts
 
 
 def _load_susvibes_projects(path: Path) -> set[str]:
