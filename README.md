@@ -511,6 +511,12 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev,z3]"  # Windows PowerShell
 ```
 
+Install the optional Flask/FastAPI worker fixtures when needed:
+
+```bash
+.venv\Scripts\python -m pip install -e ".[dev,web-validation]"
+```
+
 The static CLI can be imported and run from source without `httpx`; LLM-backed
 `analyze` requires that transport dependency in the active environment.
 
@@ -575,6 +581,25 @@ explicit and outputs are create-only. A callable supplied through the Python
 isolated, and BELIEF does not attest its network, process, shell, Docker, or
 dynamic-import behavior. See
 [`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md).
+
+### Isolated Web Validation Worker
+
+BELIEF also provides a spawn-only worker for eight registered Flask and
+FastAPI path-traversal and IDOR/BOLA fixtures. It uses Flask `test_client()` or
+a direct local ASGI transport; it never starts a real server or accepts a URL,
+port, module, callable, command, or fixture path from the caller.
+
+The worker has strict JSON message limits, a hard timeout, a minimal
+temporary environment, a closed fixture registry, and normalized
+`inconclusive` results for crashes, timeouts, and missing optional frameworks.
+It reuses the existing `ValidationExecutionSummary` and `ValidationResult`
+semantics. This is process isolation with Python-level capability guards, not
+a complete operating-system sandbox.
+
+See
+[`docs/ISOLATED_WEB_VALIDATION_WORKER.md`](docs/ISOLATED_WEB_VALIDATION_WORKER.md)
+for the protocol, registry, platform boundary, Python API, and limitations.
+The read-first MCP surface is deliberately unchanged.
 
 Run the separate eight-case local experiment:
 
@@ -763,6 +788,8 @@ pyproject.toml
 - [`docs/PDX_BELIEF_INTEGRATION.md`](docs/PDX_BELIEF_INTEGRATION.md)
 - [`docs/TOOL_BRIDGES.md`](docs/TOOL_BRIDGES.md)
 - [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md)
+- [`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md)
+- [`docs/ISOLATED_WEB_VALIDATION_WORKER.md`](docs/ISOLATED_WEB_VALIDATION_WORKER.md)
 - [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md)
 - [`benchmark_reportability/README.md`](benchmark_reportability/README.md)
 - [`benchmark_susvibes/README.md`](benchmark_susvibes/README.md)
