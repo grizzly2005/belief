@@ -111,6 +111,7 @@ DEFAULT_EXCLUDE_DIRS = {
     "adapted",
     "archive",
     "archives",
+    "benchmark_susvibes",
     "benchmark_suite",
     "build",
     "cache",

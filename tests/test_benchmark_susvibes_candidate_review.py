@@ -14,6 +14,7 @@ from belief.benchmark.susvibes_candidate_review import (
     SUSVIBES_CANDIDATE_REVIEW_MODE,
     SusVibesCandidateReviewThresholds,
     evaluate_susvibes_candidate_review,
+    susvibes_candidate_review_deterministic_digest,
 )
 from belief.benchmark.susvibes_experiment import (
     write_susvibes_experiment_manifest,
@@ -168,6 +169,16 @@ def test_candidate_review_discriminates_vulnerable_and_secure_patch(tmp_path):
         payload["metrics"]["paired_warning_discrimination_rate"]
         == 1.0
     )
+    assert payload["metrics"]["warning_precision"] == 1.0
+    assert payload["metrics"]["warning_f1"] == 1.0
+    assert payload["metrics"]["median_review_duration_seconds"] >= 0.0
+    assert payload["metrics"]["maximum_process_peak_rss_bytes"] >= 0
+    assert payload["metrics"]["vulnerable_finding_localization"][
+        "with_file_rate"
+    ] == 1.0
+    assert payload["metrics"]["evidence_graph"][
+        "enabled_review_count"
+    ] == 0
     assert payload["cases"][0]["vulnerable_warned"] is True
     assert payload["cases"][0]["secure_warning_false_positive"] is False
     assert payload["comparability"]["reviewer_received_benchmark_oracle"] is False
@@ -175,6 +186,7 @@ def test_candidate_review_discriminates_vulnerable_and_secure_patch(tmp_path):
     assert payload["reviewer_provenance"]["callable"] == (
         "belief.patch_review.review_candidate_patch"
     )
+    assert payload["reviewer_provenance"]["semantic_mode"] == "summaries"
     assert payload["reviewer_provenance"]["belief_python_file_count"] > 0
     assert len(
         payload["reviewer_provenance"]["belief_python_source_sha256"]
@@ -220,6 +232,65 @@ def test_candidate_reviewer_receives_workspace_only(tmp_path):
 
     assert len(calls) == 2
     assert payload["metrics"]["paired_warning_discrimination_rate"] == 1.0
+
+
+def test_candidate_review_records_flow_state_configuration(tmp_path):
+    dataset, cache = _candidate_fixture(tmp_path)
+
+    payload = evaluate_susvibes_candidate_review(
+        dataset,
+        cache,
+        reviewer_semantic_mode="flow_states",
+    )
+
+    assert (
+        payload["reviewer_provenance"]["semantic_mode"]
+        == "flow_states"
+    )
+    assert payload["metrics"]["evaluable_case_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["evidence_graph", "full"],
+)
+def test_candidate_review_accepts_evidence_modes(
+    tmp_path,
+    mode,
+):
+    dataset, cache = _candidate_fixture(tmp_path)
+
+    payload = evaluate_susvibes_candidate_review(
+        dataset,
+        cache,
+        reviewer_semantic_mode=mode,
+    )
+
+    assert payload["reviewer_provenance"]["semantic_mode"] == mode
+    assert payload["metrics"]["evaluable_case_count"] == 1
+    assert payload["metrics"]["evidence_graph"][
+        "enabled_review_count"
+    ] == 2
+    assert payload["metrics"]["evidence_graph"][
+        "complete_review_count"
+    ] == 2
+
+
+def test_custom_reviewer_rejects_unapplied_semantic_configuration(
+    tmp_path,
+):
+    dataset, cache = _candidate_fixture(tmp_path)
+
+    def reviewer(_workspace):
+        raise AssertionError("must not be called")
+
+    with pytest.raises(ValueError, match="built-in"):
+        evaluate_susvibes_candidate_review(
+            dataset,
+            cache,
+            reviewer=reviewer,
+            reviewer_semantic_mode="flow_states",
+        )
 
 
 def test_candidate_review_digest_excludes_duration(tmp_path):
@@ -433,6 +504,152 @@ def test_candidate_review_cli_verifies_and_records_manifest_cohort(
     assert payload["selection"]["case_count"] == 1
     assert payload["selection"]["provenance"]["cohort"] == "canary"
     assert payload["selection"]["provenance"]["susvibes_commit"] == "a" * 40
+
+
+def test_candidate_review_cli_refuses_holdout_without_attestation(
+    tmp_path,
+):
+    dataset, cache = _candidate_fixture(tmp_path)
+    manifest = tmp_path / "experiment.json"
+    output = tmp_path / "candidate-review.json"
+    write_susvibes_experiment_manifest(
+        dataset,
+        manifest,
+        susvibes_commit="a" * 40,
+        smoke_size=1,
+        canary_size=1,
+        batch_size=1,
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "belief",
+            "benchmark",
+            "reportability",
+            "--mode",
+            SUSVIBES_CANDIDATE_REVIEW_MODE,
+            "--target",
+            str(dataset),
+            "--repository-cache",
+            str(cache),
+            "--experiment-manifest",
+            str(manifest),
+            "--cohort",
+            "holdout",
+            "--json-output",
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert "requires --holdout-attestation" in completed.stderr
+    assert not output.exists()
+
+
+def test_candidate_review_cli_rejects_filters_on_frozen_cohort(
+    tmp_path,
+):
+    dataset, cache = _candidate_fixture(tmp_path)
+    manifest = tmp_path / "experiment.json"
+    output = tmp_path / "candidate-review.json"
+    write_susvibes_experiment_manifest(
+        dataset,
+        manifest,
+        susvibes_commit="a" * 40,
+        smoke_size=1,
+        canary_size=1,
+        batch_size=1,
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "belief",
+            "benchmark",
+            "reportability",
+            "--mode",
+            SUSVIBES_CANDIDATE_REVIEW_MODE,
+            "--target",
+            str(dataset),
+            "--repository-cache",
+            str(cache),
+            "--experiment-manifest",
+            str(manifest),
+            "--cohort",
+            "canary",
+            "--only-cwe",
+            "CWE-22",
+            "--json-output",
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert "frozen experiment cohorts cannot be combined" in completed.stderr
+    assert not output.exists()
+
+
+def test_candidate_review_writer_refuses_overwrite(tmp_path):
+    dataset, cache = _candidate_fixture(tmp_path)
+    output = tmp_path / "candidate-review.json"
+    output.write_text("preserve me\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "belief",
+            "benchmark",
+            "reportability",
+            "--mode",
+            SUSVIBES_CANDIDATE_REVIEW_MODE,
+            "--target",
+            str(dataset),
+            "--repository-cache",
+            str(cache),
+            "--json-output",
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert "refusing to overwrite" in completed.stderr
+    assert output.read_text(encoding="utf-8") == "preserve me\n"
+
+
+def test_candidate_review_digest_excludes_holdout_run_number(tmp_path):
+    dataset, cache = _candidate_fixture(tmp_path)
+    payload = evaluate_susvibes_candidate_review(
+        dataset,
+        cache,
+        instance_ids=("example__assets_fixed",),
+        selection_provenance={"holdout_run_number": "1"},
+    )
+    changed = json.loads(json.dumps(payload))
+    changed["selection"]["provenance"]["holdout_run_number"] = "2"
+
+    assert (
+        susvibes_candidate_review_deterministic_digest(changed)
+        == payload["deterministic_digest"]
+    )
 
 
 def test_manifest_selection_is_rejected_outside_candidate_review(tmp_path):

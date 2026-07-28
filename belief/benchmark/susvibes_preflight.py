@@ -18,7 +18,8 @@ from .susvibes import load_susvibes_cases
 from .susvibes_experiment import load_experiment_cohort
 
 
-SUSVIBES_PREFLIGHT_SCHEMA_VERSION = "belief.susvibes_agent_preflight.v1"
+SUSVIBES_PREFLIGHT_SCHEMA_VERSION = "belief.susvibes_agent_preflight.v2"
+_LEGACY_PREFLIGHT_SCHEMA_VERSION = "belief.susvibes_agent_preflight.v1"
 
 DockerProbe = Callable[[], tuple[bool, str]]
 DiskFreeProbe = Callable[[Path], int]
@@ -53,6 +54,8 @@ def run_susvibes_agent_preflight(
     results_dir: str | Path,
     model: str,
     claude_version: str = "2.1.218",
+    feedback_mode: str = "belief",
+    max_stop_blocks: int = 1,
     minimum_free_gib: float | None = None,
     acknowledge_agent_network: bool = False,
     environment: Mapping[str, str] | None = None,
@@ -328,6 +331,8 @@ def run_susvibes_agent_preflight(
 
     normalized_model = str(model or "").strip()
     normalized_claude_version = str(claude_version).strip()
+    normalized_feedback_mode = str(feedback_mode or "").strip()
+    normalized_max_stop_blocks = int(max_stop_blocks)
     add(
         "exact_model_identifier",
         bool(_MODEL_RE.fullmatch(normalized_model)),
@@ -382,6 +387,27 @@ def run_susvibes_agent_preflight(
             "claude_code_version": normalized_claude_version,
             "minimum_version": "2.1.170",
             "source": _FABLE_5_CLAUDE_CODE_SOURCE,
+        },
+    )
+    feedback_configuration_valid = (
+        (
+            normalized_feedback_mode == "none"
+            and normalized_max_stop_blocks == 0
+        )
+        or (
+            normalized_feedback_mode == "belief"
+            and 1 <= normalized_max_stop_blocks <= 3
+        )
+    )
+    add(
+        "paired_feedback_configuration",
+        feedback_configuration_valid,
+        required=True,
+        evidence={
+            "feedback_mode": normalized_feedback_mode,
+            "max_stop_blocks": normalized_max_stop_blocks,
+            "baseline_requires_zero_blocks": True,
+            "belief_requires_positive_bounded_blocks": True,
         },
     )
 
@@ -455,6 +481,8 @@ def run_susvibes_agent_preflight(
             "free_gib_at_preflight": free_gib,
             "model": normalized_model,
             "claude_code_version": normalized_claude_version,
+            "feedback_mode": normalized_feedback_mode,
+            "max_stop_blocks": normalized_max_stop_blocks,
             "runner": str(runner),
             "runner_sha256": (
                 _file_sha256(runner, allowed_root=runner.parent)
@@ -512,6 +540,8 @@ def load_ready_susvibes_agent_preflight(
     model: str,
     claude_version: str,
     runner_path: str | Path,
+    feedback_mode: str = "belief",
+    max_stop_blocks: int = 1,
     max_report_age_seconds: int = _DEFAULT_MAX_REPORT_AGE_SECONDS,
 ) -> dict[str, Any]:
     """Verify a ready report and bind it to the current execution inputs."""
@@ -525,7 +555,11 @@ def load_ready_susvibes_agent_preflight(
         ) from exc
     if not isinstance(payload, Mapping):
         raise ValueError("SusVibes preflight report must be an object")
-    if payload.get("schema_version") != SUSVIBES_PREFLIGHT_SCHEMA_VERSION:
+    report_schema = payload.get("schema_version")
+    if report_schema not in {
+        SUSVIBES_PREFLIGHT_SCHEMA_VERSION,
+        _LEGACY_PREFLIGHT_SCHEMA_VERSION,
+    }:
         raise ValueError("unsupported SusVibes preflight report schema")
     expected_digest = str(payload.get("report_digest") or "")
     if not expected_digest or expected_digest != _report_digest(payload):
@@ -585,6 +619,30 @@ def load_ready_susvibes_agent_preflight(
     manifest_path = Path(experiment_manifest).resolve()
     output_root = Path(results_dir).resolve()
     runner = Path(runner_path).resolve()
+    normalized_feedback_mode = str(feedback_mode or "").strip()
+    normalized_max_stop_blocks = int(max_stop_blocks)
+    feedback_configuration_valid = (
+        (
+            normalized_feedback_mode == "none"
+            and normalized_max_stop_blocks == 0
+        )
+        or (
+            normalized_feedback_mode == "belief"
+            and 1 <= normalized_max_stop_blocks <= 3
+        )
+    )
+    if not feedback_configuration_valid:
+        raise ValueError("SusVibes feedback configuration is invalid")
+    if (
+        report_schema == _LEGACY_PREFLIGHT_SCHEMA_VERSION
+        and (
+            normalized_feedback_mode != "belief"
+            or normalized_max_stop_blocks != 1
+        )
+    ):
+        raise ValueError(
+            "legacy SusVibes preflight is only valid for one BELIEF block"
+        )
     if not _is_relative_to(dataset_path, root):
         raise ValueError(
             "SusVibes dataset is outside the pinned checkout"
@@ -638,6 +696,11 @@ def load_ready_susvibes_agent_preflight(
             allowed_root=runner.parent,
         ),
     }
+    if report_schema == SUSVIBES_PREFLIGHT_SCHEMA_VERSION:
+        expected_binding.update({
+            "feedback_mode": normalized_feedback_mode,
+            "max_stop_blocks": normalized_max_stop_blocks,
+        })
     binding = payload.get("binding")
     if not isinstance(binding, Mapping):
         raise ValueError("SusVibes preflight binding is missing")
@@ -681,6 +744,8 @@ def load_ready_susvibes_agent_preflight(
         "start_index": int(start_index),
         "num_instances": int(num_instances),
         "selected_instance_ids_sha256": _instance_ids_digest(execution_ids),
+        "feedback_mode": normalized_feedback_mode,
+        "max_stop_blocks": normalized_max_stop_blocks,
     }
 
 

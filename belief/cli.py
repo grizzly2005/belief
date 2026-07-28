@@ -924,6 +924,9 @@ def cmd_benchmark(args):
                 getattr(args, "experiment_manifest", "") or ""
             )
             cohort = str(getattr(args, "cohort", "") or "")
+            holdout_attestation = str(
+                getattr(args, "holdout_attestation", "") or ""
+            )
             if bool(experiment_manifest) != bool(cohort):
                 raise ValueError(
                     "--experiment-manifest and --cohort must be used together"
@@ -935,6 +938,15 @@ def cmd_benchmark(args):
                 raise ValueError(
                     "--experiment-manifest and --cohort are supported only "
                     "with susvibes_candidate_review_v1"
+                )
+            if cohort == "holdout" and not holdout_attestation:
+                raise ValueError(
+                    "--cohort holdout requires --holdout-attestation"
+                )
+            if holdout_attestation and cohort != "holdout":
+                raise ValueError(
+                    "--holdout-attestation is valid only with "
+                    "--cohort holdout"
                 )
             if mode == REPORTABILITY_MODE:
                 target = args.reportability_target or "benchmark_reportability"
@@ -1032,9 +1044,44 @@ def cmd_benchmark(args):
                     for item in str(value).split(",")
                     if item.strip()
                 )
+                max_cases = int(getattr(args, "max_cases", 0))
+                if experiment_manifest and (only_cwes or max_cases):
+                    raise ValueError(
+                        "frozen experiment cohorts cannot be combined "
+                        "with --only-cwe or --max-cases"
+                    )
                 instance_ids: tuple[str, ...] = ()
                 selection_provenance: dict[str, str] | None = None
                 if experiment_manifest:
+                    attestation_provenance: dict[str, str] = {}
+                    if cohort == "holdout":
+                        from .generalization.holdout_attestation import (
+                            authorize_holdout_execution,
+                        )
+
+                        repository = Path(__file__).resolve().parents[1]
+                        attestation_provenance = (
+                            authorize_holdout_execution(
+                                holdout_attestation,
+                                repository=repository,
+                                repository_cache=repository_cache,
+                                dataset=target,
+                                manifest=experiment_manifest,
+                                protocol=(
+                                    repository
+                                    / "docs"
+                                    / "GENERALIZATION_PROTOCOL.md"
+                                ),
+                                output=args.json_output,
+                                reviewer_semantic_mode=str(
+                                    getattr(
+                                        args,
+                                        "candidate_semantic_mode",
+                                        "summaries",
+                                    )
+                                ),
+                            )
+                        )
                     loaded_ids, selection_provenance = (
                         load_experiment_cohort(
                             experiment_manifest,
@@ -1043,14 +1090,26 @@ def cmd_benchmark(args):
                         )
                     )
                     instance_ids = tuple(loaded_ids)
+                    if attestation_provenance:
+                        selection_provenance = {
+                            **(selection_provenance or {}),
+                            **attestation_provenance,
+                        }
                 payload = write_susvibes_candidate_review_json(
                     target,
                     repository_cache,
                     args.json_output,
                     only_cwes=only_cwes,
-                    max_cases=int(getattr(args, "max_cases", 0)),
+                    max_cases=max_cases,
                     instance_ids=instance_ids,
                     selection_provenance=selection_provenance,
+                    reviewer_semantic_mode=str(
+                        getattr(
+                            args,
+                            "candidate_semantic_mode",
+                            "summaries",
+                        )
+                    ),
                 )
             else:
                 raise ValueError(f"unsupported benchmark mode: {mode}")
@@ -1109,6 +1168,7 @@ def cmd_review_patch(args):
             patch,
             include_tests=bool(args.include_tests),
             max_files=int(args.max_files),
+            semantic_mode=str(args.semantic_mode),
         )
         if args.json_output:
             output = Path(args.json_output)
@@ -1718,6 +1778,45 @@ def cmd_reason(args):
     }, indent=2, sort_keys=True))
 
 
+def cmd_validate_plan(args):
+    """Execute exact validation plans against explicit local fixtures."""
+
+    from .validation.local_cli import validate_plan_files
+
+    try:
+        payload = validate_plan_files(
+            plan_path=args.plan,
+            fixture_path=args.fixture,
+            output_path=args.output,
+        )
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        ValueError,
+    ) as exc:
+        safe_print(
+            f"ERROR: local validation failed: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    metrics = payload["metrics"]
+    safe_print(json.dumps({
+        "schema_version": payload["schema_version"],
+        "output": str(Path(args.output).resolve()),
+        "plan_count": metrics["plan_count"],
+        "executed_plan_count": metrics["executed_plan_count"],
+        "enforced_count": metrics["enforced_count"],
+        "bypassed_count": metrics["bypassed_count"],
+        "inconclusive_count": metrics["inconclusive_count"],
+        "false_positive_count": metrics["false_positive_count"],
+        "deterministic_digest": payload["deterministic_digest"],
+    }, indent=2, sort_keys=True))
+    if args.fail_on_bypass and metrics["bypassed_count"]:
+        sys.exit(1)
+
+
 def main():
     parser = SafeArgumentParser(
         prog="belief",
@@ -1913,6 +2012,22 @@ def main():
         help="Maximum changed Python files accepted",
     )
     p_review_patch.add_argument(
+        "--semantic-mode",
+        choices=[
+            "off",
+            "summaries",
+            "flow_states",
+            "evidence_graph",
+            "full",
+        ],
+        default="summaries",
+        help=(
+            "Semantic review layer: diagnostics off, function summaries, "
+            "flow-state verdicts, evidence-graph ablation, or the full "
+            "summary-aware evidence graph"
+        ),
+    )
+    p_review_patch.add_argument(
         "--include-tests",
         action="store_true",
         help="Include changed Python test files in review",
@@ -2019,6 +2134,26 @@ def main():
         help="Frozen experiment cohort selected from --experiment-manifest",
     )
     p_bench_reportability.add_argument(
+        "--candidate-semantic-mode",
+        choices=[
+            "off",
+            "summaries",
+            "flow_states",
+            "evidence_graph",
+            "full",
+        ],
+        default="summaries",
+        help="Semantic layer used by susvibes_candidate_review_v1",
+    )
+    p_bench_reportability.add_argument(
+        "--holdout-attestation",
+        default="",
+        help=(
+            "Ready create-only attestation required before the frozen "
+            "holdout cohort can be loaded"
+        ),
+    )
+    p_bench_reportability.add_argument(
         "--json-output",
         required=True,
         help="Write full benchmark JSON to this path",
@@ -2065,6 +2200,32 @@ def main():
     p_reason.add_argument("--audit", required=True, help="Input BELIEF audit/report JSON")
     p_reason.add_argument("--engine", default="offline", choices=["offline"], help="Reasoning engine")
     p_reason.add_argument("--output", required=True, help="Output reasoned audit JSON")
+
+    # local validation execution
+    p_validate_plan = sub.add_parser(
+        "validate-plan",
+        help="Run canonical validation plans against explicit local fixtures",
+    )
+    p_validate_plan.add_argument(
+        "--plan",
+        required=True,
+        help="Canonical belief.validation_plan_bundle.v1 JSON",
+    )
+    p_validate_plan.add_argument(
+        "--fixture",
+        required=True,
+        help="Explicit belief.validation_fixture_bundle.v1 JSON",
+    )
+    p_validate_plan.add_argument(
+        "--output",
+        required=True,
+        help="New create-only local validation-result JSON",
+    )
+    p_validate_plan.add_argument(
+        "--fail-on-bypass",
+        action="store_true",
+        help="Exit 1 when a local oracle reports a bypass",
+    )
 
     # tools
     p_tools = sub.add_parser("tools", help="List, check, run, and import tool bridge results")
@@ -2206,6 +2367,7 @@ def main():
         "report": cmd_report,
         "cognitive": cmd_cognitive,
         "reason": cmd_reason,
+        "validate-plan": cmd_validate_plan,
         "tools": cmd_tools,
         "plan": cmd_plan,
         "execute-plan": cmd_execute_plan,

@@ -1,6 +1,14 @@
 """Offline benchmark helpers for BELIEF."""
 
 from .metrics import compute_confusion_matrix, summarize_reportability_metrics
+from .patcheval_experiment import (
+    PATCHEVAL_EXPERIMENT_ALGORITHM,
+    PATCHEVAL_EXPERIMENT_SCHEMA_VERSION,
+    build_patcheval_experiment_manifest,
+    load_patcheval_development_cohort,
+    validate_patcheval_experiment_manifest,
+    write_patcheval_experiment_manifest,
+)
 from .reportability import (
     REPORTABILITY_BENCHMARK_SCHEMA_VERSION,
     REPORTABILITY_MODE,
@@ -27,11 +35,18 @@ from .susvibes import (
     load_susvibes_cases,
     write_susvibes_paired_benchmark_json,
 )
+from .susvibes_paired_smoke import (
+    SUSVIBES_PAIRED_SMOKE_SCHEMA_VERSION,
+    build_susvibes_paired_smoke_preregistration,
+    write_susvibes_paired_smoke_preregistration,
+)
 
 __all__ = [
     "REPORTABILITY_BENCHMARK_SCHEMA_VERSION",
     "REPORTABILITY_MODE",
     "VALID_EXPECTED_VERDICTS",
+    "PATCHEVAL_EXPERIMENT_ALGORITHM",
+    "PATCHEVAL_EXPERIMENT_SCHEMA_VERSION",
     "DEFAULT_STATIC_ANALYSIS_THRESHOLDS",
     "STATIC_ANALYSIS_BENCHMARK_SCHEMA_VERSION",
     "STATIC_ANALYSIS_MODE",
@@ -39,16 +54,23 @@ __all__ = [
     "DEFAULT_SUSVIBES_THRESHOLDS",
     "SUSVIBES_PAIRED_MODE",
     "SUSVIBES_PAIRED_SCHEMA_VERSION",
+    "SUSVIBES_PAIRED_SMOKE_SCHEMA_VERSION",
     "SusVibesThresholds",
     "compute_confusion_matrix",
+    "build_patcheval_experiment_manifest",
+    "build_susvibes_paired_smoke_preregistration",
     "evaluate_reportability_benchmark",
     "evaluate_static_analysis_benchmark",
     "evaluate_susvibes_paired_benchmark",
     "load_benchmark_cases",
+    "load_patcheval_development_cohort",
     "load_static_analysis_cases",
     "load_static_analysis_thresholds",
     "load_susvibes_cases",
     "summarize_reportability_metrics",
+    "validate_patcheval_experiment_manifest",
+    "write_patcheval_experiment_manifest",
     "write_static_analysis_benchmark_json",
     "write_susvibes_paired_benchmark_json",
+    "write_susvibes_paired_smoke_preregistration",
 ]

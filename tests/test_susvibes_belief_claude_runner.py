@@ -25,6 +25,7 @@ from scripts.run_susvibes_belief_claude import (
     _parse_claude_cli_version,
     _sanitize_candidate_workspace,
     _summarize_agent_stream,
+    _summarize_belief_feedback,
     _validated_container_identifier,
     load_agent_tasks,
 )
@@ -192,6 +193,43 @@ def test_runner_dry_run_emits_hashed_sanitized_plan_only(tmp_path):
     assert not results.exists()
 
 
+def test_runner_dry_run_has_true_no_feedback_control_arm(tmp_path):
+    susvibes_root, _dataset = _fake_susvibes(tmp_path)
+    results = tmp_path / "baseline-results"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_susvibes_belief_claude.py",
+            "--susvibes-root",
+            str(susvibes_root),
+            "--results-dir",
+            str(results),
+            "--model",
+            "claude-fable-5",
+            "--feedback-mode",
+            "none",
+            "--max-stop-blocks",
+            "0",
+        ],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    plan = json.loads(completed.stdout)
+    assert plan["schema_version"] == "belief.susvibes_agent_plan.v3"
+    assert plan["mode"] == "claude_code_without_belief_feedback"
+    assert plan["feedback_mode"] == "none"
+    assert plan["max_stop_blocks"] == 0
+    assert plan["boundaries"]["belief_stop_hook_enabled"] is False
+    assert not results.exists()
+
+
 def test_claude_command_pins_model_and_disables_fallback_surfaces():
     command = _build_claude_command(
         prompt="Fix the local task safely.",
@@ -217,7 +255,11 @@ def test_agent_stream_records_model_refusal_and_same_model_retries():
         b'{"type":"assistant","message":{"model":"claude-fable-5",'
         b'"stop_reason":null}}\n'
         b'{"type":"result","subtype":"success","is_error":false,'
-        b'"stop_reason":"refusal","stop_details":{"category":"cyber"}}\n'
+        b'"stop_reason":"refusal","stop_details":{"category":"cyber"},'
+        b'"total_cost_usd":0.125,"duration_ms":1200,'
+        b'"duration_api_ms":900,"num_turns":2,'
+        b'"usage":{"input_tokens":100,"output_tokens":25,'
+        b'"cache_read_input_tokens":50}}\n'
     )
 
     metadata = _summarize_agent_stream(stream)
@@ -233,6 +275,18 @@ def test_agent_stream_records_model_refusal_and_same_model_retries():
         "result_event_count": 1,
         "result_subtypes_observed": ["success"],
         "result_error_observed": False,
+        "result_accounting": {
+            "total_cost_usd": 0.125,
+            "duration_ms": 1200,
+            "duration_api_ms": 900,
+            "num_turns": 2,
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 25,
+                "cache_read_input_tokens": 50,
+            },
+            "invalid_fields": [],
+        },
     }
     assert _model_identity_status(
         "claude-fable-5",
@@ -243,6 +297,40 @@ def test_agent_stream_records_model_refusal_and_same_model_retries():
         "claude-fable-5",
         ["claude-sonnet-5"],
     ) == "mismatch"
+
+
+def test_belief_feedback_summary_records_actual_blocks(tmp_path):
+    reports = tmp_path / "reports" / "session"
+    state = tmp_path / "state"
+    reports.mkdir(parents=True)
+    state.mkdir()
+    (reports / "review-00.json").write_text(
+        '{"status":"failed"}\n',
+        encoding="utf-8",
+    )
+    (state / "session.json").write_text(
+        json.dumps({
+            "block_count": 1,
+            "status": "blocked_for_repair",
+        }),
+        encoding="utf-8",
+    )
+
+    summary = _summarize_belief_feedback(
+        tmp_path / "reports",
+        state,
+        configured_max_blocks=1,
+    )
+
+    assert summary == {
+        "enabled": True,
+        "configured_max_blocks": 1,
+        "review_count": 1,
+        "state_count": 1,
+        "feedback_block_count": 1,
+        "feedback_delivered": True,
+        "terminal_statuses": ["blocked_for_repair"],
+    }
 
 
 def test_claude_cli_version_probe_is_exact():
@@ -466,8 +554,28 @@ def test_execute_requires_and_records_matching_ready_preflight(
             "agent_stream": {
                 "model_refusal_observed": False,
                 "api_retry_event_count": 0,
+                "result_accounting": {
+                    "total_cost_usd": 0.1,
+                    "duration_ms": 1000,
+                    "duration_api_ms": 800,
+                    "num_turns": 1,
+                    "usage": {
+                        "input_tokens": 100,
+                        "output_tokens": 20,
+                    },
+                    "invalid_fields": [],
+                },
             },
             "policy_violation_suspected": False,
+            "belief_feedback": {
+                "enabled": True,
+                "configured_max_blocks": 1,
+                "review_count": 1,
+                "state_count": 1,
+                "feedback_block_count": 0,
+                "feedback_delivered": False,
+                "terminal_statuses": ["passed"],
+            },
             "prediction": {
                 "instance_id": task["instance_id"],
                 "model_name_or_path": "belief-test",

@@ -101,6 +101,18 @@ def test_hook_settings_cover_stop_and_patch_recovery_tools():
     assert stop["timeout"] == 60
 
 
+def test_hook_settings_can_preserve_policy_without_belief_feedback():
+    settings = build_claude_hook_settings(
+        "/opt/belief/scripts/belief_claude_hook.py",
+        include_stop_hook=False,
+    )
+
+    assert set(settings["hooks"]) == {"PreToolUse"}
+    policy = settings["hooks"]["PreToolUse"][0]
+    assert policy["matcher"] == "Bash|WebFetch|WebSearch"
+    assert policy["hooks"][0]["type"] == "command"
+
+
 def test_stop_hook_blocks_once_and_supplies_repair_feedback(tmp_path):
     workspace, target = _workspace(tmp_path)
     target.write_text(VULNERABLE_SOURCE, encoding="utf-8")

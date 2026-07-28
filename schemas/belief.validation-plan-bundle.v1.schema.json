@@ -1,0 +1,396 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/grizzly2005/belief/schemas/belief.validation-plan-bundle.v1.schema.json",
+  "title": "BELIEF evidence-guided validation-plan bundle v1",
+  "description": "Deterministic, non-executing validation plans derived from BELIEF audit cases.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_audit",
+    "execution_boundary",
+    "result_schema_version",
+    "plan_count",
+    "counts",
+    "plans",
+    "deterministic_digest"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "belief.validation_plan_bundle.v1"
+    },
+    "source_audit": {
+      "$ref": "#/$defs/sourceAudit"
+    },
+    "execution_boundary": {
+      "$ref": "#/$defs/executionBoundary"
+    },
+    "result_schema_version": {
+      "const": "belief.validation_result.v1"
+    },
+    "plan_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "counts": {
+      "$ref": "#/$defs/counts"
+    },
+    "plans": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/validationPlan"
+      }
+    },
+    "deterministic_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "target",
+        "sha256",
+        "audit_case_count"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "audit_case_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "executionBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "offline_generation",
+        "executes_target",
+        "network_required",
+        "confirms_vulnerability",
+        "requires_human_or_harness_result"
+      ],
+      "properties": {
+        "offline_generation": {
+          "const": true
+        },
+        "executes_target": {
+          "const": false
+        },
+        "network_required": {
+          "const": false
+        },
+        "confirms_vulnerability": {
+          "const": false
+        },
+        "requires_human_or_harness_result": {
+          "const": true
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "by_strategy",
+        "by_case_status"
+      ],
+      "properties": {
+        "by_strategy": {
+          "$ref": "#/$defs/stringCounts"
+        },
+        "by_case_status": {
+          "$ref": "#/$defs/stringCounts"
+        }
+      }
+    },
+    "stringCounts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "validationPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "plan_id",
+        "subject_id",
+        "subject_kind",
+        "case_type",
+        "case_status",
+        "strategy",
+        "objective",
+        "priority",
+        "target",
+        "evidence_gaps",
+        "prerequisites",
+        "stimuli",
+        "oracles",
+        "reachability_hints",
+        "stop_conditions",
+        "safety",
+        "result_contract",
+        "metadata"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "belief.validation_plan.v1"
+        },
+        "plan_id": {
+          "type": "string",
+          "pattern": "^vp_[0-9a-f]{16}$"
+        },
+        "subject_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject_kind": {
+          "const": "audit_case"
+        },
+        "case_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "strategy": {
+          "enum": [
+            "argument_boundary_differential",
+            "contextual_output_encoding",
+            "defensive_regression",
+            "manual_evidence_collection",
+            "mocked_network_policy_differential",
+            "property_guided_path_boundary",
+            "query_parameterization_differential",
+            "safe_deserialization_policy",
+            "secret_provenance_verification",
+            "stateful_authorization_differential"
+          ]
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1
+        },
+        "priority": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ]
+        },
+        "target": {
+          "type": "object"
+        },
+        "evidence_gaps": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "prerequisites": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "stimuli": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stimulus"
+          }
+        },
+        "oracles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/oracle"
+          }
+        },
+        "reachability_hints": {
+          "type": "object"
+        },
+        "stop_conditions": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "safety": {
+          "$ref": "#/$defs/safety"
+        },
+        "result_contract": {
+          "$ref": "#/$defs/resultContract"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "nonEmptyStringArray": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "stimulus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "description"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value_hint": {
+          "type": "string"
+        },
+        "transformations": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "expected",
+        "failure_signal",
+        "evidence_to_capture"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failure_signal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_to_capture": {
+          "$ref": "#/$defs/nonEmptyStringArray"
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorized_scope_required",
+        "network_mode",
+        "destructive_actions_allowed",
+        "production_data_allowed",
+        "real_secrets_allowed",
+        "payload_policy",
+        "automatic_scope_expansion"
+      ],
+      "properties": {
+        "authorized_scope_required": {
+          "const": true
+        },
+        "network_mode": {
+          "enum": [
+            "forbidden",
+            "mocked_only"
+          ]
+        },
+        "destructive_actions_allowed": {
+          "const": false
+        },
+        "production_data_allowed": {
+          "const": false
+        },
+        "real_secrets_allowed": {
+          "const": false
+        },
+        "payload_policy": {
+          "const": "benign_markers_only"
+        },
+        "automatic_scope_expansion": {
+          "const": false
+        }
+      }
+    },
+    "resultContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "subject_id",
+        "subject_kind",
+        "required_metadata",
+        "allowed_outcomes"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "belief.validation_result.v1"
+        },
+        "subject_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject_kind": {
+          "const": "audit_case"
+        },
+        "required_metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "validation_plan_id"
+          ],
+          "properties": {
+            "validation_plan_id": {
+              "type": "string",
+              "pattern": "^vp_[0-9a-f]{16}$"
+            }
+          }
+        },
+        "allowed_outcomes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "bypassed",
+              "validated_candidate",
+              "inconclusive",
+              "enforced",
+              "false_positive",
+              "informational",
+              "unknown"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

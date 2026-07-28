@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 from datetime import datetime, timezone
@@ -17,9 +18,16 @@ SUSVIBES_PREDICTION_MERGE_SCHEMA_VERSION = (
     "belief.susvibes_prediction_merge.v1"
 )
 
-_PLAN_SCHEMA = "belief.susvibes_agent_plan.v2"
-_RUN_SCHEMA = "belief.susvibes_agent_run.v2"
-_RESULT_SCHEMA = "belief.susvibes_agent_result.v2"
+_SCHEMA_FAMILIES = {
+    "belief.susvibes_agent_plan.v2": (
+        "belief.susvibes_agent_run.v2",
+        "belief.susvibes_agent_result.v2",
+    ),
+    "belief.susvibes_agent_plan.v3": (
+        "belief.susvibes_agent_run.v3",
+        "belief.susvibes_agent_result.v3",
+    ),
+}
 _PREDICTION_FIELDS = frozenset({
     "instance_id",
     "model_name_or_path",
@@ -29,6 +37,12 @@ _INSTANCE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _MAX_PREDICTIONS_BYTES = 512 * 1024 * 1024
 _MAX_PATCH_BYTES = 10 * 1024 * 1024
+_ACCOUNTING_USAGE_FIELDS = frozenset({
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+})
 
 
 def write_merged_susvibes_predictions(
@@ -88,6 +102,7 @@ def write_merged_susvibes_predictions(
         "model",
         "model_name_or_path",
         "claude_code_version",
+        "feedback_mode",
         "max_stop_blocks",
     )
     baseline = batch_payloads[0]
@@ -154,6 +169,48 @@ def write_merged_susvibes_predictions(
         batch["api_retry_event_count"]
         for batch in batch_payloads
     )
+    feedback_reviews = sum(
+        batch["belief_feedback_review_count"]
+        for batch in batch_payloads
+    )
+    feedback_blocks = sum(
+        batch["belief_feedback_block_count"]
+        for batch in batch_payloads
+    )
+    feedback_runs = sum(
+        batch["belief_feedback_delivered_runs"]
+        for batch in batch_payloads
+    )
+    merged_accounting = {
+        "reported_total_cost_usd": round(sum(
+            batch["accounting"]["reported_total_cost_usd"]
+            for batch in batch_payloads
+        ), 12),
+        "cost_reported_task_count": sum(
+            batch["accounting"]["cost_reported_task_count"]
+            for batch in batch_payloads
+        ),
+        "input_tokens": sum(
+            batch["accounting"]["input_tokens"]
+            for batch in batch_payloads
+        ),
+        "output_tokens": sum(
+            batch["accounting"]["output_tokens"]
+            for batch in batch_payloads
+        ),
+        "cache_creation_input_tokens": sum(
+            batch["accounting"]["cache_creation_input_tokens"]
+            for batch in batch_payloads
+        ),
+        "cache_read_input_tokens": sum(
+            batch["accounting"]["cache_read_input_tokens"]
+            for batch in batch_payloads
+        ),
+        "invalid_accounting_task_count": sum(
+            batch["accounting"]["invalid_accounting_task_count"]
+            for batch in batch_payloads
+        ),
+    }
     payload: dict[str, Any] = {
         "schema_version": SUSVIBES_PREDICTION_MERGE_SCHEMA_VERSION,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -169,6 +226,7 @@ def write_merged_susvibes_predictions(
             field: baseline[field]
             for field in consistency_fields
         },
+        "accounting": merged_accounting,
         "coverage": {
             "required_complete": bool(require_complete),
             "observed_case_count": len(ordered_records),
@@ -182,6 +240,9 @@ def write_merged_susvibes_predictions(
             "model_identity_verified_run_count": verified_model_runs,
             "model_refusal_observed_count": refusals,
             "api_retry_event_count": api_retries,
+            "belief_feedback_review_count": feedback_reviews,
+            "belief_feedback_block_count": feedback_blocks,
+            "belief_feedback_delivered_run_count": feedback_runs,
             "automatic_model_fallback_configured": False,
             "policy_violation_suspected_count": suspected,
             "anti_cheating_adjudication_required": suspected > 0,
@@ -261,10 +322,14 @@ def _load_batch_run(
         allowed_root=run_dir,
         artifact_name="BELIEF run summary",
     )
-    if plan.get("schema_version") != _PLAN_SCHEMA:
+    plan_schema = str(plan.get("schema_version") or "")
+    schema_family = _SCHEMA_FAMILIES.get(plan_schema)
+    if schema_family is None:
         raise ValueError(f"unsupported BELIEF plan schema: {run_dir}")
-    if summary.get("schema_version") != _RUN_SCHEMA:
+    expected_run_schema, expected_result_schema = schema_family
+    if summary.get("schema_version") != expected_run_schema:
         raise ValueError(f"unsupported BELIEF run summary schema: {run_dir}")
+    explicit_feedback_schema = plan_schema.endswith(".v3")
     if Path(str(plan.get("results_dir") or "")).resolve() != run_dir:
         raise ValueError(f"BELIEF plan results directory mismatch: {run_dir}")
     if plan.get("dataset_sha256") != selection["dataset_sha256"]:
@@ -321,6 +386,11 @@ def _load_batch_run(
         "session_persistence_enabled": False,
         "automatic_model_fallback_configured": False,
     }
+    if explicit_feedback_schema:
+        feedback_mode = str(plan.get("feedback_mode") or "")
+        required_boundaries["belief_stop_hook_enabled"] = (
+            feedback_mode == "belief"
+        )
     if not isinstance(boundaries, Mapping) or any(
         boundaries.get(key) is not value
         for key, value in required_boundaries.items()
@@ -423,8 +493,75 @@ def _load_batch_run(
     model = str(plan.get("model") or "")
     claude_version = str(plan.get("claude_code_version") or "")
     max_stop_blocks = _integer(plan, "max_stop_blocks")
-    if not 0 <= max_stop_blocks <= 3:
+    feedback_mode = (
+        str(plan.get("feedback_mode") or "")
+        if explicit_feedback_schema
+        else "belief"
+    )
+    feedback_configuration_valid = (
+        (
+            feedback_mode == "none"
+            and max_stop_blocks == 0
+        )
+        or (
+            feedback_mode == "belief"
+            and (
+                1 <= max_stop_blocks <= 3
+                or (
+                    not explicit_feedback_schema
+                    and max_stop_blocks == 0
+                )
+            )
+        )
+    )
+    if not feedback_configuration_valid:
         raise ValueError(f"BELIEF feedback budget is invalid: {run_dir}")
+    if explicit_feedback_schema:
+        expected_mode = (
+            "claude_code_without_belief_feedback"
+            if feedback_mode == "none"
+            else "claude_code_with_belief_stop_hook"
+        )
+        if plan.get("mode") != expected_mode:
+            raise ValueError(f"BELIEF feedback mode is invalid: {run_dir}")
+        if (
+            summary.get("feedback_mode") != feedback_mode
+            or _integer(summary, "max_stop_blocks") != max_stop_blocks
+        ):
+            raise ValueError(
+                f"BELIEF summary feedback settings mismatch: {run_dir}"
+            )
+        if (
+            preflight.get("feedback_mode") != feedback_mode
+            or _integer(preflight, "max_stop_blocks") != max_stop_blocks
+        ):
+            raise ValueError(
+                f"BELIEF preflight feedback settings mismatch: {run_dir}"
+            )
+        summary_feedback_reviews = _integer(
+            summary,
+            "belief_feedback_review_count",
+        )
+        summary_feedback_blocks = _integer(
+            summary,
+            "belief_feedback_block_count",
+        )
+        summary_feedback_runs = _integer(
+            summary,
+            "belief_feedback_delivered_runs",
+        )
+        if (
+            summary_feedback_reviews < 0
+            or summary_feedback_blocks < 0
+            or not 0 <= summary_feedback_runs <= len(task_ids)
+        ):
+            raise ValueError(
+                f"BELIEF summary feedback telemetry is invalid: {run_dir}"
+            )
+    else:
+        summary_feedback_reviews = 0
+        summary_feedback_blocks = 0
+        summary_feedback_runs = 0
     model_selection = plan.get("model_selection")
     if model_selection != {
         "requested_model": model,
@@ -432,7 +569,11 @@ def _load_batch_run(
         "automatic_fallback_configured": False,
     }:
         raise ValueError(f"BELIEF model selection is invalid: {run_dir}")
-    expected_model_path = f"belief-claude-hook/{model}"
+    expected_model_path = (
+        f"claude-code-baseline/{model}"
+        if feedback_mode == "none"
+        else f"belief-claude-hook/{model}"
+    )
     if not model or any(
         record["model_name_or_path"] != expected_model_path
         for record in records
@@ -443,6 +584,16 @@ def _load_batch_run(
     observed_refusals = 0
     observed_retries = 0
     observed_suspected = 0
+    observed_feedback_reviews = 0
+    observed_feedback_blocks = 0
+    observed_feedback_runs = 0
+    observed_cost = 0.0
+    observed_cost_count = 0
+    observed_input_tokens = 0
+    observed_output_tokens = 0
+    observed_cache_creation_tokens = 0
+    observed_cache_read_tokens = 0
+    observed_invalid_accounting = 0
     for task_id, record in zip(task_ids, records):
         result_path = _safe_child(run_dir, task_id) / "result.json"
         result = _read_json_object(
@@ -450,12 +601,29 @@ def _load_batch_run(
             allowed_root=run_dir,
             artifact_name="BELIEF task result",
         )
-        if result.get("schema_version") != _RESULT_SCHEMA:
+        if result.get("schema_version") != expected_result_schema:
             raise ValueError(f"unsupported BELIEF task result: {task_id}")
         if result.get("instance_id") != task_id:
             raise ValueError(f"BELIEF task result ID mismatch: {task_id}")
         if result.get("model") != model:
             raise ValueError(f"BELIEF task result model mismatch: {task_id}")
+        if explicit_feedback_schema and (
+            result.get("feedback_mode") != feedback_mode
+            or _integer(result, "max_stop_blocks") != max_stop_blocks
+        ):
+            raise ValueError(
+                f"BELIEF task feedback settings mismatch: {task_id}"
+            )
+        if explicit_feedback_schema:
+            feedback_counts = _validate_belief_feedback_telemetry(
+                result.get("belief_feedback"),
+                feedback_mode=feedback_mode,
+                max_stop_blocks=max_stop_blocks,
+                task_id=task_id,
+            )
+            observed_feedback_reviews += feedback_counts[0]
+            observed_feedback_blocks += feedback_counts[1]
+            observed_feedback_runs += feedback_counts[2]
         if result.get("model_identity_status") != "matched":
             raise ValueError(
                 f"BELIEF task model identity is unverified: {task_id}"
@@ -498,12 +666,34 @@ def _load_batch_run(
             "result_subtypes_observed",
             "result_error_observed",
         }
+        if explicit_feedback_schema:
+            expected_stream_fields.add("result_accounting")
         if not isinstance(stream, Mapping) or set(stream) != (
             expected_stream_fields
         ):
             raise ValueError(
                 f"BELIEF task stream metadata is invalid: {task_id}"
             )
+        if explicit_feedback_schema:
+            accounting_values = _validate_result_accounting(
+                stream.get("result_accounting"),
+                task_id=task_id,
+            )
+            observed_cost += accounting_values["reported_total_cost_usd"]
+            observed_cost_count += accounting_values[
+                "cost_reported_task_count"
+            ]
+            observed_input_tokens += accounting_values["input_tokens"]
+            observed_output_tokens += accounting_values["output_tokens"]
+            observed_cache_creation_tokens += accounting_values[
+                "cache_creation_input_tokens"
+            ]
+            observed_cache_read_tokens += accounting_values[
+                "cache_read_input_tokens"
+            ]
+            observed_invalid_accounting += accounting_values[
+                "invalid_accounting_task_count"
+            ]
         valid_events = _integer(stream, "valid_json_event_count")
         invalid_lines = _integer(stream, "invalid_json_line_count")
         task_retries = _integer(stream, "api_retry_event_count")
@@ -590,6 +780,32 @@ def _load_batch_run(
         raise ValueError(f"BELIEF API retry count mismatch: {run_dir}")
     if suspected != observed_suspected:
         raise ValueError(f"BELIEF suspected policy count mismatch: {run_dir}")
+    if (
+        summary_feedback_reviews != observed_feedback_reviews
+        or summary_feedback_blocks != observed_feedback_blocks
+        or summary_feedback_runs != observed_feedback_runs
+    ):
+        raise ValueError(
+            f"BELIEF feedback telemetry count mismatch: {run_dir}"
+        )
+    observed_accounting = {
+        "reported_total_cost_usd": round(observed_cost, 12),
+        "cost_reported_task_count": observed_cost_count,
+        "input_tokens": observed_input_tokens,
+        "output_tokens": observed_output_tokens,
+        "cache_creation_input_tokens": observed_cache_creation_tokens,
+        "cache_read_input_tokens": observed_cache_read_tokens,
+        "invalid_accounting_task_count": observed_invalid_accounting,
+    }
+    if explicit_feedback_schema:
+        summary_accounting = summary.get("accounting")
+        if (
+            not isinstance(summary_accounting, Mapping)
+            or dict(summary_accounting) != observed_accounting
+        ):
+            raise ValueError(
+                f"BELIEF accounting summary mismatch: {run_dir}"
+            )
 
     return {
         "run_dir": str(run_dir),
@@ -610,15 +826,158 @@ def _load_batch_run(
         "model_identity_verified_runs": identity_verified,
         "model_refusal_observed_count": refusal_count,
         "api_retry_event_count": retry_count,
+        "belief_feedback_review_count": observed_feedback_reviews,
+        "belief_feedback_block_count": observed_feedback_blocks,
+        "belief_feedback_delivered_runs": observed_feedback_runs,
+        "accounting": observed_accounting,
         "policy_violation_suspected_count": suspected,
         "instance_ids_sha256": _instance_ids_digest(task_ids),
         "model": model,
         "model_name_or_path": expected_model_path,
         "claude_code_version": claude_version,
+        "feedback_mode": feedback_mode,
         "max_stop_blocks": max_stop_blocks,
         "preflight_report_sha256": str(preflight["report_sha256"]),
         "preflight_report_digest": str(preflight["report_digest"]),
         "predictions": records,
+    }
+
+
+def _validate_belief_feedback_telemetry(
+    payload: Any,
+    *,
+    feedback_mode: str,
+    max_stop_blocks: int,
+    task_id: str,
+) -> tuple[int, int, int]:
+    expected_fields = {
+        "enabled",
+        "configured_max_blocks",
+        "review_count",
+        "state_count",
+        "feedback_block_count",
+        "feedback_delivered",
+        "terminal_statuses",
+    }
+    if not isinstance(payload, Mapping) or set(payload) != expected_fields:
+        raise ValueError(
+            f"BELIEF task feedback telemetry is invalid: {task_id}"
+        )
+    enabled = payload.get("enabled")
+    if enabled is not (feedback_mode == "belief"):
+        raise ValueError(
+            f"BELIEF task feedback enablement mismatch: {task_id}"
+        )
+    if _integer(payload, "configured_max_blocks") != max_stop_blocks:
+        raise ValueError(
+            f"BELIEF task feedback budget mismatch: {task_id}"
+        )
+    reviews = _integer(payload, "review_count")
+    states = _integer(payload, "state_count")
+    blocks = _integer(payload, "feedback_block_count")
+    delivered = payload.get("feedback_delivered")
+    statuses = payload.get("terminal_statuses")
+    if (
+        reviews < 0
+        or states < 0
+        or blocks < 0
+        or blocks > max_stop_blocks * states
+        or not isinstance(delivered, bool)
+        or delivered is not (blocks > 0)
+        or not isinstance(statuses, list)
+        or statuses != sorted(set(statuses))
+        or not all(
+            isinstance(status, str) and status
+            for status in statuses
+        )
+    ):
+        raise ValueError(
+            f"BELIEF task feedback telemetry is invalid: {task_id}"
+        )
+    if feedback_mode == "none" and (
+        reviews or states or blocks or statuses
+    ):
+        raise ValueError(
+            f"baseline task contains BELIEF feedback artifacts: {task_id}"
+        )
+    return reviews, blocks, int(delivered)
+
+
+def _validate_result_accounting(
+    payload: Any,
+    *,
+    task_id: str,
+) -> dict[str, Any]:
+    expected_fields = {
+        "total_cost_usd",
+        "duration_ms",
+        "duration_api_ms",
+        "num_turns",
+        "usage",
+        "invalid_fields",
+    }
+    if not isinstance(payload, Mapping) or set(payload) != expected_fields:
+        raise ValueError(
+            f"BELIEF task accounting metadata is invalid: {task_id}"
+        )
+    cost = payload.get("total_cost_usd")
+    if cost is not None and (
+        not isinstance(cost, (int, float))
+        or isinstance(cost, bool)
+        or not math.isfinite(float(cost))
+        or cost < 0
+    ):
+        raise ValueError(
+            f"BELIEF task reported cost is invalid: {task_id}"
+        )
+    for field in ("duration_ms", "duration_api_ms", "num_turns"):
+        value = payload.get(field)
+        if value is not None and (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+        ):
+            raise ValueError(
+                f"BELIEF task accounting {field} is invalid: {task_id}"
+            )
+    usage = payload.get("usage")
+    if (
+        not isinstance(usage, Mapping)
+        or not set(usage).issubset(_ACCOUNTING_USAGE_FIELDS)
+        or any(
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+            for value in usage.values()
+        )
+    ):
+        raise ValueError(
+            f"BELIEF task token accounting is invalid: {task_id}"
+        )
+    invalid_fields = payload.get("invalid_fields")
+    if (
+        not isinstance(invalid_fields, list)
+        or invalid_fields != sorted(set(invalid_fields))
+        or not all(
+            isinstance(field, str) and field
+            for field in invalid_fields
+        )
+    ):
+        raise ValueError(
+            f"BELIEF task accounting diagnostics are invalid: {task_id}"
+        )
+    return {
+        "reported_total_cost_usd": float(cost or 0.0),
+        "cost_reported_task_count": int(cost is not None),
+        "input_tokens": int(usage.get("input_tokens", 0)),
+        "output_tokens": int(usage.get("output_tokens", 0)),
+        "cache_creation_input_tokens": int(
+            usage.get("cache_creation_input_tokens", 0)
+        ),
+        "cache_read_input_tokens": int(
+            usage.get("cache_read_input_tokens", 0)
+        ),
+        "invalid_accounting_task_count": int(bool(invalid_fields)),
     }
 
 

@@ -87,6 +87,20 @@ This flow is local and deterministic. It does not call LLM APIs, model servers, 
 
 ---
 
+## Local MCP for Codex
+
+BELIEF includes an experimental, read-first local MCP facade:
+
+```bash
+python -m belief.mcp.server
+```
+
+It exposes status, confined static scans, `AuditCase` retrieval and explanation, non-executing validation-plan generation, run comparison, and the transparent local validation benchmark. Runs remain in memory. The MCP surface has no network, subprocess, shell, Docker, arbitrary adapter, target-write, dynamic-validation, or SusVibes holdout capability.
+
+See [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md) for the Codex configuration, resources, exact tool contracts, and security boundary.
+
+---
+
 ## PDX JSON Adapter
 
 BELIEF can passively import JSON-only PDX bundles as normalized tool results:
@@ -172,10 +186,13 @@ python -m belief review-patch `
 ```
 
 For an end-to-end `FuncPass` / `SecPass` experiment, the Claude Code adapter
-adds a bounded BELIEF Stop hook to the official SusVibes Docker harness. It is
-dry-run only unless a deterministic public experiment manifest and matching
-ready preflight report are provided together with both execution and network
-acknowledgement flags. The preflight never starts Docker or calls a model. See
+supports a true no-feedback control and a bounded BELIEF `Stop`-feedback arm
+inside the official SusVibes Docker harness. A create-only preregistration
+locks the same smoke tasks, model, CLI version, and arms `none/0` versus
+`belief/1`. Execution remains disabled unless a deterministic public
+experiment manifest and matching arm-specific ready preflight are provided
+together with both execution and network acknowledgement flags. Neither
+preregistration nor preflight starts Docker or calls a model. See
 [`benchmark_susvibes/AGENT_HARNESS.md`](benchmark_susvibes/AGENT_HARNESS.md).
 Official evaluator summaries can then be checked against the frozen cohort and
 compared across repeated runs with `scripts/score_susvibes_agent.py`; its
@@ -187,6 +204,34 @@ cannot silently use the same tasks.
 Completed batch directories are assembled with
 `scripts/merge_susvibes_predictions.py`, which verifies their ready-preflight
 binding and refuses duplicate, missing, mixed-model, or tampered results.
+
+The preregistered 49-case development experiment is now closed. The final
+full semantic variant was deterministic but failed its secure-false-positive
+and paired-discrimination gates, so the reserved cohort remains sealed. See
+[`docs/GENERALIZATION_RESULTS.md`](docs/GENERALIZATION_RESULTS.md) for the
+verified ablations, artifact hashes, limitations, and explicit non-comparability
+with SusVibes `SecPass`, Fable 5, or Kimi.
+
+The CLI now enforces that seal before it loads any holdout IDs:
+`--cohort holdout` requires a verified, external, create-only
+`belief.holdout_attestation.v1` plus `--candidate-semantic-mode full`. The
+attestation binds the clean freeze commit, BELIEF source, dataset, experiment
+manifest, prepared Git cache, Python dependency fingerprint, development
+artifacts, validation evidence, thresholds, and exactly two ordered output
+paths. Candidate-review and cache-manifest writers refuse overwrite. The
+current failed F result cannot produce a ready attestation; this mechanism is
+for a future preregistered experiment that first passes every development
+gate.
+
+Further reviewer development has moved to the separately preregistered,
+project-disjoint
+[`PatchEval-Verified protocol`](docs/PATCHEVAL_VERIFIED_PROTOCOL.md). Its
+source commit and split algorithm were frozen before local case inspection.
+PatchEval is an independent engineering corpus, not a substitute for the
+Agent Security League score. The static-corpus
+[`preflight result`](docs/PATCHEVAL_VERIFIED_RESULT.md) was negative: all 70
+Python records lacked the preregistered canonical-patch URL, so no threshold
+was relaxed and no static case was consumed.
 
 ---
 
@@ -509,6 +554,35 @@ python -m belief benchmark reportability \
   --json-output out/benchmark.json
 ```
 
+Build and execute explicit local validation fixtures:
+
+```bash
+python scripts/build_validation_plans.py \
+  --audit out/audit.json \
+  --output out/validation-plans.json
+
+belief validate-plan \
+  --plan out/validation-plans.json \
+  --fixture out/validation-fixtures.json \
+  --output out/validation-results.json
+```
+
+The built-in validation executors support only controlled path traversal and
+IDOR/BOLA fixtures. They never import a target repository, start a server,
+connect to a network, or launch a subprocess. Fixture configuration is
+explicit and outputs are create-only. A callable supplied through the Python
+`adapter_registry` API is a trusted, same-process extension: it is not
+isolated, and BELIEF does not attest its network, process, shell, Docker, or
+dynamic-import behavior. See
+[`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md).
+
+Run the separate eight-case local experiment:
+
+```bash
+python scripts/benchmark_local_validation.py \
+  --output out/local-validation-benchmark.json
+```
+
 Run the test suite:
 
 ```bash
@@ -521,13 +595,9 @@ python -m pytest -q -m "not slow and not external and not llm"
 
 ## Current Validation
 
-Current local regression baseline:
-
-- full suite: `637 passed, 31 skipped`;
-- security suite: `183 passed`;
-- non-slow / non-external / non-LLM suite: `637 passed, 31 skipped`.
-
-These numbers may change as the project evolves.
+The authoritative regression baseline is reported by the latest successful
+GitHub Actions CI run. Exact counts may vary by platform, Python version, and
+optional dependencies.
 
 `ruff check belief tests` covers first-party code and test fixtures. Bundled
 compatibility assets, third-party rule data, and real-world snippets are kept
@@ -564,7 +634,8 @@ See [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md) for the current asset inventory and
 - The SusVibes candidate-review score is oracle-separated static feedback discrimination, not official `SecPass`.
 - The agent harness produces a comparable score only after official functional and hidden security tests evaluate its predictions.
 - The reasoning engine is deterministic and local; it is not an LLM agent.
-- Dynamic validation is intentionally not enabled by default.
+- Local validation is opt-in and limited to explicit, trusted path traversal
+  and IDOR/BOLA fixtures; arbitrary applications are never auto-executed.
 - External tools are not vendored as full runtimes.
 - Manual validation in authorized scope remains required before any real-world claim.
 
@@ -620,6 +691,9 @@ belief/pdx/
 
 belief/validation/
   Generic validation result models and PDX verdict adaptation.
+
+belief/mcp/
+  Experimental local stdio MCP facade, public contracts, and read-first tools.
 
 belief/reasoning/
   Deterministic offline reasoning models, router, and rule-based engine.
@@ -688,6 +762,7 @@ pyproject.toml
 
 - [`docs/PDX_BELIEF_INTEGRATION.md`](docs/PDX_BELIEF_INTEGRATION.md)
 - [`docs/TOOL_BRIDGES.md`](docs/TOOL_BRIDGES.md)
+- [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md)
 - [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md)
 - [`benchmark_reportability/README.md`](benchmark_reportability/README.md)
 - [`benchmark_susvibes/README.md`](benchmark_susvibes/README.md)

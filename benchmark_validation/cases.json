@@ -1,0 +1,69 @@
+{
+  "schema_version": "belief.local_validation_benchmark_corpus.v1",
+  "cases": [
+    {
+      "adapter": "path_join_unchecked",
+      "benchmark_case_id": "path_vulnerable",
+      "case_type": "path_traversal_possible",
+      "ground_truth": "vulnerable",
+      "static_status": "needs_review",
+      "variant": "vulnerable"
+    },
+    {
+      "adapter": "path_resolve_enforced",
+      "benchmark_case_id": "path_protected",
+      "case_type": "path_traversal_possible",
+      "ground_truth": "safe",
+      "static_status": "protected",
+      "variant": "protected"
+    },
+    {
+      "adapter": "path_entrypoint_unavailable",
+      "benchmark_case_id": "path_ambiguous",
+      "case_type": "path_traversal_possible",
+      "ground_truth": "ambiguous",
+      "static_status": "needs_review",
+      "variant": "ambiguous"
+    },
+    {
+      "adapter": "path_resolve_enforced",
+      "benchmark_case_id": "path_trap",
+      "case_type": "path_traversal_possible",
+      "ground_truth": "safe",
+      "static_status": "needs_review",
+      "variant": "trap"
+    },
+    {
+      "adapter": "idor_authentication_only",
+      "benchmark_case_id": "idor_vulnerable",
+      "case_type": "idor_bola_possible",
+      "ground_truth": "vulnerable",
+      "static_status": "needs_review",
+      "variant": "vulnerable"
+    },
+    {
+      "adapter": "idor_owner_tenant_enforced",
+      "benchmark_case_id": "idor_protected",
+      "case_type": "idor_bola_possible",
+      "ground_truth": "safe",
+      "static_status": "protected",
+      "variant": "protected"
+    },
+    {
+      "adapter": "idor_entrypoint_unavailable",
+      "benchmark_case_id": "idor_ambiguous",
+      "case_type": "idor_bola_possible",
+      "ground_truth": "ambiguous",
+      "static_status": "needs_review",
+      "variant": "ambiguous"
+    },
+    {
+      "adapter": "idor_owner_tenant_enforced",
+      "benchmark_case_id": "idor_trap",
+      "case_type": "idor_bola_possible",
+      "ground_truth": "safe",
+      "static_status": "needs_review",
+      "variant": "trap"
+    }
+  ]
+}
