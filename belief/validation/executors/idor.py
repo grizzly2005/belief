@@ -16,6 +16,7 @@ from ..plan_models import ValidationPlan, clean_text
 from .base import (
     LocalValidationExecutor,
     ValidationEntrypointUnavailable,
+    baseline_verdict,
     conclusive_safe_outcome,
     resolved_runtime_gaps,
     stable_limitations,
@@ -305,13 +306,7 @@ class IDORValidationExecutor(LocalValidationExecutor):
             observations.extend(scenario_observations)
             limitations.extend(scenario_limitations)
 
-        baseline_observations = [
-            item for item in observations if item.baseline
-        ]
-        baseline_passed = bool(baseline_observations) and all(
-            item.oracle_evaluated and item.oracle_passed is True
-            for item in baseline_observations
-        )
+        baseline_passed = baseline_verdict(observations)
         security = [
             item for item in observations if not item.baseline
         ]

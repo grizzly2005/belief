@@ -17,7 +17,7 @@ from .runner import run_validation_plan_bundle
 
 
 LOCAL_VALIDATION_BENCHMARK_SCHEMA_VERSION = (
-    "belief.local_validation_benchmark.v1"
+    "belief.local_validation_benchmark.v2"
 )
 LOCAL_VALIDATION_BENCHMARK_CORPUS_SCHEMA_VERSION = (
     "belief.local_validation_benchmark_corpus.v1"
@@ -65,12 +65,17 @@ def run_local_validation_benchmark(
             ],
         },
         "boundaries": {
+            "execution_mode": "built_in_only",
+            "process_local_extension_used": False,
+            "io_usage_attested": True,
             "local_only": True,
             "susvibes_artifacts_opened": False,
             "reserved_holdout_opened": False,
             "network_used": False,
             "subprocess_used": False,
+            "shell_used": False,
             "docker_used": False,
+            "dynamic_import_used": False,
             "external_system_used": False,
             "secpass_claimed": False,
             "leaderboard_comparison_claimed": False,

@@ -8,7 +8,7 @@ from typing import Any
 from .models import ValidationResult
 
 
-VALIDATION_METRICS_SCHEMA_VERSION = "belief.validation_metrics.v1"
+VALIDATION_METRICS_SCHEMA_VERSION = "belief.validation_metrics.v2"
 
 
 def summarize_validation_results(
@@ -41,6 +41,22 @@ def summarize_validation_results(
         item.get("baseline_passed") is False
         for item in executed
     )
+    baseline_not_evaluated = sum(
+        item.get("baseline_passed") is None
+        for item in executed
+    )
+    oracle_counts = []
+    for item in summaries:
+        count = item.get("oracle_evaluated_count", 0)
+        if (
+            not isinstance(count, int)
+            or isinstance(count, bool)
+            or count < 0
+        ):
+            raise ValueError(
+                "validation result has an invalid evaluated-oracle count"
+            )
+        oracle_counts.append(count)
     return {
         "schema_version": VALIDATION_METRICS_SCHEMA_VERSION,
         "plan_count": len(results),
@@ -62,9 +78,10 @@ def summarize_validation_results(
         ),
         "baseline_pass_count": baseline_passes,
         "baseline_failure_count": baseline_failures,
-        "oracle_evaluated_count": sum(
-            int(item.get("oracle_evaluated_count", 0) > 0)
-            for item in summaries
+        "baseline_not_evaluated_count": baseline_not_evaluated,
+        "oracle_evaluated_count": sum(oracle_counts),
+        "plans_with_evaluated_oracle_count": sum(
+            count > 0 for count in oracle_counts
         ),
         "evidence_gap_resolution_rate": round(
             len(resolved) / len(executed),

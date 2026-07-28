@@ -244,7 +244,9 @@ threat model, CLI, metrics, complete artifact example, and limitations.
 
 Flask/FastAPI test-client adapters, recording database adapters, and isolated
 workers remain future work. No subprocess or mocked network adapter is enabled
-by the current executor.
+by the built-in executors. A callable explicitly registered through the Python
+API remains a trusted same-process extension whose I/O behavior is not
+attested.
 
 ### Phase 3 - evidence-guided reachability
 

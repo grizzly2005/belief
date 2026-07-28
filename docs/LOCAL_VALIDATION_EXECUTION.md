@@ -15,7 +15,7 @@ AuditCase
   -> belief.validation_plan.v1
   -> LocalValidationExecutor
   -> belief.validation_result.v1
-  -> belief.validation_metrics.v1
+  -> belief.validation_metrics.v2
 ```
 
 This layer does not import or exploit an arbitrary application. It evaluates
@@ -32,8 +32,8 @@ The engine assumes that:
    benchmark or test code;
 4. the operating system and Python runtime are trusted.
 
-The engine defends against accidental scope expansion by enforcing these
-boundaries:
+The built-in engine defends against accidental scope expansion by enforcing
+these boundaries:
 
 - no import path is accepted from JSON;
 - no dynamic module discovery is performed;
@@ -50,7 +50,10 @@ A custom callable supplied directly through
 `ValidationExecutionContext.adapter_registry` runs in the current Python
 process and is therefore a trusted extension point. JSON artifacts cannot
 populate that registry. Untrusted repositories require a future isolated
-adapter, not this interface.
+adapter, not this interface. When this extension point or a custom executor
+registry is used, result-bundle I/O fields are `null` and
+`io_usage_attested` is false; BELIEF does not claim that the callable avoided
+network, subprocess, shell, Docker, dynamic imports, or production data.
 
 ## Execution contracts
 
@@ -62,8 +65,8 @@ The public execution objects are versioned:
 | `ValidationObservation` | `belief.validation_observation.v1` |
 | `ValidationExecutionSummary` | `belief.validation_execution_summary.v1` |
 | fixture bundle | `belief.validation_fixture_bundle.v1` |
-| result bundle | `belief.validation_result_bundle.v1` |
-| metrics | `belief.validation_metrics.v1` |
+| result bundle | `belief.validation_result_bundle.v2` |
+| metrics | `belief.validation_metrics.v2` |
 
 The existing `belief.validation_result.v1` schema remains unchanged. Execution
 provenance is stored in `ValidationResult.metadata`, including:
@@ -263,8 +266,12 @@ The deterministic bundle summary defines:
 - `executed_plan_count`: fixtures whose adapter was invoked;
 - outcome counts for `enforced`, `bypassed`, `inconclusive`, and
   `false_positive`;
-- `baseline_pass_count` and `baseline_failure_count`;
-- `oracle_evaluated_count`: plans with at least one evaluated oracle;
+- `baseline_pass_count`, `baseline_failure_count`, and
+  `baseline_not_evaluated_count`: fully passing, demonstrated failing, and
+  unavailable/partial functional baselines among executed plans;
+- `oracle_evaluated_count`: total evaluated oracles across all plans;
+- `plans_with_evaluated_oracle_count`: plans with at least one evaluated
+  oracle;
 - `evidence_gap_resolution_rate`: executed plans with at least one original
   evidence gap resolved by a verifiable observation, divided by executed
   plans;
@@ -296,7 +303,9 @@ The current deterministic result is:
 
 The plan stage abstains instead of presenting planned experiments as
 confirmation. The result stage resolves evidence gaps for 6/8 cases (0.75);
-the two intentionally unavailable entrypoints remain inconclusive. Functional
+the two intentionally unavailable entrypoints remain inconclusive with
+`baseline_passed: null`. They contribute to
+`baseline_not_evaluated_count`, not `baseline_failure_count`. Functional
 regressions are zero, and two identical executions produce the same semantic
 digest.
 

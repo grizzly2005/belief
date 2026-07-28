@@ -17,6 +17,7 @@ from .base import (
     LocalValidationExecutor,
     ValidationAccessDenied,
     ValidationEntrypointUnavailable,
+    baseline_verdict,
     conclusive_safe_outcome,
     resolved_runtime_gaps,
     stable_limitations,
@@ -192,8 +193,7 @@ class PathTraversalValidationExecutor(LocalValidationExecutor):
                 observations.append(observation)
                 limitations.extend(scenario_limitations)
 
-        baseline_observation = observations[0]
-        baseline_passed = baseline_observation.oracle_passed is True
+        baseline_passed = baseline_verdict(observations)
         security = [
             item
             for item in observations

@@ -553,10 +553,13 @@ belief validate-plan \
   --output out/validation-results.json
 ```
 
-The validation executor supports only controlled path traversal and IDOR/BOLA
-fixtures. It never imports a target repository, starts a server, connects to a
-network, or launches a subprocess. Fixture configuration is explicit and
-outputs are create-only. See
+The built-in validation executors support only controlled path traversal and
+IDOR/BOLA fixtures. They never import a target repository, start a server,
+connect to a network, or launch a subprocess. Fixture configuration is
+explicit and outputs are create-only. A callable supplied through the Python
+`adapter_registry` API is a trusted, same-process extension: it is not
+isolated, and BELIEF does not attest its network, process, shell, Docker, or
+dynamic-import behavior. See
 [`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md).
 
 Run the separate eight-case local experiment:
@@ -580,9 +583,9 @@ python -m pytest -q -m "not slow and not external and not llm"
 
 Current local regression baseline:
 
-- full suite: `1011 passed, 32 skipped`;
-- security suite: `557 passed, 1 skipped`;
-- non-slow / non-external / non-LLM suite: `1011 passed, 32 skipped`.
+- full suite: `1013 passed, 32 skipped`;
+- security suite: `559 passed, 1 skipped`;
+- non-slow / non-external / non-LLM suite: `1013 passed, 32 skipped`.
 
 These numbers may change as the project evolves.
 

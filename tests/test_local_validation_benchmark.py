@@ -90,6 +90,7 @@ def test_benchmark_outcomes_match_vulnerable_safe_and_ambiguous_cases():
 
 def test_benchmark_is_semantically_stable_and_not_secpass():
     payload = run_local_validation_benchmark(CORPUS)
+    metrics = payload["validation_metrics"]
 
     assert payload["semantic_stability"] == {
         "identical_repeated_execution": True,
@@ -100,6 +101,14 @@ def test_benchmark_is_semantically_stable_and_not_secpass():
     assert payload["boundaries"]["secpass_claimed"] is False
     assert payload["boundaries"]["leaderboard_comparison_claimed"] is False
     assert payload["boundaries"]["reserved_holdout_opened"] is False
+    assert payload["boundaries"]["execution_mode"] == "built_in_only"
+    assert payload["boundaries"]["io_usage_attested"] is True
+    assert metrics["schema_version"] == "belief.validation_metrics.v2"
+    assert metrics["baseline_pass_count"] == 6
+    assert metrics["baseline_failure_count"] == 0
+    assert metrics["baseline_not_evaluated_count"] == 2
+    assert metrics["plans_with_evaluated_oracle_count"] == 6
+    assert metrics["oracle_evaluated_count"] > 6
 
 
 def test_benchmark_does_not_open_susvibes_or_use_network(

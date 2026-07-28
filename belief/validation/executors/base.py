@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from ..execution_models import (
     ValidationExecutionContext,
     ValidationExecutionSummary,
+    ValidationObservation,
 )
 from ..plan_models import ValidationPlan, canonical_digest
 
@@ -73,6 +74,37 @@ def conclusive_safe_outcome(plan: ValidationPlan) -> str:
     )
 
 
+def baseline_verdict(
+    observations: Iterable[ValidationObservation],
+) -> bool | None:
+    """Return a tri-state verdict for the complete functional baseline.
+
+    A demonstrated failure remains ``False``. A baseline is ``True`` only
+    when every baseline oracle was evaluated and passed. Missing or partially
+    unavailable baseline evidence remains ``None`` instead of being
+    misclassified as a functional regression.
+    """
+
+    baseline = tuple(
+        observation
+        for observation in observations
+        if observation.baseline
+    )
+    if any(
+        observation.oracle_evaluated
+        and observation.oracle_passed is False
+        for observation in baseline
+    ):
+        return False
+    if baseline and all(
+        observation.oracle_evaluated
+        and observation.oracle_passed is True
+        for observation in baseline
+    ):
+        return True
+    return None
+
+
 def stable_limitations(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(str(value) for value in values if str(value)))
 
@@ -81,6 +113,7 @@ __all__ = [
     "LocalValidationExecutor",
     "ValidationAccessDenied",
     "ValidationEntrypointUnavailable",
+    "baseline_verdict",
     "conclusive_safe_outcome",
     "resolved_runtime_gaps",
     "stable_limitations",

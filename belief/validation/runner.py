@@ -17,6 +17,8 @@ from .executors import (
     LocalValidationExecutor,
     PathTraversalValidationExecutor,
 )
+from .executors.idor import BUILTIN_IDOR_ADAPTERS
+from .executors.path_traversal import BUILTIN_PATH_ADAPTERS
 from .metrics import summarize_validation_results
 from .models import ValidationResult
 from .plan_models import (
@@ -29,8 +31,13 @@ from .plans import validation_result_from_plan
 
 
 VALIDATION_RESULT_BUNDLE_SCHEMA_VERSION = (
-    "belief.validation_result_bundle.v1"
+    "belief.validation_result_bundle.v2"
 )
+
+_BUILTIN_ADAPTERS_BY_CASE_TYPE = {
+    "idor_bola_possible": frozenset(BUILTIN_IDOR_ADAPTERS),
+    "path_traversal_possible": frozenset(BUILTIN_PATH_ADAPTERS),
+}
 
 
 def default_executor_registry() -> dict[str, LocalValidationExecutor]:
@@ -131,6 +138,16 @@ def run_validation_plan_bundle(
             "fixture bindings do not match validation plans: "
             + "; ".join(detail)
         )
+    process_local_extension_used = (
+        executor_registry is not None
+        or any(
+            _uses_process_local_adapter(
+                plan,
+                contexts[plan.plan_id],
+            )
+            for plan in canonical_plans
+        )
+    )
     results = tuple(
         run_validation_plan(
             plan,
@@ -158,17 +175,9 @@ def run_validation_plan_bundle(
                 [plan.to_dict() for plan in canonical_plans]
             )
         ),
-        "boundaries": {
-            "local_only": True,
-            "network_used": False,
-            "subprocess_used": False,
-            "shell_used": False,
-            "docker_used": False,
-            "dynamic_import_used": False,
-            "production_data_used": False,
-            "human_confirmation_claimed": False,
-            "secpass_claimed": False,
-        },
+        "boundaries": _execution_boundaries(
+            process_local_extension_used=process_local_extension_used,
+        ),
         "result_count": len(results),
         "metrics": summarize_validation_results(results),
         "results": [result.to_dict() for result in results],
@@ -235,22 +244,61 @@ def _validated_result_bundle(
         raise ValidationContractError(
             "validation result bundle counts are invalid"
         )
-    expected_boundaries = {
-        "local_only": True,
-        "network_used": False,
-        "subprocess_used": False,
-        "shell_used": False,
-        "docker_used": False,
-        "dynamic_import_used": False,
-        "production_data_used": False,
-        "human_confirmation_claimed": False,
-        "secpass_claimed": False,
-    }
-    if canonical.get("boundaries") != expected_boundaries:
+    boundaries = canonical.get("boundaries")
+    extension_used = (
+        boundaries.get("process_local_extension_used")
+        if isinstance(boundaries, Mapping)
+        else None
+    )
+    if (
+        not isinstance(extension_used, bool)
+        or boundaries
+        != _execution_boundaries(
+            process_local_extension_used=extension_used,
+        )
+    ):
         raise ValidationContractError(
             "validation result bundle boundaries are invalid"
         )
     return canonical
+
+
+def _uses_process_local_adapter(
+    plan: ValidationPlan,
+    context: ValidationExecutionContext,
+) -> bool:
+    builtins = _BUILTIN_ADAPTERS_BY_CASE_TYPE.get(plan.case_type)
+    return (
+        builtins is not None
+        and context.adapter not in builtins
+        and context.adapter in context.adapter_registry
+    )
+
+
+def _execution_boundaries(
+    *,
+    process_local_extension_used: bool,
+) -> dict[str, Any]:
+    io_attested = not process_local_extension_used
+    observed_usage: bool | None = False if io_attested else None
+    return {
+        "execution_mode": (
+            "trusted_process_local_extension"
+            if process_local_extension_used
+            else "built_in_only"
+        ),
+        "process_local_extension_used": process_local_extension_used,
+        "io_usage_attested": io_attested,
+        "local_only": True if io_attested else None,
+        "network_used": observed_usage,
+        "subprocess_used": observed_usage,
+        "shell_used": observed_usage,
+        "docker_used": observed_usage,
+        "dynamic_import_used": observed_usage,
+        "production_data_used": observed_usage,
+        "human_confirmation_claimed": False,
+        "secpass_claimed": False,
+    }
 
 
 def _canonical_plan(

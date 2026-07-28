@@ -143,6 +143,45 @@ def test_direct_python_target_requires_explicit_process_registry():
     assert result.method.endswith("/registered_safe_target")
 
 
+def test_process_local_adapter_disables_io_absence_attestation():
+    plan = _plan()
+
+    def registered_safe_target(allowed_root: Path, _value: str) -> Path:
+        return allowed_root / "public.txt"
+
+    context = ValidationExecutionContext.for_plan(
+        plan,
+        fixture_id="explicit_python_callable_bundle",
+        adapter="registered_safe_target",
+        source_revision="callable-fixture-v1",
+        adapter_registry={
+            "registered_safe_target": registered_safe_target,
+        },
+    )
+
+    payload = run_validation_plan_bundle(
+        [plan],
+        contexts={plan.plan_id: context},
+    )
+    boundaries = payload["boundaries"]
+
+    assert boundaries["execution_mode"] == (
+        "trusted_process_local_extension"
+    )
+    assert boundaries["process_local_extension_used"] is True
+    assert boundaries["io_usage_attested"] is False
+    for field in (
+        "local_only",
+        "network_used",
+        "subprocess_used",
+        "shell_used",
+        "docker_used",
+        "dynamic_import_used",
+        "production_data_used",
+    ):
+        assert boundaries[field] is None
+
+
 def test_process_registry_cannot_shadow_builtin_adapter_semantics():
     plan = _plan()
 
@@ -424,7 +463,30 @@ def test_path_unavailable_entrypoint_is_inconclusive():
 
     assert result.outcome == "inconclusive"
     assert "entrypoint_unavailable" in _execution(result)["limitations"]
+    assert _execution(result)["baseline_passed"] is None
+
+
+def test_evaluated_path_baseline_failure_remains_false():
+    plan = _plan()
+
+    def missing_baseline(allowed_root: Path, _value: str) -> Path:
+        return allowed_root / "missing.txt"
+
+    context = ValidationExecutionContext.for_plan(
+        plan,
+        fixture_id="evaluated_missing_baseline",
+        adapter="evaluated_missing_baseline",
+        source_revision="missing-baseline-fixture-v1",
+        adapter_registry={
+            "evaluated_missing_baseline": missing_baseline,
+        },
+    )
+
+    result = run_validation_plan(plan, context=context)
+
+    assert result.outcome == "inconclusive"
     assert _execution(result)["baseline_passed"] is False
+    assert _execution(result)["oracle_evaluated_count"] > 0
 
 
 def test_idor_owner_can_read_and_update_own_resource():
@@ -563,6 +625,7 @@ def test_idor_unavailable_entrypoint_preserves_limitations():
 
     assert result.outcome == "inconclusive"
     assert "entrypoint_unavailable" in _execution(result)["limitations"]
+    assert _execution(result)["baseline_passed"] is None
     assert _execution(result)["oracle_evaluated_count"] == 0
 
 
@@ -597,9 +660,13 @@ def test_result_bundle_metrics_cover_required_counts():
         contexts=contexts,
     )
     metrics = payload["metrics"]
+    oracle_evaluated_count = sum(
+        result["metadata"]["execution"]["oracle_evaluated_count"]
+        for result in payload["results"]
+    )
 
     assert metrics == {
-        "schema_version": "belief.validation_metrics.v1",
+        "schema_version": "belief.validation_metrics.v2",
         "plan_count": 3,
         "supported_plan_count": 2,
         "executed_plan_count": 2,
@@ -609,7 +676,9 @@ def test_result_bundle_metrics_cover_required_counts():
         "false_positive_count": 0,
         "baseline_pass_count": 2,
         "baseline_failure_count": 0,
-        "oracle_evaluated_count": 2,
+        "baseline_not_evaluated_count": 0,
+        "oracle_evaluated_count": oracle_evaluated_count,
+        "plans_with_evaluated_oracle_count": 2,
         "evidence_gap_resolution_rate": 1.0,
         "protected_regression_count": 0,
         "deterministic_cost_units": metrics[
@@ -618,6 +687,11 @@ def test_result_bundle_metrics_cover_required_counts():
         "secpass_equivalent": False,
     }
     assert metrics["deterministic_cost_units"] > 0
+    assert metrics["oracle_evaluated_count"] > (
+        metrics["plans_with_evaluated_oracle_count"]
+    )
+    assert payload["boundaries"]["execution_mode"] == "built_in_only"
+    assert payload["boundaries"]["io_usage_attested"] is True
     assert payload["boundaries"]["network_used"] is False
     assert payload["boundaries"]["docker_used"] is False
 
