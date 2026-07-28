@@ -1778,6 +1778,45 @@ def cmd_reason(args):
     }, indent=2, sort_keys=True))
 
 
+def cmd_validate_plan(args):
+    """Execute exact validation plans against explicit local fixtures."""
+
+    from .validation.local_cli import validate_plan_files
+
+    try:
+        payload = validate_plan_files(
+            plan_path=args.plan,
+            fixture_path=args.fixture,
+            output_path=args.output,
+        )
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        ValueError,
+    ) as exc:
+        safe_print(
+            f"ERROR: local validation failed: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    metrics = payload["metrics"]
+    safe_print(json.dumps({
+        "schema_version": payload["schema_version"],
+        "output": str(Path(args.output).resolve()),
+        "plan_count": metrics["plan_count"],
+        "executed_plan_count": metrics["executed_plan_count"],
+        "enforced_count": metrics["enforced_count"],
+        "bypassed_count": metrics["bypassed_count"],
+        "inconclusive_count": metrics["inconclusive_count"],
+        "false_positive_count": metrics["false_positive_count"],
+        "deterministic_digest": payload["deterministic_digest"],
+    }, indent=2, sort_keys=True))
+    if args.fail_on_bypass and metrics["bypassed_count"]:
+        sys.exit(1)
+
+
 def main():
     parser = SafeArgumentParser(
         prog="belief",
@@ -2162,6 +2201,32 @@ def main():
     p_reason.add_argument("--engine", default="offline", choices=["offline"], help="Reasoning engine")
     p_reason.add_argument("--output", required=True, help="Output reasoned audit JSON")
 
+    # local validation execution
+    p_validate_plan = sub.add_parser(
+        "validate-plan",
+        help="Run canonical validation plans against explicit local fixtures",
+    )
+    p_validate_plan.add_argument(
+        "--plan",
+        required=True,
+        help="Canonical belief.validation_plan_bundle.v1 JSON",
+    )
+    p_validate_plan.add_argument(
+        "--fixture",
+        required=True,
+        help="Explicit belief.validation_fixture_bundle.v1 JSON",
+    )
+    p_validate_plan.add_argument(
+        "--output",
+        required=True,
+        help="New create-only local validation-result JSON",
+    )
+    p_validate_plan.add_argument(
+        "--fail-on-bypass",
+        action="store_true",
+        help="Exit 1 when a local oracle reports a bypass",
+    )
+
     # tools
     p_tools = sub.add_parser("tools", help="List, check, run, and import tool bridge results")
     tools_sub = p_tools.add_subparsers(dest="tools_command", parser_class=SafeArgumentParser)
@@ -2302,6 +2367,7 @@ def main():
         "report": cmd_report,
         "cognitive": cmd_cognitive,
         "reason": cmd_reason,
+        "validate-plan": cmd_validate_plan,
         "tools": cmd_tools,
         "plan": cmd_plan,
         "execute-plan": cmd_execute_plan,
