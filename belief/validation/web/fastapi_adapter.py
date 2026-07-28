@@ -2,17 +2,18 @@
 
 import copy
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Coroutine
 from urllib.parse import urlencode
 
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
 from ..worker.registry import (
     FixtureSpec,
-    OptionalWebDependencyUnavailable,
     RegisteredFixtureResult,
 )
-from . import optional_framework_available
 from ._shared import (
     ClientResponse,
     idor_observations,
@@ -29,23 +30,26 @@ def run_fastapi_fixture(
     temporary_root: Path,
     parameters: Mapping[str, Any],
 ) -> RegisteredFixtureResult:
-    if not optional_framework_available("fastapi"):
-        raise OptionalWebDependencyUnavailable("fastapi")
-    if spec.case_type == "path_traversal_possible":
-        return _run_path_fixture(spec, temporary_root, parameters)
-    if spec.case_type == "idor_bola_possible":
-        return _run_idor_fixture(spec)
-    raise ValueError("unsupported FastAPI fixture case type")
+    return prepare_fastapi_fixture(spec, temporary_root, parameters)()
 
 
-def _run_path_fixture(
+def prepare_fastapi_fixture(
     spec: FixtureSpec,
     temporary_root: Path,
     parameters: Mapping[str, Any],
-) -> RegisteredFixtureResult:
-    from fastapi import FastAPI
-    from fastapi.responses import JSONResponse
+) -> Callable[[], RegisteredFixtureResult]:
+    if spec.case_type == "path_traversal_possible":
+        return _prepare_path_fixture(spec, temporary_root, parameters)
+    if spec.case_type == "idor_bola_possible":
+        return _prepare_idor_fixture(spec)
+    raise ValueError("unsupported FastAPI fixture case type")
 
+
+def _prepare_path_fixture(
+    spec: FixtureSpec,
+    temporary_root: Path,
+    parameters: Mapping[str, Any],
+) -> Callable[[], RegisteredFixtureResult]:
     include_symlink = parameters.get("include_symlink", True)
     layout = prepare_path_layout(
         temporary_root / "fixture",
@@ -58,35 +62,35 @@ def _run_path_fixture(
         status, body = serve_path(
             layout,
             path,
-            protected=not spec.vulnerable,
+            protected=spec.security_enforced,
         )
         return JSONResponse(status_code=status, content=body)
 
-    def requester(value: str) -> ClientResponse:
-        return _asgi_request(
-            app,
-            method="GET",
-            path="/files",
-            query={"path": value},
+    def execute() -> RegisteredFixtureResult:
+        def requester(value: str) -> ClientResponse:
+            return _asgi_request(
+                app,
+                method="GET",
+                path="/files",
+                query={"path": value},
+            )
+        observations, limitations = path_observations(
+            requester,
+            layout,
+            include_symlink=include_symlink,
         )
-    observations, limitations = path_observations(
-        requester,
-        layout,
-        include_symlink=include_symlink,
-    )
-    return RegisteredFixtureResult(
-        observations=observations,
-        limitations=limitations,
-        capability_used="fastapi_local_asgi_transport",
-    )
+        return RegisteredFixtureResult(
+            observations=observations,
+            limitations=limitations,
+            capability_used="fastapi_local_asgi_transport",
+        )
+
+    return execute
 
 
-def _run_idor_fixture(
+def _prepare_idor_fixture(
     spec: FixtureSpec,
-) -> RegisteredFixtureResult:
-    from fastapi import FastAPI, Request
-    from fastapi.responses import JSONResponse
-
+) -> Callable[[], RegisteredFixtureResult]:
     resources = initial_resources()
     app = FastAPI(title=f"belief_{spec.fixture_id}")
 
@@ -99,7 +103,7 @@ def _run_idor_fixture(
             user_id=request.headers.get("X-User-ID", ""),
             tenant_id=request.headers.get("X-Tenant-ID", ""),
             value="",
-            protected=not spec.vulnerable,
+            protected=spec.security_enforced,
         )
         return JSONResponse(status_code=status, content=body)
 
@@ -118,42 +122,45 @@ def _run_idor_fixture(
             user_id=request.headers.get("X-User-ID", ""),
             tenant_id=request.headers.get("X-Tenant-ID", ""),
             value=value,
-            protected=not spec.vulnerable,
+            protected=spec.security_enforced,
         )
         return JSONResponse(status_code=status, content=body)
 
-    def requester(
-        method: str,
-        resource_id: str,
-        user_id: str,
-        tenant_id: str,
-        value: str,
-    ) -> ClientResponse:
-        return _asgi_request(
-            app,
-            method=method,
-            path=f"/resources/{resource_id}",
-            headers={
-                "X-User-ID": user_id,
-                "X-Tenant-ID": tenant_id,
-            },
-            json_body=(
-                {"value": value} if method == "PATCH" else None
-            ),
+    def execute() -> RegisteredFixtureResult:
+        def requester(
+            method: str,
+            resource_id: str,
+            user_id: str,
+            tenant_id: str,
+            value: str,
+        ) -> ClientResponse:
+            return _asgi_request(
+                app,
+                method=method,
+                path=f"/resources/{resource_id}",
+                headers={
+                    "X-User-ID": user_id,
+                    "X-Tenant-ID": tenant_id,
+                },
+                json_body=(
+                    {"value": value} if method == "PATCH" else None
+                ),
+            )
+
+        def snapshot() -> dict[str, dict[str, str]]:
+            return copy.deepcopy(resources)
+
+        observations, limitations = idor_observations(
+            requester,
+            snapshot,
+        )
+        return RegisteredFixtureResult(
+            observations=observations,
+            limitations=limitations,
+            capability_used="fastapi_local_asgi_transport",
         )
 
-    def snapshot() -> dict[str, dict[str, str]]:
-        return copy.deepcopy(resources)
-
-    observations, limitations = idor_observations(
-        requester,
-        snapshot,
-    )
-    return RegisteredFixtureResult(
-        observations=observations,
-        limitations=limitations,
-        capability_used="fastapi_local_asgi_transport",
-    )
+    return execute
 
 
 def _asgi_request(
@@ -259,4 +266,4 @@ def _drive_local_coroutine(coroutine: Coroutine[Any, Any, Any]) -> None:
     raise RuntimeError("local ASGI fixture exceeded its operation bound")
 
 
-__all__ = ["run_fastapi_fixture"]
+__all__ = ["prepare_fastapi_fixture", "run_fastapi_fixture"]

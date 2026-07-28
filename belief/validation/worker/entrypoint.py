@@ -1,145 +1,196 @@
-"""Fixed child-process entrypoint for registered web fixtures."""
+"""Trusted child execution imported only after bootstrap policy installation."""
 
 from __future__ import annotations
 
-import asyncio
-import os
-import socket
-import subprocess
-import sys
-import tempfile
-import time
+import platform as platform_module
 from contextlib import contextmanager
-from dataclasses import replace
-from multiprocessing.connection import Connection
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterator
 
+from .bootstrap import _minimal_environment_values
 from .contracts import (
-    MAX_WORKER_REQUEST_BYTES,
-    WorkerCapabilityAttestation,
+    WORKER_RESPONSE_SCHEMA_VERSION,
+    WorkerAttestation,
+    WorkerDiagnostics,
     WorkerError,
     WorkerProtocolError,
     WorkerRequest,
     WorkerResponse,
     baseline_for_observations,
     decode_worker_request,
-    encode_worker_response,
+)
+from .policies import (
+    WorkerPolicyState,
+    WorkerPolicyViolation,
+    apply_resource_limits,
+    filesystem_policy,
+    preliminary_policy,
 )
 from .registry import (
     OptionalWebDependencyUnavailable,
+    fixture_registry_digest,
+    fixture_source_digest,
     get_fixture_spec,
+    load_fixture_runner,
 )
 
-
-_BLOCKED_CAPABILITIES = (
-    "arbitrary_fixture_path",
-    "caller_dynamic_import",
-    "listener",
-    "network",
-    "shell",
-    "subprocess",
-)
 
 _ERROR_MESSAGES = {
-    "capability_denied": "a forbidden worker capability was requested",
-    "fixture_execution_error": "the registered fixture failed deterministically",
     "invalid_request": "the worker request was rejected",
-    "optional_dependency_unavailable": (
-        "the optional web framework is unavailable"
-    ),
+    "unsupported_protocol": "the worker protocol version is unsupported",
     "unknown_fixture": "the fixture ID is not registered",
+    "binding_mismatch": "the worker response binding did not match its request",
+    "dependency_unavailable": "the optional web framework is unavailable",
+    "timeout": "the worker exceeded its hard timeout",
+    "cancelled": "the worker request was cancelled",
+    "child_crash": "the worker child exited without valid evidence",
+    "malformed_response": "the worker returned a malformed response",
+    "response_too_large": "the worker response exceeded its size bound",
+    "policy_violation": "a fixture attempted a forbidden capability",
+    "internal_error": "the registered fixture failed without conclusive evidence",
 }
 
 
-class WorkerCapabilityDenied(RuntimeError):
-    """A guarded capability was attempted inside the worker."""
-
-    def __init__(self, capability: str) -> None:
-        super().__init__(f"worker capability denied: {capability}")
-        self.capability = capability
+# Compatibility alias retained for callers of the original hardening branch.
+WorkerCapabilityDenied = WorkerPolicyViolation
 
 
-def worker_entrypoint(connection: Connection) -> None:
-    """Receive one bounded JSON request and return one bounded JSON response."""
-
-    started = time.monotonic()
-    try:
-        raw_request = connection.recv_bytes(MAX_WORKER_REQUEST_BYTES)
-        request = decode_worker_request(raw_request)
-    except (EOFError, OSError, WorkerProtocolError):
-        response = _invalid_request_response()
-        _send_response(connection, response, started=started)
-        connection.close()
-        return
-
-    try:
-        original_cwd = Path.cwd()
-        with tempfile.TemporaryDirectory(
-            prefix="belief-isolated-web-worker-"
-        ) as temporary:
-            temporary_root = Path(temporary).resolve()
-            _prepare_minimal_environment(temporary_root)
-            try:
-                os.chdir(temporary_root)
-                with capability_guard():
-                    response = execute_registered_request(
-                        request,
-                        temporary_root=temporary_root,
-                    )
-            finally:
-                os.chdir(original_cwd)
-    except WorkerCapabilityDenied:
-        response = _failure_response(
-            request,
-            status="inconclusive",
-            error_code="capability_denied",
-            limitations=("forbidden_capability_attempted",),
-            attested=True,
-        )
-    except Exception:
-        response = _failure_response(
-            request,
-            status="inconclusive",
-            error_code="fixture_execution_error",
-            limitations=("fixture_execution_error",),
-            attested=True,
-        )
-    _send_response(connection, response, started=started)
-    connection.close()
-
-
-def execute_registered_request(
-    request: WorkerRequest,
+def execute_worker_message(
+    raw_request: bytes,
     *,
     temporary_root: Path,
-) -> WorkerResponse:
-    """Run exactly one closed-registry fixture in the prepared child."""
+    cancellation_event: Any,
+    state: WorkerPolicyState,
+) -> tuple[WorkerResponse, WorkerRequest | None]:
+    """Decode, resolve, import, and execute one exact registered fixture."""
+
+    try:
+        request = decode_worker_request(raw_request)
+    except WorkerProtocolError as exc:
+        code = (
+            "unsupported_protocol"
+            if exc.code == "unsupported_protocol"
+            else "invalid_request"
+        )
+        return bootstrap_failure_response(error_code=code, state=state), None
 
     spec = get_fixture_spec(request.fixture_id)
     if spec is None:
-        return _failure_response(
+        return (
+            _failure_response(
+                request,
+                status="unsupported",
+                error_code="unknown_fixture",
+                state=state,
+            ),
             request,
-            status="unsupported",
-            error_code="unknown_fixture",
-            limitations=("unknown_fixture",),
-            attested=True,
         )
+    if cancellation_event.is_set():
+        return (
+            _failure_response(
+                request,
+                status="cancelled",
+                error_code="cancelled",
+                state=state,
+                cancellation_reason="parent cancellation requested",
+            ),
+            request,
+        )
+
     try:
-        fixture_result = spec.runner(
+        prepare_fixture = load_fixture_runner(spec)
+        prepared_fixture = prepare_fixture(
             spec,
             temporary_root,
             request.test_parameters,
         )
     except OptionalWebDependencyUnavailable:
-        return _failure_response(
-            request,
-            status="unsupported",
-            error_code="optional_dependency_unavailable",
-            limitations=(
-                f"optional_dependency_unavailable:{spec.framework}",
+        return (
+            _failure_response(
+                request,
+                status="unsupported",
+                error_code="dependency_unavailable",
+                state=state,
+                framework=spec.framework,
+                limitations=(f"dependency_unavailable:{spec.framework}",),
             ),
-            attested=True,
+            request,
+        )
+    except WorkerPolicyViolation:
+        return (
+            _failure_response(
+                request,
+                status="policy_violation",
+                error_code="policy_violation",
+                state=state,
+                framework=spec.framework,
+            ),
+            request,
+        )
+    except Exception:
+        return (
+            _failure_response(
+                request,
+                status="inconclusive",
+                error_code="internal_error",
+                state=state,
+                framework=spec.framework,
+            ),
+            request,
+        )
+
+    if cancellation_event.is_set():
+        return (
+            _failure_response(
+                request,
+                status="cancelled",
+                error_code="cancelled",
+                state=state,
+                framework=spec.framework,
+                cancellation_reason="parent cancellation requested",
+            ),
+            request,
+        )
+
+    apply_resource_limits(state, timeout_ms=request.timeout_ms)
+    try:
+        with filesystem_policy(temporary_root, state):
+            fixture_result = prepared_fixture()
+    except WorkerPolicyViolation:
+        return (
+            _failure_response(
+                request,
+                status="policy_violation",
+                error_code="policy_violation",
+                state=state,
+                framework=spec.framework,
+            ),
+            request,
+        )
+    except Exception:
+        return (
+            _failure_response(
+                request,
+                status="inconclusive",
+                error_code="internal_error",
+                state=state,
+                framework=spec.framework,
+            ),
+            request,
+        )
+
+    if cancellation_event.is_set():
+        return (
+            _failure_response(
+                request,
+                status="cancelled",
+                error_code="cancelled",
+                state=state,
+                framework=spec.framework,
+                cancellation_reason="parent cancellation requested",
+            ),
+            request,
         )
 
     observations = fixture_result.observations
@@ -153,101 +204,55 @@ def execute_registered_request(
             ),
         )
     ))
-    return WorkerResponse(
-        correlation_id=request.correlation_id,
-        fixture_id=request.fixture_id,
-        validation_plan_id=request.validation_plan_id,
-        validation_plan_digest=request.validation_plan_digest,
-        worker_status="completed",
-        observations=observations,
-        baseline=baseline_for_observations(observations),
+    attestation = _attestation(
+        request,
+        state=state,
+        framework=spec.framework,
         limitations=limitations,
-        capabilities=_attestation(
-            attested=True,
-            framework_capability=fixture_result.capability_used,
+    )
+    return (
+        WorkerResponse(
+            correlation_id=request.correlation_id,
+            fixture_id=request.fixture_id,
+            validation_plan_id=request.validation_plan_id,
+            validation_plan_digest=request.validation_plan_digest,
+            worker_status="completed",
+            observations=observations,
+            baseline=baseline_for_observations(observations),
+            limitations=limitations,
+            attestation=attestation,
         ),
+        request,
     )
 
 
-@contextmanager
-def capability_guard() -> Iterator[None]:
-    """Block ordinary network, listener, subprocess, and shell APIs.
+def bootstrap_failure_response(
+    *,
+    error_code: str,
+    state: WorkerPolicyState,
+    request: WorkerRequest | None = None,
+) -> WorkerResponse:
+    """Return a small normalized response when bootstrap cannot execute."""
 
-    This is defense in depth for trusted built-in fixtures, not an operating
-    system sandbox. The process still runs with the invoking user's authority.
-    """
-
-    def deny_network(*_args: Any, **_kwargs: Any) -> Any:
-        raise WorkerCapabilityDenied("network")
-
-    def deny_listener(*_args: Any, **_kwargs: Any) -> Any:
-        raise WorkerCapabilityDenied("listener")
-
-    def deny_subprocess(*_args: Any, **_kwargs: Any) -> Any:
-        raise WorkerCapabilityDenied("subprocess")
-
-    def deny_shell(*_args: Any, **_kwargs: Any) -> Any:
-        raise WorkerCapabilityDenied("shell")
-
-    patches: list[tuple[Any, str, Any]] = [
-        (socket.socket, "connect", deny_network),
-        (socket.socket, "connect_ex", deny_network),
-        (socket.socket, "bind", deny_listener),
-        (socket.socket, "listen", deny_listener),
-        (socket.socket, "sendto", deny_network),
-        (socket, "create_connection", deny_network),
-        (socket, "getaddrinfo", deny_network),
-        (subprocess, "Popen", deny_subprocess),
-        (subprocess, "run", deny_subprocess),
-        (subprocess, "call", deny_subprocess),
-        (subprocess, "check_call", deny_subprocess),
-        (subprocess, "check_output", deny_subprocess),
-        (subprocess, "getoutput", deny_shell),
-        (subprocess, "getstatusoutput", deny_shell),
-        (os, "system", deny_shell),
-        (os, "popen", deny_shell),
-        (asyncio, "create_subprocess_exec", deny_subprocess),
-        (asyncio, "create_subprocess_shell", deny_shell),
-    ]
-    if hasattr(socket.socket, "sendmsg"):
-        patches.append((socket.socket, "sendmsg", deny_network))
-
-    originals = [
-        (owner, attribute, getattr(owner, attribute))
-        for owner, attribute, _replacement in patches
-    ]
-    try:
-        for owner, attribute, replacement in patches:
-            setattr(owner, attribute, replacement)
-        yield
-    finally:
-        for owner, attribute, original in reversed(originals):
-            setattr(owner, attribute, original)
-
-
-def _prepare_minimal_environment(temporary_root: Path) -> None:
-    values = _minimal_environment_values(os.environ, temporary_root)
-    os.environ.clear()
-    os.environ.update(values)
-    sys.dont_write_bytecode = True
-
-
-def _minimal_environment_values(
-    current: Mapping[str, str],
-    temporary_root: Path,
-) -> dict[str, str]:
-    values = {
-        "TMP": str(temporary_root),
-        "TEMP": str(temporary_root),
-        "TMPDIR": str(temporary_root),
-        "BELIEF_VALIDATION_WORKER": "1",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONUTF8": "1",
-    }
-    for name in ("SYSTEMROOT", "WINDIR"):
-        if current.get(name):
-            values[name] = current[name]
-    return values
+    if request is None:
+        request = WorkerRequest(
+            fixture_id="invalid_request",
+            validation_plan_id="vp_0000000000000000",
+            validation_plan_digest="0" * 64,
+            source_revision="invalid-request",
+            correlation_id="invalid_request",
+        )
+    status = (
+        "invalid_request"
+        if error_code in {"invalid_request", "unsupported_protocol"}
+        else "inconclusive"
+    )
+    return _failure_response(
+        request,
+        status=status,
+        error_code=error_code,
+        state=state,
+    )
 
 
 def _failure_response(
@@ -255,9 +260,12 @@ def _failure_response(
     *,
     status: str,
     error_code: str,
-    limitations: tuple[str, ...],
-    attested: bool,
+    state: WorkerPolicyState,
+    framework: str = "",
+    limitations: tuple[str, ...] = (),
+    cancellation_reason: str = "",
 ) -> WorkerResponse:
+    stable_limitations = tuple(dict.fromkeys((*limitations, error_code)))
     return WorkerResponse(
         correlation_id=request.correlation_id,
         fixture_id=request.fixture_id,
@@ -265,75 +273,160 @@ def _failure_response(
         validation_plan_digest=request.validation_plan_digest,
         worker_status=status,
         baseline=None,
-        limitations=limitations,
+        limitations=stable_limitations,
         errors=(
             WorkerError(
                 code=error_code,
                 message=_ERROR_MESSAGES[error_code],
             ),
         ),
-        capabilities=_attestation(attested=attested),
-    )
-
-
-def _invalid_request_response() -> WorkerResponse:
-    return WorkerResponse(
-        correlation_id="invalid_request",
-        fixture_id="invalid_request",
-        validation_plan_id="vp_0000000000000000",
-        validation_plan_digest="0" * 64,
-        worker_status="invalid_request",
-        baseline=None,
-        limitations=("invalid_request",),
-        errors=(
-            WorkerError(
-                code="invalid_request",
-                message=_ERROR_MESSAGES["invalid_request"],
-            ),
+        attestation=_attestation(
+            request,
+            state=state,
+            framework=framework,
+            limitations=stable_limitations,
         ),
-        capabilities=_attestation(attested=False),
+        diagnostics=WorkerDiagnostics(
+            summary=f"worker ended with {error_code}",
+            cancellation_reason=cancellation_reason,
+        ),
     )
 
 
 def _attestation(
+    request: WorkerRequest,
     *,
-    attested: bool,
-    framework_capability: str = "",
-) -> WorkerCapabilityAttestation:
-    used = ["multiprocessing_spawn"]
-    if attested:
-        used.append("temporary_directory")
-    if framework_capability:
-        used.append(framework_capability)
-    return WorkerCapabilityAttestation(
-        status="attested" if attested else "unavailable",
-        used=tuple(used),
-        blocked=_BLOCKED_CAPABILITIES if attested else (),
+    state: WorkerPolicyState,
+    framework: str,
+    limitations: tuple[str, ...] = (),
+) -> WorkerAttestation:
+    spec = get_fixture_spec(request.fixture_id)
+    registry_digest = fixture_registry_digest() if spec is not None else "0" * 64
+    source_digest = fixture_source_digest(spec) if spec is not None else "0" * 64
+    return WorkerAttestation(
+        protocol_version=WORKER_RESPONSE_SCHEMA_VERSION,
+        fixture_id=request.fixture_id,
+        fixture_registry_digest=registry_digest,
+        fixture_source_digest=source_digest,
+        validation_plan_id=request.validation_plan_id,
+        validation_plan_digest=request.validation_plan_digest,
+        source_revision=request.source_revision,
+        framework=framework,
+        framework_version=_framework_version(framework),
+        python_version=platform_module.python_version(),
+        platform=_platform_label(),
+        environment_policy_installed=state.environment_policy_installed,
+        environment_secret_probe_passed=state.environment_secret_probe_passed,
+        filesystem_policy_installed=state.filesystem_policy_installed,
+        network_policy_installed=state.network_policy_installed,
+        process_policy_installed=state.process_policy_installed,
+        timeout_enforced=state.timeout_enforced,
+        cleanup_completed=None,
+        resource_limits=dict(state.resource_limits),
+        io_policy_violations=tuple(state.io_policy_violations),
+        limitations=tuple(dict.fromkeys((*limitations, *state.limitations))),
     )
 
 
-def _send_response(
-    connection: Connection,
-    response: WorkerResponse,
-    *,
-    started: float,
-) -> None:
-    duration_ms = min(
-        int((time.monotonic() - started) * 1_000),
-        35_000,
-    )
-    rendered = encode_worker_response(
-        replace(response, duration_ms=duration_ms, evidence_digest="")
-    )
+def _framework_version(framework: str) -> str:
+    if not framework:
+        return ""
     try:
-        connection.send_bytes(rendered)
-    except (BrokenPipeError, EOFError, OSError):
-        return
+        return version(framework)
+    except PackageNotFoundError:
+        return ""
+
+
+def _platform_label() -> str:
+    system = platform_module.system().lower() or "unknown"
+    machine = platform_module.machine().lower() or "unknown"
+    return f"{system}-{machine}".replace(" ", "_")
+
+
+@contextmanager
+def capability_guard() -> Iterator[None]:
+    """Compatibility context exposing the new preliminary policy."""
+
+    state = WorkerPolicyState()
+    with preliminary_policy(state):
+        yield
+
+
+def execute_registered_request(
+    request: WorkerRequest,
+    *,
+    temporary_root: Path,
+) -> WorkerResponse:
+    """Compatibility helper for direct, non-resource-limited unit tests."""
+
+    state = WorkerPolicyState(
+        environment_policy_installed=True,
+        environment_secret_probe_passed=True,
+    )
+    spec = get_fixture_spec(request.fixture_id)
+    if spec is None:
+        return _failure_response(
+            request,
+            status="unsupported",
+            error_code="unknown_fixture",
+            state=state,
+        )
+    try:
+        prepare_fixture = load_fixture_runner(spec)
+        prepared_fixture = prepare_fixture(
+            spec,
+            temporary_root,
+            request.test_parameters,
+        )
+        with preliminary_policy(state), filesystem_policy(temporary_root, state):
+            result = prepared_fixture()
+    except OptionalWebDependencyUnavailable:
+        return _failure_response(
+            request,
+            status="unsupported",
+            error_code="dependency_unavailable",
+            state=state,
+            framework=spec.framework,
+        )
+    except WorkerPolicyViolation:
+        return _failure_response(
+            request,
+            status="policy_violation",
+            error_code="policy_violation",
+            state=state,
+            framework=spec.framework,
+        )
+    except Exception:
+        return _failure_response(
+            request,
+            status="inconclusive",
+            error_code="internal_error",
+            state=state,
+            framework=spec.framework,
+        )
+    return WorkerResponse(
+        correlation_id=request.correlation_id,
+        fixture_id=request.fixture_id,
+        validation_plan_id=request.validation_plan_id,
+        validation_plan_digest=request.validation_plan_digest,
+        worker_status="completed",
+        observations=result.observations,
+        baseline=baseline_for_observations(result.observations),
+        limitations=result.limitations,
+        attestation=_attestation(
+            request,
+            state=state,
+            framework=spec.framework,
+            limitations=result.limitations,
+        ),
+    )
 
 
 __all__ = [
     "WorkerCapabilityDenied",
+    "_minimal_environment_values",
+    "bootstrap_failure_response",
     "capability_guard",
     "execute_registered_request",
-    "worker_entrypoint",
+    "execute_worker_message",
 ]
