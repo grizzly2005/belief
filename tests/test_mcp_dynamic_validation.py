@@ -1,0 +1,824 @@
+"""Security boundaries for MCP v0.2 registered-fixture validation."""
+
+from __future__ import annotations
+
+import copy
+import json
+import os
+import queue
+import socket
+import subprocess
+import sys
+import threading
+import time
+from importlib import import_module
+from pathlib import Path
+
+import pytest
+
+from belief.mcp.execution import MCPRequestExecution
+from belief.mcp.tools import (
+    BeliefMCPError,
+    BeliefMCPTools,
+    _RunStore,
+)
+from belief.mcp.validation import (
+    REGISTERED_FIXTURE_BINDING_SCHEMA_VERSION,
+    REGISTERED_FIXTURE_EXECUTION_SCOPE,
+)
+from belief.validation.execution_models import ValidationContractError
+from belief.validation.web import optional_framework_available
+
+
+pytestmark = pytest.mark.security
+
+_FLASK_FIXTURE = "flask_path_traversal_vulnerable_v1"
+_FASTAPI_FIXTURE = "fastapi_idor_vulnerable_v1"
+
+
+def _prepare(
+    service: BeliefMCPTools,
+    fixture_id: str = _FLASK_FIXTURE,
+) -> dict:
+    return service.call_tool(
+        "belief_prepare_validation_fixture",
+        {"fixture_id": fixture_id},
+    )
+
+
+def _validate(
+    service: BeliefMCPTools,
+    prepared: dict,
+    *,
+    fixture_id: str | None = None,
+    timeout_ms: int = 5_000,
+    acknowledge: object = True,
+    execution: MCPRequestExecution | None = None,
+) -> dict:
+    return service.call_tool(
+        "belief_validate_plan",
+        {
+            "run_id": prepared["run_id"],
+            "plan_id": prepared["plan_id"],
+            "fixture_id": fixture_id or prepared["fixture_id"],
+            "timeout_ms": timeout_ms,
+            "acknowledge_local_execution": acknowledge,
+        },
+        execution=execution,
+    )
+
+
+@pytest.mark.parametrize(
+    "fixture_id",
+    (_FLASK_FIXTURE, _FASTAPI_FIXTURE),
+)
+def test_registered_fixture_preparation_and_validation_succeeds(
+    tmp_path,
+    fixture_id,
+):
+    framework = "flask" if fixture_id.startswith("flask_") else "fastapi"
+    if not optional_framework_available(framework):
+        pytest.skip(f"optional dependency unavailable: {framework}")
+    service = BeliefMCPTools(workspace_root=tmp_path)
+
+    prepared = _prepare(service, fixture_id)
+    result = _validate(service, prepared)
+    resource, mime_type = service.read_resource(
+        f"belief://runs/{prepared['run_id']}/validation-results"
+    )
+    schema, schema_mime = service.read_resource(
+        "belief://schemas/validation-result"
+    )
+
+    assert prepared["binding"]["binding_kind"] == (
+        REGISTERED_FIXTURE_BINDING_SCHEMA_VERSION
+    )
+    assert prepared["binding"]["execution_scope"] == (
+        REGISTERED_FIXTURE_EXECUTION_SCOPE
+    )
+    assert prepared["static_scan"]["files_scanned"] == 4
+    assert result["fixture_id"] == fixture_id
+    assert result["evidence_scope"] == REGISTERED_FIXTURE_EXECUTION_SCOPE
+    assert result["maturity"] == (
+        "locally_reproduced_on_registered_fixture"
+    )
+    assert result["target_vulnerability_confirmed"] is False
+    assert result["human_confirmation_required"] is True
+    assert result["human_confirmed"] is False
+    assert result["report_ready"] is False
+    assert result["confirmed_vulnerability"] is False
+    assert mime_type == "application/json"
+    assert resource["validation_results"] == [result]
+    assert schema_mime == "application/schema+json"
+    assert set(result) <= set(schema["properties"])
+    assert set(schema["required"]) <= set(result)
+
+
+def test_tool_contracts_are_exact_and_annotations_are_accurate(tmp_path):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    tools = {item["name"]: item for item in service.list_tools()}
+
+    prepare = tools["belief_prepare_validation_fixture"]
+    validate = tools["belief_validate_plan"]
+
+    assert set(prepare["inputSchema"]["properties"]) == {"fixture_id"}
+    assert prepare["inputSchema"]["required"] == ["fixture_id"]
+    assert prepare["inputSchema"]["additionalProperties"] is False
+    assert prepare["annotations"]["readOnlyHint"] is True
+    assert set(validate["inputSchema"]["properties"]) == {
+        "run_id",
+        "plan_id",
+        "fixture_id",
+        "timeout_ms",
+        "acknowledge_local_execution",
+    }
+    assert set(validate["inputSchema"]["required"]) == set(
+        validate["inputSchema"]["properties"]
+    )
+    assert validate["inputSchema"]["additionalProperties"] is False
+    assert validate["annotations"] == {
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+
+
+@pytest.mark.parametrize(
+    "extra",
+    (
+        {"source": "print('untrusted')"},
+        {"path": "../target.py"},
+        {"module": "untrusted.module"},
+        {"callable": "run"},
+        {"url": "https://example.invalid"},
+        {"expression": "__import__('os')"},
+        {"plan": {"plan_id": "vp_fake"}},
+    ),
+)
+def test_preparation_rejects_every_arbitrary_target_surface(
+    tmp_path,
+    extra,
+):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    arguments = {"fixture_id": _FLASK_FIXTURE, **extra}
+
+    with pytest.raises(BeliefMCPError, match="unsupported argument"):
+        service.call_tool(
+            "belief_prepare_validation_fixture",
+            arguments,
+        )
+
+
+def test_preparation_rejects_unregistered_fixture(tmp_path):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+
+    with pytest.raises(BeliefMCPError, match="not registered"):
+        _prepare(service, "flask_not_registered_v1")
+
+
+def test_validation_requires_present_literal_true_acknowledgment(tmp_path):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    prepared = _prepare(service)
+    base = {
+        "run_id": prepared["run_id"],
+        "plan_id": prepared["plan_id"],
+        "fixture_id": prepared["fixture_id"],
+        "timeout_ms": 5_000,
+    }
+
+    with pytest.raises(BeliefMCPError, match="missing required"):
+        service.call_tool("belief_validate_plan", base)
+    for value in (False, 1, "true", None):
+        with pytest.raises(BeliefMCPError, match="JSON boolean true"):
+            service.call_tool(
+                "belief_validate_plan",
+                {
+                    **base,
+                    "acknowledge_local_execution": value,
+                },
+            )
+
+
+@pytest.mark.parametrize(
+    "timeout_ms",
+    (True, False, 99, 10_001, -1, "5000", None),
+)
+def test_validation_rejects_malformed_or_unbounded_timeout(
+    tmp_path,
+    timeout_ms,
+):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    prepared = _prepare(service)
+
+    with pytest.raises(BeliefMCPError, match="timeout_ms"):
+        _validate(service, prepared, timeout_ms=timeout_ms)
+
+
+def test_arbitrary_project_plan_remains_unbound(tmp_path):
+    source = tmp_path / "app.py"
+    source.write_text(
+        (
+            "from flask import Flask, request\n"
+            "app = Flask(__name__)\n"
+            "@app.get('/download')\n"
+            "def download():\n"
+            "    return open(request.args['path']).read()\n"
+        ),
+        encoding="utf-8",
+    )
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    scan = service.call_tool(
+        "belief_scan",
+        {
+            "workspace": ".",
+            "audit_mode": True,
+            "reportability": True,
+            "max_files": 20,
+        },
+    )
+    cases, _ = service.read_resource(
+        f"belief://runs/{scan['run_id']}/audit-cases"
+    )
+    assert cases["audit_cases"]
+    case_id = cases["audit_cases"][0]["case_id"]
+    plan = service.call_tool(
+        "belief_build_validation_plan",
+        {"run_id": scan["run_id"], "case_id": case_id},
+    )
+
+    with pytest.raises(BeliefMCPError, match="unbound"):
+        service.call_tool(
+            "belief_validate_plan",
+            {
+                "run_id": scan["run_id"],
+                "plan_id": plan["plan_id"],
+                "fixture_id": _FLASK_FIXTURE,
+                "timeout_ms": 5_000,
+                "acknowledge_local_execution": True,
+            },
+        )
+
+
+def test_case_type_only_fixture_matching_is_rejected(tmp_path):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    prepared = _prepare(service)
+
+    with pytest.raises(BeliefMCPError, match="does not match"):
+        _validate(
+            service,
+            prepared,
+            fixture_id="flask_path_traversal_protected_v1",
+        )
+
+
+@pytest.mark.parametrize(
+    "field_name,replacement",
+    (
+        ("run_id", "run_" + "0" * 64),
+        ("fixture_registry_digest", "0" * 64),
+        ("fixture_source_digest", "0" * 64),
+        ("source_target_digest", "0" * 64),
+        ("validation_plan_digest", "0" * 64),
+        ("source_revision", "fixture-tampered"),
+        ("fixture_case_type", "idor_bola_possible"),
+    ),
+)
+def test_every_binding_mismatch_is_rejected(
+    tmp_path,
+    field_name,
+    replacement,
+):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    prepared = _prepare(service)
+    with service._runs._lock:
+        binding = service._runs._runs[
+            prepared["run_id"]
+        ].bindings[prepared["plan_id"]]
+        binding[field_name] = replacement
+
+    with pytest.raises(BeliefMCPError, match="does not match"):
+        _validate(service, prepared)
+
+
+def test_run_and_plan_mismatch_are_rejected(tmp_path):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    first = _prepare(service, _FLASK_FIXTURE)
+    second = _prepare(
+        service,
+        "flask_path_traversal_protected_v1",
+    )
+
+    with pytest.raises(BeliefMCPError, match="does not exist"):
+        service.call_tool(
+            "belief_validate_plan",
+            {
+                "run_id": first["run_id"],
+                "plan_id": second["plan_id"],
+                "fixture_id": first["fixture_id"],
+                "timeout_ms": 5_000,
+                "acknowledge_local_execution": True,
+            },
+        )
+    with pytest.raises(BeliefMCPError, match="does not exist"):
+        service.call_tool(
+            "belief_validate_plan",
+            {
+                "run_id": first["run_id"],
+                "plan_id": "vp_0000000000000000",
+                "fixture_id": first["fixture_id"],
+                "timeout_ms": 5_000,
+                "acknowledge_local_execution": True,
+            },
+        )
+
+
+def test_result_is_deterministic_bounded_and_never_target_confirmation(
+    tmp_path,
+):
+    if not optional_framework_available("flask"):
+        pytest.skip("optional dependency unavailable: flask")
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    prepared = _prepare(service)
+
+    first = _validate(service, prepared)
+    second = _validate(service, prepared)
+
+    assert first == second
+    assert first["result_id"] == second["result_id"]
+    assert first["semantic_digest"] == second["semantic_digest"]
+    assert first["target_vulnerability_confirmed"] is False
+    assert first["maturity"] not in {
+        "human_confirmed",
+        "report_ready",
+        "confirmed_vulnerability",
+    }
+    forbidden_keys = {
+        "source_code",
+        "environment",
+        "traceback",
+        "stdout",
+        "stderr",
+        "temporary_root",
+        "temporary_path",
+    }
+    assert not (forbidden_keys & _all_keys(first))
+    assert len(
+        service.read_resource(
+            f"belief://runs/{prepared['run_id']}/validation-results"
+        )[0]["validation_results"]
+    ) == 1
+
+
+def test_preparation_and_validation_do_not_touch_target_or_holdout(
+    monkeypatch,
+    tmp_path,
+):
+    if not optional_framework_available("flask"):
+        pytest.skip("optional dependency unavailable: flask")
+    target = tmp_path / "target.py"
+    target.write_text("UNCHANGED = True\n", encoding="utf-8")
+    holdout = tmp_path / "benchmark_susvibes"
+    holdout.mkdir()
+    forbidden = holdout / "never-open.py"
+    forbidden.write_text("raise AssertionError\n", encoding="utf-8")
+    original_read_text = Path.read_text
+
+    def guarded_read_text(path, *args, **kwargs):
+        if "benchmark_susvibes" in {
+            part.casefold() for part in path.parts
+        }:
+            raise AssertionError("MCP opened a SusVibes artifact")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    before = target.read_bytes()
+
+    prepared = _prepare(service)
+    result = _validate(service, prepared)
+
+    assert target.read_bytes() == before
+    assert result["execution_boundaries"]["target_files_written"] is False
+    assert prepared["boundaries"]["susvibes_artifacts_opened"] is False
+
+
+def test_parent_mcp_path_uses_no_network_subprocess_or_dynamic_import(
+    monkeypatch,
+    tmp_path,
+):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+
+    def reject(*_args, **_kwargs):
+        raise AssertionError("unexpected open-world MCP capability")
+
+    monkeypatch.setattr(socket.socket, "connect", reject)
+    monkeypatch.setattr(subprocess, "run", reject)
+    monkeypatch.setattr(
+        import_module("importlib"),
+        "import_module",
+        reject,
+    )
+
+    prepared = _prepare(service)
+
+    assert prepared["boundaries"]["network_used"] is False
+    assert prepared["boundaries"]["subprocess_used"] is False
+    assert prepared["boundaries"]["arbitrary_module_accepted"] is False
+
+
+def test_result_store_enforces_per_run_limit_and_deep_copies():
+    store = _RunStore(
+        max_runs=4,
+        max_results_per_run=2,
+        max_total_results=4,
+    )
+    stored = store.put(_synthetic_analysis("one"))
+    payloads = [
+        {"result_id": f"mvr_{index}", "value": {"index": index}}
+        for index in range(3)
+    ]
+    for payload in payloads:
+        store.store_result(stored.run_id, payload)
+    payloads[-1]["value"]["index"] = 999
+
+    snapshot = store.get(stored.run_id)
+
+    assert list(snapshot.results) == ["mvr_1", "mvr_2"]
+    assert snapshot.results["mvr_2"]["value"]["index"] == 2
+    snapshot.results["mvr_2"]["value"]["index"] = 777
+    assert store.get(stored.run_id).results["mvr_2"]["value"]["index"] == 2
+
+
+def test_result_store_enforces_global_limit_deterministically():
+    store = _RunStore(
+        max_runs=4,
+        max_results_per_run=4,
+        max_total_results=2,
+    )
+    first = store.put(_synthetic_analysis("first"))
+    second = store.put(_synthetic_analysis("second"))
+
+    store.store_result(first.run_id, {"result_id": "mvr_first"})
+    store.store_result(second.run_id, {"result_id": "mvr_second"})
+    store.store_result(first.run_id, {"result_id": "mvr_third"})
+
+    assert list(store.get(first.run_id).results) == ["mvr_third"]
+    assert list(store.get(second.run_id).results) == ["mvr_second"]
+
+
+def test_validation_capacity_is_one_and_returns_busy(
+    monkeypatch,
+    tmp_path,
+):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    prepared = _prepare(service)
+    started = threading.Event()
+    release = threading.Event()
+    errors: queue.Queue[Exception] = queue.Queue()
+
+    def blocked(*_args, **_kwargs):
+        started.set()
+        release.wait(timeout=5)
+        raise ValidationContractError("test stop")
+
+    monkeypatch.setattr(
+        "belief.mcp.tools.run_isolated_web_validation_plan",
+        blocked,
+    )
+
+    def run_first():
+        try:
+            _validate(service, prepared)
+        except Exception as exc:
+            errors.put(exc)
+
+    thread = threading.Thread(target=run_first)
+    thread.start()
+    assert started.wait(timeout=5)
+    with pytest.raises(BeliefMCPError, match="capacity is busy"):
+        _validate(service, prepared)
+    release.set()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert isinstance(errors.get_nowait(), BeliefMCPError)
+
+
+def test_cancellation_before_worker_start_stores_no_result(
+    monkeypatch,
+    tmp_path,
+):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    prepared = _prepare(service)
+    execution = MCPRequestExecution("before")
+    assert execution.cancel("cancel before worker") is True
+
+    def reject(*_args, **_kwargs):
+        raise AssertionError("worker should not start after cancellation")
+
+    monkeypatch.setattr(
+        "belief.mcp.tools.run_isolated_web_validation_plan",
+        reject,
+    )
+    with pytest.raises(BeliefMCPError, match="cancelled"):
+        _validate(
+            service,
+            prepared,
+            execution=execution,
+        )
+
+    results, _ = service.read_resource(
+        f"belief://runs/{prepared['run_id']}/validation-results"
+    )
+    assert results["validation_results"] == []
+
+
+def test_cancellation_during_worker_terminates_handle_and_stores_nothing(
+    monkeypatch,
+    tmp_path,
+):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    prepared = _prepare(service)
+    execution = MCPRequestExecution("during")
+    registered = threading.Event()
+    cancelled = threading.Event()
+    errors: queue.Queue[Exception] = queue.Queue()
+
+    class FakeHandle:
+        def cancel(self, _reason=""):
+            cancelled.set()
+            return True
+
+    def blocked(*_args, on_handle, **_kwargs):
+        on_handle(FakeHandle())
+        registered.set()
+        cancelled.wait(timeout=5)
+        raise ValidationContractError("cancelled test worker")
+
+    monkeypatch.setattr(
+        "belief.mcp.tools.run_isolated_web_validation_plan",
+        blocked,
+    )
+
+    def run_validation():
+        try:
+            _validate(
+                service,
+                prepared,
+                execution=execution,
+            )
+        except Exception as exc:
+            errors.put(exc)
+
+    thread = threading.Thread(target=run_validation)
+    thread.start()
+    assert registered.wait(timeout=5)
+    assert execution.cancel("stop now\x1b[31m") is True
+    thread.join(timeout=5)
+
+    assert cancelled.is_set()
+    assert not thread.is_alive()
+    assert isinstance(errors.get_nowait(), BeliefMCPError)
+    results, _ = service.read_resource(
+        f"belief://runs/{prepared['run_id']}/validation-results"
+    )
+    assert results["validation_results"] == []
+
+
+def test_late_cancellation_is_ignored_after_completion(tmp_path):
+    execution = MCPRequestExecution("completed")
+
+    assert execution.mark_completed() is False
+    assert execution.cancel("too late") is False
+    assert execution.completed is True
+    assert execution.cancelled is False
+
+
+def test_real_stdio_cancels_without_normal_response_and_rejects_duplicate(
+    tmp_path,
+):
+    process, lines = _start_stdio_server(tmp_path)
+    try:
+        _send_rpc(
+            process,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": "2025-11-25"},
+            },
+        )
+        initialized = _next_rpc(lines)
+        assert initialized["id"] == 1
+
+        _send_rpc(
+            process,
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "belief_prepare_validation_fixture",
+                    "arguments": {"fixture_id": _FLASK_FIXTURE},
+                },
+            },
+        )
+        prepared_response = _next_rpc(lines, timeout=15)
+        prepared = prepared_response["result"]["structuredContent"]
+
+        validation = {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {
+                "name": "belief_validate_plan",
+                "arguments": {
+                    "run_id": prepared["run_id"],
+                    "plan_id": prepared["plan_id"],
+                    "fixture_id": prepared["fixture_id"],
+                    "timeout_ms": 10_000,
+                    "acknowledge_local_execution": True,
+                },
+            },
+        }
+        _send_rpc_batch(
+            process,
+            [
+                validation,
+                copy.deepcopy(validation),
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/cancelled",
+                    "params": {
+                        "requestId": 7,
+                        "reason": "test cancellation",
+                    },
+                },
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/cancelled",
+                    "params": {"requestId": "unknown"},
+                },
+                {
+                    "jsonrpc": "2.0",
+                    "id": 8,
+                    "method": "ping",
+                },
+            ],
+        )
+        observed = []
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            payload = _next_rpc(
+                lines,
+                timeout=max(0.1, deadline - time.monotonic()),
+            )
+            observed.append(payload)
+            if payload.get("id") == 8:
+                break
+
+        duplicate_errors = [
+            item
+            for item in observed
+            if item.get("id") == 7 and "error" in item
+        ]
+        normal_validation = [
+            item
+            for item in observed
+            if item.get("id") == 7 and "result" in item
+        ]
+        assert len(duplicate_errors) == 1
+        assert duplicate_errors[0]["error"]["code"] == -32600
+        assert normal_validation == []
+        assert any(item.get("id") == 8 for item in observed)
+
+        _send_rpc(
+            process,
+            {
+                **validation,
+                "id": 11,
+            },
+        )
+        process.stdin.close()
+        assert process.wait(timeout=15) == 0
+        remaining = _drain_rpc(lines)
+        assert not any(
+            item.get("id") == 11 and "result" in item
+            for item in remaining
+        )
+        assert process.stderr.read() == ""
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.wait(timeout=10)
+
+
+def _all_keys(value: object) -> set[str]:
+    if isinstance(value, dict):
+        result = set(value)
+        for nested in value.values():
+            result.update(_all_keys(nested))
+        return result
+    if isinstance(value, list):
+        result: set[str] = set()
+        for nested in value:
+            result.update(_all_keys(nested))
+        return result
+    return set()
+
+
+def _synthetic_analysis(label: str) -> dict:
+    return {
+        "schema_version": "synthetic",
+        "target": label,
+        "files": [],
+        "findings": [],
+        "audit_cases": [],
+        "diagnostics": [],
+        "totals": {},
+    }
+
+
+def _start_stdio_server(
+    workspace_root: Path,
+) -> tuple[subprocess.Popen[str], queue.Queue[object]]:
+    project_root = Path(__file__).resolve().parents[1]
+    environment = os.environ.copy()
+    environment["BELIEF_MCP_WORKSPACE_ROOT"] = str(workspace_root)
+    process = subprocess.Popen(
+        [sys.executable, "-m", "belief.mcp.server"],
+        cwd=project_root,
+        env=environment,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    assert process.stdin is not None
+    assert process.stdout is not None
+    assert process.stderr is not None
+    lines: queue.Queue[object] = queue.Queue()
+
+    def read_stdout() -> None:
+        try:
+            for line in process.stdout:
+                lines.put(json.loads(line))
+        except Exception as exc:
+            lines.put(exc)
+        finally:
+            lines.put(None)
+
+    threading.Thread(target=read_stdout, daemon=True).start()
+    return process, lines
+
+
+def _send_rpc(
+    process: subprocess.Popen[str],
+    payload: dict,
+) -> None:
+    _send_rpc_batch(process, [payload])
+
+
+def _send_rpc_batch(
+    process: subprocess.Popen[str],
+    payloads: list[dict],
+) -> None:
+    assert process.stdin is not None
+    process.stdin.write(
+        "".join(
+            json.dumps(payload, separators=(",", ":")) + "\n"
+            for payload in payloads
+        )
+    )
+    process.stdin.flush()
+
+
+def _next_rpc(
+    lines: queue.Queue[object],
+    *,
+    timeout: float = 10,
+) -> dict:
+    item = lines.get(timeout=timeout)
+    if isinstance(item, Exception):
+        raise item
+    if item is None:
+        raise AssertionError("MCP stdio closed before the expected response")
+    assert isinstance(item, dict)
+    return item
+
+
+def _drain_rpc(lines: queue.Queue[object]) -> list[dict]:
+    payloads: list[dict] = []
+    while True:
+        try:
+            item = lines.get_nowait()
+        except queue.Empty:
+            return payloads
+        if item is None:
+            return payloads
+        if isinstance(item, Exception):
+            raise item
+        assert isinstance(item, dict)
+        payloads.append(item)

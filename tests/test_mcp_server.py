@@ -59,7 +59,7 @@ def _first_case(service: BeliefMCPTools, run_id: str) -> dict:
     return payload["audit_cases"][0]
 
 
-def test_mcp_tool_surface_is_closed_read_first(tmp_path):
+def test_mcp_tool_surface_is_closed_and_fixture_bound(tmp_path):
     service = BeliefMCPTools(workspace_root=tmp_path)
 
     tools = service.list_tools()
@@ -71,12 +71,28 @@ def test_mcp_tool_surface_is_closed_read_first(tmp_path):
         "belief_get_case",
         "belief_explain_case",
         "belief_build_validation_plan",
+        "belief_prepare_validation_fixture",
+        "belief_validate_plan",
         "belief_compare_runs",
         "belief_run_local_benchmark",
     }
-    assert "belief_validate_plan" not in names
     assert "belief_execute_command" not in names
-    assert all(item["annotations"]["readOnlyHint"] is True for item in tools)
+    validate = next(
+        item for item in tools if item["name"] == "belief_validate_plan"
+    )
+    read_tools = [
+        item for item in tools if item["name"] != "belief_validate_plan"
+    ]
+    assert all(
+        item["annotations"]["readOnlyHint"] is True
+        for item in read_tools
+    )
+    assert validate["annotations"] == {
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
     assert all(item["annotations"]["destructiveHint"] is False for item in tools)
     assert all(item["annotations"]["openWorldHint"] is False for item in tools)
     assert all(item["execution"]["taskSupport"] == "forbidden" for item in tools)
@@ -94,7 +110,10 @@ def test_status_capabilities_and_schema_resources_are_explicit(tmp_path):
 
     assert status["protocol_version"] == MCP_PROTOCOL_VERSION
     assert status["network_enabled"] is False
-    assert status["dynamic_execution_enabled"] is False
+    assert status["dynamic_execution_enabled"] is True
+    assert status["dynamic_execution_scope"] == (
+        "registered_transparent_fixture_only"
+    )
     assert status["holdout_access_enabled"] is False
     assert status["confirmed_vulnerability_verdict_enabled"] is False
     assert capabilities["storage"]["writes_artifacts_to_disk"] is False
@@ -102,6 +121,7 @@ def test_status_capabilities_and_schema_resources_are_explicit(tmp_path):
     assert capabilities["storage"]["retains_full_analysis"] is False
     assert capabilities["boundaries"]["susvibes_holdout"] is False
     assert capabilities["boundaries"]["target_writes"] is False
+    assert capabilities["boundaries"]["dynamic_execution"] is True
     assert mime_type == "application/schema+json"
     assert plan_schema["properties"]["schema_version"]["const"] == (
         "belief.validation_plan.v1"
