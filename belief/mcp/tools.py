@@ -1,9 +1,10 @@
-"""Read-first MCP tools backed by BELIEF's existing application services."""
+"""Fixture-bound MCP tools backed by BELIEF's existing application services."""
 
 from __future__ import annotations
 
 import copy
 import re
+import threading
 from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -16,8 +17,10 @@ from belief.static_analysis_pipeline import (
     analyze_static_target,
 )
 from belief.validation.benchmark import run_local_validation_benchmark
-from belief.validation.plan_models import canonical_digest
+from belief.validation.execution_models import ValidationContractError
+from belief.validation.plan_models import ValidationPlan, canonical_digest
 from belief.validation.plans import build_validation_plan
+from belief.validation.worker import run_isolated_web_validation_plan
 
 from .contracts import (
     MCP_COMPARISON_SCHEMA_VERSION,
@@ -30,6 +33,22 @@ from .contracts import (
     status_payload,
     tool_definitions,
 )
+from .execution import MCPRequestExecution
+from .validation import (
+    FixtureBindingError,
+    MCP_FIXTURE_PREPARATION_SCHEMA_VERSION,
+    MCP_MAX_CONCURRENT_VALIDATIONS,
+    MCP_MAX_RESULTS_PER_RUN,
+    MCP_MAX_STORED_RUNS,
+    MCP_MAX_TOTAL_RESULTS,
+    MCP_MAX_VALIDATION_TIMEOUT_MS,
+    MCP_MIN_VALIDATION_TIMEOUT_MS,
+    REGISTERED_FIXTURE_EXECUTION_SCOPE,
+    build_registered_fixture_binding,
+    prepare_registered_fixture,
+    project_validation_result,
+    validate_registered_fixture_binding,
+)
 
 _RUN_URI = re.compile(
     r"^belief://runs/(?P<run_id>run_[0-9a-f]{64})"
@@ -39,7 +58,6 @@ _RUN_ID = re.compile(r"^run_[0-9a-f]{64}$")
 _SENSITIVE_DIRECTORY_NAMES = frozenset({"benchmark_susvibes"})
 _MAX_WORKSPACE_ARGUMENT_LENGTH = 4096
 _MAX_IDENTIFIER_LENGTH = 512
-_MAX_STORED_RUNS = 32
 
 
 class BeliefMCPError(ValueError):
@@ -53,74 +71,188 @@ class _StoredRun:
     cases: dict[str, dict[str, Any]]
     summary: dict[str, Any]
     plans: dict[str, dict[str, Any]] = field(default_factory=dict)
+    bindings: dict[str, dict[str, Any]] = field(default_factory=dict)
+    results: OrderedDict[str, dict[str, Any]] = field(
+        default_factory=OrderedDict
+    )
+    origin: str = "static_scan"
+    registered_fixture_id: str = ""
 
 
 class _RunStore:
     """Small process-local store; no scan or plan artifact is written to disk."""
 
-    def __init__(self, *, max_runs: int = _MAX_STORED_RUNS) -> None:
+    def __init__(
+        self,
+        *,
+        max_runs: int = MCP_MAX_STORED_RUNS,
+        max_results_per_run: int = MCP_MAX_RESULTS_PER_RUN,
+        max_total_results: int = MCP_MAX_TOTAL_RESULTS,
+    ) -> None:
+        if not 1 <= max_runs <= MCP_MAX_STORED_RUNS:
+            raise ValueError("max_runs is outside the reviewed bound")
+        if not 1 <= max_results_per_run <= MCP_MAX_RESULTS_PER_RUN:
+            raise ValueError(
+                "max_results_per_run is outside the reviewed bound"
+            )
+        if not 1 <= max_total_results <= MCP_MAX_TOTAL_RESULTS:
+            raise ValueError(
+                "max_total_results is outside the reviewed bound"
+            )
         self._max_runs = max_runs
+        self._max_results_per_run = max_results_per_run
+        self._max_total_results = max_total_results
         self._runs: OrderedDict[str, _StoredRun] = OrderedDict()
+        self._result_order: OrderedDict[tuple[str, str], None] = (
+            OrderedDict()
+        )
+        self._lock = threading.RLock()
 
     def put(self, analysis: Mapping[str, Any]) -> _StoredRun:
-        snapshot = dict(analysis)
+        snapshot = copy.deepcopy(dict(analysis))
         run_id = f"run_{canonical_digest(snapshot)}"
-        existing = self._runs.get(run_id)
-        if existing is not None:
-            self._runs.move_to_end(run_id)
-            return existing
+        with self._lock:
+            existing = self._runs.get(run_id)
+            if existing is not None:
+                self._runs.move_to_end(run_id)
+                return copy.deepcopy(existing)
 
-        raw_cases = snapshot.get("audit_cases")
-        cases: dict[str, dict[str, Any]] = {}
-        if isinstance(raw_cases, list):
-            for raw_case in raw_cases:
-                if not isinstance(raw_case, dict):
-                    continue
-                case_id = str(raw_case.get("case_id") or "")
-                if not case_id:
-                    continue
-                if case_id in cases:
-                    raise BeliefMCPError(
-                        f"scan produced duplicate audit case ID: {case_id}"
-                    )
-                cases[case_id] = copy.deepcopy(raw_case)
+            raw_cases = snapshot.get("audit_cases")
+            cases: dict[str, dict[str, Any]] = {}
+            if isinstance(raw_cases, list):
+                for raw_case in raw_cases:
+                    if not isinstance(raw_case, dict):
+                        continue
+                    case_id = str(raw_case.get("case_id") or "")
+                    if not case_id:
+                        continue
+                    if case_id in cases:
+                        raise BeliefMCPError(
+                            f"scan produced duplicate audit case ID: {case_id}"
+                        )
+                    cases[case_id] = copy.deepcopy(raw_case)
 
-        summary = _run_summary(run_id, snapshot, len(cases))
-        stored = _StoredRun(
-            run_id=run_id,
-            target=str(snapshot.get("target") or ""),
-            cases=dict(sorted(cases.items())),
-            summary=summary,
-        )
-        self._runs[run_id] = stored
-        while len(self._runs) > self._max_runs:
-            self._runs.popitem(last=False)
-        return stored
+            summary = _run_summary(run_id, snapshot, len(cases))
+            stored = _StoredRun(
+                run_id=run_id,
+                target=str(snapshot.get("target") or ""),
+                cases=dict(sorted(cases.items())),
+                summary=summary,
+                origin=str(snapshot.get("mcp_origin") or "static_scan"),
+                registered_fixture_id=str(
+                    snapshot.get("registered_fixture_id") or ""
+                ),
+            )
+            self._runs[run_id] = stored
+            while len(self._runs) > self._max_runs:
+                evicted_id, evicted = self._runs.popitem(last=False)
+                self._discard_result_keys(evicted_id, evicted)
+            return copy.deepcopy(stored)
 
     def get(self, run_id: object) -> _StoredRun:
         normalized = _identifier(run_id, field_name="run_id")
         if not _RUN_ID.fullmatch(normalized):
             raise BeliefMCPError("run_id must be a BELIEF MCP run identifier")
-        try:
-            stored = self._runs[normalized]
-        except KeyError as exc:
-            raise BeliefMCPError(
-                f"unknown or evicted BELIEF MCP run: {normalized}"
-            ) from exc
-        self._runs.move_to_end(normalized)
-        return stored
+        with self._lock:
+            try:
+                stored = self._runs[normalized]
+            except KeyError as exc:
+                raise BeliefMCPError(
+                    f"unknown or evicted BELIEF MCP run: {normalized}"
+                ) from exc
+            self._runs.move_to_end(normalized)
+            return copy.deepcopy(stored)
+
+    def store_plan(
+        self,
+        run_id: object,
+        plan: Mapping[str, Any],
+        *,
+        binding: Mapping[str, Any] | None = None,
+    ) -> None:
+        normalized = _identifier(run_id, field_name="run_id")
+        plan_snapshot = copy.deepcopy(dict(plan))
+        plan_id = _identifier(
+            plan_snapshot.get("plan_id"),
+            field_name="plan_id",
+        )
+        binding_snapshot = (
+            copy.deepcopy(dict(binding))
+            if binding is not None
+            else None
+        )
+        with self._lock:
+            stored = self._stored(normalized)
+            stored.plans[plan_id] = plan_snapshot
+            if binding_snapshot is None:
+                stored.bindings.pop(plan_id, None)
+            else:
+                stored.bindings[plan_id] = binding_snapshot
+            self._runs.move_to_end(normalized)
+
+    def store_result(
+        self,
+        run_id: object,
+        result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        normalized = _identifier(run_id, field_name="run_id")
+        snapshot = copy.deepcopy(dict(result))
+        result_id = _identifier(
+            snapshot.get("result_id"),
+            field_name="result_id",
+        )
+        key = (normalized, result_id)
+        with self._lock:
+            stored = self._stored(normalized)
+            if result_id in stored.results:
+                stored.results[result_id] = snapshot
+                return copy.deepcopy(snapshot)
+            stored.results[result_id] = snapshot
+            self._result_order[key] = None
+            while len(stored.results) > self._max_results_per_run:
+                evicted_id, _ = stored.results.popitem(last=False)
+                self._result_order.pop((normalized, evicted_id), None)
+            while len(self._result_order) > self._max_total_results:
+                (evicted_run_id, evicted_result_id), _ = (
+                    self._result_order.popitem(last=False)
+                )
+                evicted_run = self._runs.get(evicted_run_id)
+                if evicted_run is not None:
+                    evicted_run.results.pop(evicted_result_id, None)
+            self._runs.move_to_end(normalized)
+            return copy.deepcopy(snapshot)
 
     def values(self) -> list[_StoredRun]:
-        return list(self._runs.values())
+        with self._lock:
+            return copy.deepcopy(list(self._runs.values()))
+
+    def _stored(self, run_id: str) -> _StoredRun:
+        try:
+            return self._runs[run_id]
+        except KeyError as exc:
+            raise BeliefMCPError(
+                f"unknown or evicted BELIEF MCP run: {run_id}"
+            ) from exc
+
+    def _discard_result_keys(
+        self,
+        run_id: str,
+        stored: _StoredRun,
+    ) -> None:
+        for result_id in stored.results:
+            self._result_order.pop((run_id, result_id), None)
 
 
 class BeliefMCPTools:
-    """Closed MCP v0.1 facade over stable BELIEF services."""
+    """Closed MCP v0.2 facade over stable BELIEF services."""
 
     def __init__(
         self,
         *,
         workspace_root: str | Path | None = None,
+        max_stored_runs: int = MCP_MAX_STORED_RUNS,
+        max_results_per_run: int = MCP_MAX_RESULTS_PER_RUN,
+        max_total_results: int = MCP_MAX_TOTAL_RESULTS,
     ) -> None:
         root = Path.cwd() if workspace_root is None else Path(workspace_root)
         try:
@@ -140,22 +272,40 @@ class BeliefMCPTools:
             )
 
         self._benchmark_corpus = self._resolve_benchmark_corpus()
-        self._runs = _RunStore()
+        self._runs = _RunStore(
+            max_runs=max_stored_runs,
+            max_results_per_run=max_results_per_run,
+            max_total_results=max_total_results,
+        )
+        self._validation_capacity = threading.BoundedSemaphore(
+            MCP_MAX_CONCURRENT_VALIDATIONS
+        )
         self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
             "belief_status": self._status,
             "belief_scan": self._scan,
             "belief_get_case": self._get_case,
             "belief_explain_case": self._explain_case,
             "belief_build_validation_plan": self._build_validation_plan,
+            "belief_prepare_validation_fixture": (
+                self._prepare_validation_fixture
+            ),
             "belief_compare_runs": self._compare_runs,
             "belief_run_local_benchmark": self._run_local_benchmark,
         }
 
-    def call_tool(self, name: object, arguments: object) -> dict[str, Any]:
+    def call_tool(
+        self,
+        name: object,
+        arguments: object,
+        *,
+        execution: MCPRequestExecution | None = None,
+    ) -> dict[str, Any]:
         if not isinstance(name, str) or not name:
             raise BeliefMCPError("tool name must be a non-empty string")
         if not isinstance(arguments, dict):
             raise BeliefMCPError("tool arguments must be a JSON object")
+        if name == "belief_validate_plan":
+            return self._validate_plan(arguments, execution=execution)
         handler = self._handlers.get(name)
         if handler is None:
             raise BeliefMCPError(f"unknown BELIEF MCP tool: {name}")
@@ -198,23 +348,41 @@ class BeliefMCPTools:
             }
             return payload, "application/json"
         if kind == "validation-plans":
+            plans = []
+            for plan_id in sorted(stored.plans):
+                plan = copy.deepcopy(stored.plans[plan_id])
+                binding = stored.bindings.get(plan_id)
+                if binding is not None:
+                    plan["registered_fixture_binding"] = copy.deepcopy(
+                        binding
+                    )
+                plans.append(plan)
             payload = {
                 "schema_version": "belief.mcp_validation_plan_collection.v1",
                 "run_id": stored.run_id,
                 "count": len(stored.plans),
-                "validation_plans": copy.deepcopy(
-                    [stored.plans[key] for key in sorted(stored.plans)]
+                "validation_plans": plans,
+                "execution_enabled": bool(stored.bindings),
+                "execution_scope": (
+                    REGISTERED_FIXTURE_EXECUTION_SCOPE
+                    if stored.bindings
+                    else None
                 ),
-                "execution_enabled": False,
             }
             return payload, "application/json"
         payload = {
             "schema_version": "belief.mcp_validation_result_collection.v1",
             "run_id": stored.run_id,
-            "count": 0,
-            "validation_results": [],
-            "execution_enabled": False,
-            "reason": "Dynamic validation execution is not exposed in MCP v0.1.",
+            "count": len(stored.results),
+            "validation_results": copy.deepcopy(
+                list(stored.results.values())
+            ),
+            "execution_enabled": bool(stored.bindings),
+            "execution_scope": (
+                REGISTERED_FIXTURE_EXECUTION_SCOPE
+                if stored.bindings
+                else None
+            ),
         }
         return payload, "application/json"
 
@@ -228,7 +396,7 @@ class BeliefMCPTools:
         tools = self.list_tools()
         return {
             "schema_version": "belief.mcp_capabilities.v1",
-            "mode": "local_stdio_read_first",
+            "mode": "local_stdio_fixture_bound_validation",
             "tools": [item["name"] for item in tools],
             "resources": [
                 item["uri"] for item in static_resource_definitions()
@@ -238,7 +406,9 @@ class BeliefMCPTools:
             ],
             "storage": {
                 "kind": "process_memory",
-                "max_runs": _MAX_STORED_RUNS,
+                "max_runs": MCP_MAX_STORED_RUNS,
+                "max_results_per_run": MCP_MAX_RESULTS_PER_RUN,
+                "max_total_results": MCP_MAX_TOTAL_RESULTS,
                 "writes_artifacts_to_disk": False,
                 "retains_full_analysis": False,
                 "retains_source_text": False,
@@ -246,6 +416,8 @@ class BeliefMCPTools:
                     "run_summary",
                     "audit_cases",
                     "generated_validation_plans",
+                    "registered_fixture_bindings",
+                    "projected_validation_results",
                 ],
             },
             "boundaries": {
@@ -255,7 +427,13 @@ class BeliefMCPTools:
                 "shell": False,
                 "docker": False,
                 "dynamic_import": False,
-                "dynamic_execution": False,
+                "dynamic_execution": True,
+                "dynamic_execution_scope": (
+                    REGISTERED_FIXTURE_EXECUTION_SCOPE
+                ),
+                "max_concurrent_validations": (
+                    MCP_MAX_CONCURRENT_VALIDATIONS
+                ),
                 "target_writes": False,
                 "custom_adapters": False,
                 "susvibes_holdout": False,
@@ -264,7 +442,12 @@ class BeliefMCPTools:
             "limitations": [
                 "Python static analysis only.",
                 "Audit cases are candidates, not confirmed vulnerabilities.",
-                "Validation plans are generated but never executed by MCP v0.1.",
+                "Arbitrary project scan plans are never executable.",
+                (
+                    "Dynamic execution is limited to plans prepared from exact "
+                    "registered transparent fixture sources."
+                ),
+                "Fixture evidence never confirms an arbitrary scanned target.",
                 "Only the transparent local_validation_v2 benchmark is callable.",
                 "Runs are evicted after the in-memory capacity is reached.",
             ],
@@ -394,8 +577,231 @@ class BeliefMCPTools:
     ) -> dict[str, Any]:
         stored, case = self._case_arguments(arguments)
         plan = build_validation_plan(case).to_dict()
-        stored.plans[str(plan["plan_id"])] = copy.deepcopy(plan)
+        self._runs.store_plan(stored.run_id, plan)
         return plan
+
+    def _prepare_validation_fixture(
+        self,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        _arguments(
+            arguments,
+            allowed=("fixture_id",),
+            required=("fixture_id",),
+        )
+        fixture_id = _identifier(
+            arguments["fixture_id"],
+            field_name="fixture_id",
+        )
+        try:
+            prepared = prepare_registered_fixture(fixture_id)
+            stored = self._runs.put(prepared.analysis_snapshot)
+            binding = build_registered_fixture_binding(
+                prepared,
+                run_id=stored.run_id,
+            )
+            self._runs.store_plan(
+                stored.run_id,
+                prepared.plan.to_dict(),
+                binding=binding.to_dict(),
+            )
+        except FixtureBindingError as exc:
+            raise BeliefMCPError(str(exc)) from exc
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise BeliefMCPError(
+                "registered fixture preparation could not be completed safely"
+            ) from exc
+        return {
+            "schema_version": MCP_FIXTURE_PREPARATION_SCHEMA_VERSION,
+            "run_id": stored.run_id,
+            "case_id": prepared.plan.subject_id,
+            "plan_id": prepared.plan.plan_id,
+            "fixture_id": prepared.fixture_id,
+            "binding": binding.to_dict(),
+            "binding_digest": binding.digest,
+            "static_scan": copy.deepcopy(prepared.static_scan),
+            "limitations": list(prepared.limitations),
+            "resources": {
+                "run": f"belief://runs/{stored.run_id}",
+                "audit_cases": (
+                    f"belief://runs/{stored.run_id}/audit-cases"
+                ),
+                "validation_plans": (
+                    f"belief://runs/{stored.run_id}/validation-plans"
+                ),
+                "validation_results": (
+                    f"belief://runs/{stored.run_id}/validation-results"
+                ),
+            },
+            "boundaries": {
+                "execution_scope": REGISTERED_FIXTURE_EXECUTION_SCOPE,
+                "arbitrary_source_accepted": False,
+                "arbitrary_path_accepted": False,
+                "arbitrary_module_accepted": False,
+                "arbitrary_callable_accepted": False,
+                "network_used": False,
+                "subprocess_used": False,
+                "target_files_written": False,
+                "susvibes_artifacts_opened": False,
+                "target_vulnerability_confirmed": False,
+                "human_confirmation_required": True,
+            },
+        }
+
+    def _validate_plan(
+        self,
+        arguments: dict[str, Any],
+        *,
+        execution: MCPRequestExecution | None,
+    ) -> dict[str, Any]:
+        _arguments(
+            arguments,
+            allowed=(
+                "run_id",
+                "plan_id",
+                "fixture_id",
+                "timeout_ms",
+                "acknowledge_local_execution",
+            ),
+            required=(
+                "run_id",
+                "plan_id",
+                "fixture_id",
+                "timeout_ms",
+                "acknowledge_local_execution",
+            ),
+        )
+        if arguments["acknowledge_local_execution"] is not True:
+            raise BeliefMCPError(
+                "acknowledge_local_execution must be the JSON boolean true"
+            )
+        timeout_ms = arguments["timeout_ms"]
+        if (
+            not isinstance(timeout_ms, int)
+            or isinstance(timeout_ms, bool)
+            or not MCP_MIN_VALIDATION_TIMEOUT_MS
+            <= timeout_ms
+            <= MCP_MAX_VALIDATION_TIMEOUT_MS
+        ):
+            raise BeliefMCPError(
+                "timeout_ms must be an integer between "
+                f"{MCP_MIN_VALIDATION_TIMEOUT_MS} and "
+                f"{MCP_MAX_VALIDATION_TIMEOUT_MS}"
+            )
+        run_id = _identifier(arguments["run_id"], field_name="run_id")
+        plan_id = _identifier(arguments["plan_id"], field_name="plan_id")
+        fixture_id = _identifier(
+            arguments["fixture_id"],
+            field_name="fixture_id",
+        )
+        stored = self._runs.get(run_id)
+        if (
+            stored.origin != "registered_fixture_preparation"
+            or not stored.registered_fixture_id
+        ):
+            raise BeliefMCPError(
+                "validation plan is unbound; prepare a registered fixture first"
+            )
+        if stored.registered_fixture_id != fixture_id:
+            raise BeliefMCPError(
+                "fixture_id does not match the prepared validation run"
+            )
+        try:
+            raw_plan = stored.plans[plan_id]
+        except KeyError as exc:
+            raise BeliefMCPError(
+                "plan_id does not exist in the requested run"
+            ) from exc
+        binding_payload = stored.bindings.get(plan_id)
+        if binding_payload is None:
+            raise BeliefMCPError(
+                "validation plan has no trusted registered-fixture binding"
+            )
+        try:
+            plan = ValidationPlan.from_dict(raw_plan)
+            if plan.to_dict() != raw_plan:
+                raise FixtureBindingError(
+                    "stored validation plan is not canonical"
+                )
+            case = stored.cases[plan.subject_id]
+            binding = validate_registered_fixture_binding(
+                binding_payload,
+                run_id=stored.run_id,
+                plan=plan,
+                case=case,
+                fixture_id=fixture_id,
+            )
+        except KeyError as exc:
+            raise BeliefMCPError(
+                "validation plan subject is missing from its run"
+            ) from exc
+        except (FixtureBindingError, ValueError) as exc:
+            raise BeliefMCPError(str(exc)) from exc
+
+        if execution is not None and execution.cancelled:
+            raise BeliefMCPError("validation request was cancelled")
+        if not self._validation_capacity.acquire(blocking=False):
+            raise BeliefMCPError(
+                "validation capacity is busy; retry after the active local "
+                "fixture validation completes"
+            )
+
+        worker_holder: list[Any] = []
+
+        def register_worker(worker: Any) -> None:
+            worker_holder.append(worker)
+            if execution is not None:
+                execution.register_worker(worker)
+
+        try:
+            if execution is not None and execution.cancelled:
+                raise BeliefMCPError("validation request was cancelled")
+            result = run_isolated_web_validation_plan(
+                plan,
+                fixture_id=fixture_id,
+                source_revision=binding.source_revision,
+                timeout_ms=timeout_ms,
+                correlation_id=(
+                    "mcp_"
+                    + canonical_digest(
+                        {
+                            "run_id": run_id,
+                            "plan_id": plan_id,
+                            "fixture_id": fixture_id,
+                            "timeout_ms": timeout_ms,
+                        }
+                    )[:16]
+                ),
+                on_handle=register_worker,
+            )
+            if execution is not None and execution.cancelled:
+                raise BeliefMCPError("validation request was cancelled")
+            result_payload = result.to_dict()
+            worker_state = _worker_state(result_payload)
+            if worker_state != "completed":
+                raise BeliefMCPError(
+                    _worker_tool_error(result_payload, worker_state)
+                )
+            try:
+                projected = project_validation_result(
+                    result_payload,
+                    run_id=stored.run_id,
+                    plan=plan,
+                    binding=binding,
+                )
+            except FixtureBindingError as exc:
+                raise BeliefMCPError(str(exc)) from exc
+            if execution is not None and execution.cancelled:
+                raise BeliefMCPError("validation request was cancelled")
+            return self._runs.store_result(stored.run_id, projected)
+        except ValidationContractError as exc:
+            raise BeliefMCPError(
+                "the hardened validation worker rejected the bound plan"
+            ) from exc
+        finally:
+            if execution is not None and worker_holder:
+                execution.release_worker(worker_holder[-1])
+            self._validation_capacity.release()
 
     def _compare_runs(self, arguments: dict[str, Any]) -> dict[str, Any]:
         _arguments(
@@ -554,14 +960,19 @@ def _run_resource_definitions(run_id: str) -> list[dict[str, Any]]:
             "uri": f"{base}/validation-plans",
             "name": f"{run_id}-validation-plans",
             "title": "Validation plans",
-            "description": "Non-executing plans explicitly built for this run.",
+            "description": (
+                "Plans for this run; only exact registered-fixture bindings "
+                "make a plan executable."
+            ),
             "mimeType": "application/json",
         },
         {
             "uri": f"{base}/validation-results",
             "name": f"{run_id}-validation-results",
             "title": "Validation results",
-            "description": "Empty while MCP dynamic execution remains disabled.",
+            "description": (
+                "Bounded fixture-only results that never confirm a scanned target."
+            ),
             "mimeType": "application/json",
         },
     ]
@@ -775,6 +1186,44 @@ def _identifier(value: object, *, field_name: str) -> str:
     if len(value) > _MAX_IDENTIFIER_LENGTH or "\x00" in value:
         raise BeliefMCPError(f"{field_name} is invalid")
     return value
+
+
+def _worker_state(result: Mapping[str, Any]) -> str:
+    metadata = result.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return "unavailable"
+    worker = metadata.get("isolated_worker")
+    if not isinstance(worker, Mapping):
+        return "unavailable"
+    return str(worker.get("worker_status") or "unavailable")
+
+
+def _worker_tool_error(
+    result: Mapping[str, Any],
+    worker_state: str,
+) -> str:
+    metadata = result.get("metadata")
+    limitations: list[str] = []
+    if isinstance(metadata, Mapping):
+        execution = metadata.get("execution")
+        if isinstance(execution, Mapping):
+            limitations = _unique_strings(execution.get("limitations"))
+    codes = {
+        item.removeprefix("worker_error:")
+        for item in limitations
+        if item.startswith("worker_error:")
+    }
+    if "cancelled" in codes or worker_state == "cancelled":
+        return "validation request was cancelled"
+    if "timeout" in codes or worker_state == "timed_out":
+        return "registered fixture validation exceeded its hard timeout"
+    if "policy_violation" in codes or worker_state == "policy_violation":
+        return "registered fixture validation was stopped by worker policy"
+    if "dependency_unavailable" in codes or worker_state == "unsupported":
+        return "registered fixture dependency is unavailable"
+    if "binding_mismatch" in codes:
+        return "worker evidence did not match the trusted fixture binding"
+    return "registered fixture validation ended without valid worker evidence"
 
 
 def _node_projection(value: object) -> Any:
