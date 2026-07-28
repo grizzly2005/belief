@@ -87,6 +87,20 @@ This flow is local and deterministic. It does not call LLM APIs, model servers, 
 
 ---
 
+## Local MCP for Codex
+
+BELIEF includes an experimental, read-first local MCP facade:
+
+```bash
+python -m belief.mcp.server
+```
+
+It exposes status, confined static scans, `AuditCase` retrieval and explanation, non-executing validation-plan generation, run comparison, and the transparent local validation benchmark. Runs remain in memory. The MCP surface has no network, subprocess, shell, Docker, arbitrary adapter, target-write, dynamic-validation, or SusVibes holdout capability.
+
+See [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md) for the Codex configuration, resources, exact tool contracts, and security boundary.
+
+---
+
 ## PDX JSON Adapter
 
 BELIEF can passively import JSON-only PDX bundles as normalized tool results:
@@ -682,6 +696,9 @@ belief/pdx/
 belief/validation/
   Generic validation result models and PDX verdict adaptation.
 
+belief/mcp/
+  Experimental local stdio MCP facade, public contracts, and read-first tools.
+
 belief/reasoning/
   Deterministic offline reasoning models, router, and rule-based engine.
 
@@ -749,6 +766,7 @@ pyproject.toml
 
 - [`docs/PDX_BELIEF_INTEGRATION.md`](docs/PDX_BELIEF_INTEGRATION.md)
 - [`docs/TOOL_BRIDGES.md`](docs/TOOL_BRIDGES.md)
+- [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md)
 - [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md)
 - [`benchmark_reportability/README.md`](benchmark_reportability/README.md)
 - [`benchmark_susvibes/README.md`](benchmark_susvibes/README.md)
