@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -47,6 +48,7 @@ def _dataset(tmp_path: Path, *, case_count: int = 14) -> Path:
             for row in rows
         ),
         encoding="utf-8",
+        newline="\n",
     )
     return dataset
 
@@ -156,8 +158,35 @@ def test_nested_split_is_deterministic_and_cwe_balanced(tmp_path):
     assert first == second
     dev_coverage = first["cohorts"][DEV_COHORT]["coverage"]
     test_coverage = first["cohorts"][TEST_COHORT]["coverage"]
-    assert dev_coverage["primary_cwe_strata_count"] == 5
-    assert test_coverage["primary_cwe_strata_count"] == 5
+    metadata = first["evaluator_metadata"]
+    parent_ids = first["cohorts"][PARENT_AUDIT_COHORT]["instance_ids"]
+    dev_ids = first["cohorts"][DEV_COHORT]["instance_ids"]
+    test_ids = first["cohorts"][TEST_COHORT]["instance_ids"]
+    parent_strata = Counter(
+        metadata[instance_id]["primary_cwe_stratum"]
+        for instance_id in parent_ids
+    )
+    dev_strata = {
+        metadata[instance_id]["primary_cwe_stratum"]
+        for instance_id in dev_ids
+    }
+    test_strata = {
+        metadata[instance_id]["primary_cwe_stratum"]
+        for instance_id in test_ids
+    }
+    shareable_strata = {
+        stratum
+        for stratum, count in parent_strata.items()
+        if count >= 2
+    }
+
+    # Singleton parent strata cannot occur in both child cohorts.
+    assert len(parent_strata) == 5
+    assert dev_strata | test_strata == set(parent_strata)
+    assert shareable_strata <= dev_strata
+    assert shareable_strata <= test_strata
+    assert dev_coverage["primary_cwe_strata_count"] == len(dev_strata)
+    assert test_coverage["primary_cwe_strata_count"] == len(test_strata)
 
 
 def test_security_outcome_fields_do_not_influence_allocation(tmp_path):
