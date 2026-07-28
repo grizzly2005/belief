@@ -26,7 +26,7 @@ from scripts.prepare_susvibes_nested_split import (
 pytestmark = pytest.mark.security
 
 
-def _dataset(tmp_path: Path, *, case_count: int = 14) -> Path:
+def _dataset(tmp_path: Path, *, case_count: int = 15) -> Path:
     dataset = tmp_path / "susvibes_dataset.jsonl"
     rows = [
         {
@@ -58,7 +58,7 @@ def _parent_manifest(tmp_path: Path, dataset: Path) -> Path:
         output,
         susvibes_commit="a" * 40,
         smoke_size=1,
-        canary_size=2,
+        canary_size=3,
         batch_size=4,
     )
     return output
