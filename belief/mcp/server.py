@@ -1,6 +1,6 @@
 """Dependency-free MCP stdio transport for BELIEF.
 
-The transport implements the small JSON-RPC subset needed by MCP v0.1:
+The transport implements the small JSON-RPC subset needed by MCP v0.2:
 initialization, tool discovery/invocation, and resource discovery/reads.
 All domain work is delegated to :mod:`belief.mcp.tools`.
 """
@@ -10,7 +10,10 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from collections.abc import Mapping
+from concurrent.futures import Future, ThreadPoolExecutor
+from io import TextIOBase
 from typing import Any
 
 from .contracts import (
@@ -20,29 +23,43 @@ from .contracts import (
     SERVER_INSTRUCTIONS,
     SUPPORTED_PROTOCOL_VERSIONS,
 )
+from .execution import MCPRequestExecution
 from .tools import BeliefMCPError, BeliefMCPTools
+from .validation import MCP_MAX_IN_FLIGHT_REQUESTS
 
 _JSONRPC_VERSION = "2.0"
 _MISSING = object()
+_MAX_JSONRPC_LINE_CHARS = 1024 * 1024
 
 
 class _MethodNotFound(LookupError):
     pass
 
 
+class _DuplicateJSONKey(ValueError):
+    pass
+
+
 class BeliefMCPServer:
-    """Synchronous MCP request dispatcher with no transport side effects."""
+    """MCP request dispatcher with transport-independent domain behavior."""
 
     def __init__(self, tools: BeliefMCPTools | None = None) -> None:
         self.tools = tools or BeliefMCPTools(
             workspace_root=os.environ.get("BELIEF_MCP_WORKSPACE_ROOT")
         )
 
-    def handle(self, request: object) -> dict[str, Any] | None:
+    def handle(
+        self,
+        request: object,
+        *,
+        execution: MCPRequestExecution | None = None,
+    ) -> dict[str, Any] | None:
         if not isinstance(request, dict):
             return _error(None, -32600, "Invalid Request")
         request_id = request.get("id", _MISSING)
         is_notification = request_id is _MISSING
+        if not is_notification and _request_id_key(request_id) is None:
+            return _error(None, -32600, "Invalid Request")
         if request.get("jsonrpc") != _JSONRPC_VERSION:
             return None if is_notification else _error(
                 request_id, -32600, "Invalid Request"
@@ -61,7 +78,11 @@ class BeliefMCPServer:
         if is_notification:
             return None
         try:
-            result = self._dispatch(method, params)
+            result = self._dispatch(
+                method,
+                params,
+                execution=execution,
+            )
         except _MethodNotFound:
             return _error(request_id, -32601, "Method not found")
         except BeliefMCPError as exc:
@@ -78,6 +99,8 @@ class BeliefMCPServer:
         self,
         method: str,
         params: dict[str, Any],
+        *,
+        execution: MCPRequestExecution | None,
     ) -> dict[str, Any]:
         if method == "initialize":
             requested = params.get("protocolVersion")
@@ -100,7 +123,7 @@ class BeliefMCPServer:
                     "title": "BELIEF local AppSec evidence engine",
                     "version": MCP_SERVER_VERSION,
                     "description": (
-                        "Read-first MCP facade over BELIEF's existing local services."
+                        "Fixture-bound local MCP facade over BELIEF services."
                     ),
                 },
                 "instructions": SERVER_INSTRUCTIONS,
@@ -110,7 +133,7 @@ class BeliefMCPServer:
         if method == "tools/list":
             return {"tools": self.tools.list_tools()}
         if method == "tools/call":
-            return self._call_tool(params)
+            return self._call_tool(params, execution=execution)
         if method == "resources/list":
             return {"resources": self.tools.list_resources()}
         if method == "resources/templates/list":
@@ -121,11 +144,20 @@ class BeliefMCPServer:
             return self._read_resource(params)
         raise _MethodNotFound(method)
 
-    def _call_tool(self, params: Mapping[str, Any]) -> dict[str, Any]:
+    def _call_tool(
+        self,
+        params: Mapping[str, Any],
+        *,
+        execution: MCPRequestExecution | None,
+    ) -> dict[str, Any]:
         name = params.get("name")
         arguments = params.get("arguments", {})
         try:
-            payload = self.tools.call_tool(name, arguments)
+            payload = self.tools.call_tool(
+                name,
+                arguments,
+                execution=execution,
+            )
         except BeliefMCPError as exc:
             return {
                 "content": [{"type": "text", "text": str(exc)}],
@@ -159,31 +191,278 @@ class BeliefMCPServer:
         }
 
 
-def serve_stdio(server: BeliefMCPServer | None = None) -> int:
-    """Serve newline-delimited MCP JSON-RPC until stdin reaches EOF."""
+class _StdioRuntime:
+    """Bounded concurrent stdio runtime with best-effort cancellation."""
 
-    dispatcher = server or BeliefMCPServer()
-    for raw_line in sys.stdin:
-        if not raw_line.strip():
-            continue
-        try:
-            request = json.loads(raw_line)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            response = _error(None, -32700, "Parse error")
-        else:
-            response = dispatcher.handle(request)
-        if response is None:
-            continue
-        sys.stdout.write(
-            json.dumps(
-                response,
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
-            + "\n"
+    def __init__(
+        self,
+        dispatcher: BeliefMCPServer,
+        *,
+        stdin: TextIOBase,
+        stdout: TextIOBase,
+    ) -> None:
+        self._dispatcher = dispatcher
+        self._stdin = stdin
+        self._stdout = stdout
+        self._executor = ThreadPoolExecutor(
+            max_workers=MCP_MAX_IN_FLIGHT_REQUESTS,
+            thread_name_prefix="belief-mcp-request",
         )
-        sys.stdout.flush()
-    return 0
+        self._capacity = threading.BoundedSemaphore(
+            MCP_MAX_IN_FLIGHT_REQUESTS
+        )
+        self._active: dict[
+            tuple[str, object],
+            MCPRequestExecution,
+        ] = {}
+        self._active_lock = threading.Lock()
+        self._write_lock = threading.Lock()
+        self._closed = False
+
+    def run(self) -> int:
+        try:
+            while True:
+                raw_line = self._stdin.readline(
+                    _MAX_JSONRPC_LINE_CHARS + 1
+                )
+                if raw_line == "":
+                    break
+                if len(raw_line) > _MAX_JSONRPC_LINE_CHARS:
+                    self._discard_line_remainder(raw_line)
+                    self._write(_error(None, -32700, "Parse error"))
+                    continue
+                if not raw_line.strip():
+                    continue
+                try:
+                    request = _decode_request(raw_line)
+                except (
+                    json.JSONDecodeError,
+                    UnicodeDecodeError,
+                    _DuplicateJSONKey,
+                    ValueError,
+                ):
+                    self._write(_error(None, -32700, "Parse error"))
+                    continue
+                if self._handle_cancellation(request):
+                    continue
+                if _is_notification(request):
+                    self._dispatcher.handle(request)
+                    continue
+                key = _request_key(request)
+                if key is None:
+                    response = self._dispatcher.handle(request)
+                    if response is not None:
+                        self._write(response)
+                    continue
+                if (
+                    isinstance(request, dict)
+                    and request.get("method") == "initialize"
+                ):
+                    response = self._dispatcher.handle(request)
+                    if response is not None:
+                        self._write(response)
+                    continue
+                self._submit(request, key)
+        finally:
+            self.shutdown()
+        return 0
+
+    def shutdown(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        with self._active_lock:
+            for execution in self._active.values():
+                execution.cancel("MCP server shutdown")
+        self._executor.shutdown(wait=True, cancel_futures=True)
+
+    def _submit(
+        self,
+        request: dict[str, Any],
+        key: tuple[str, object],
+    ) -> None:
+        request_id = request["id"]
+        with self._active_lock:
+            if key in self._active:
+                self._write(
+                    _error(
+                        request_id,
+                        -32600,
+                        "Duplicate active request id",
+                    )
+                )
+                return
+            if not self._capacity.acquire(blocking=False):
+                self._write(
+                    _error(
+                        request_id,
+                        -32001,
+                        "Server busy; retry after an in-flight request completes",
+                    )
+                )
+                return
+            execution = MCPRequestExecution(request_id)
+            self._active[key] = execution
+        try:
+            future = self._executor.submit(
+                self._dispatcher.handle,
+                request,
+                execution=execution,
+            )
+        except Exception:
+            with self._active_lock:
+                self._active.pop(key, None)
+                execution.mark_completed()
+                self._capacity.release()
+            self._write(_error(request_id, -32603, "Internal error"))
+            return
+        future.add_done_callback(
+            lambda completed: self._complete(
+                completed,
+                key=key,
+                execution=execution,
+            )
+        )
+
+    def _complete(
+        self,
+        future: Future[dict[str, Any] | None],
+        *,
+        key: tuple[str, object],
+        execution: MCPRequestExecution,
+    ) -> None:
+        try:
+            response = future.result()
+        except Exception:
+            response = _error(
+                execution.request_id,
+                -32603,
+                "Internal error",
+            )
+        with self._active_lock:
+            current = self._active.get(key)
+            if current is execution:
+                self._active.pop(key, None)
+            cancelled = execution.mark_completed()
+            self._capacity.release()
+        if not cancelled and response is not None:
+            self._write(response)
+
+    def _handle_cancellation(self, request: object) -> bool:
+        if not isinstance(request, dict):
+            return False
+        if (
+            request.get("jsonrpc") != _JSONRPC_VERSION
+            or request.get("method") != "notifications/cancelled"
+            or "id" in request
+        ):
+            return False
+        params = request.get("params")
+        if not isinstance(params, dict):
+            return True
+        if set(params) - {"requestId", "reason"}:
+            return True
+        key = _request_id_key(params.get("requestId", _MISSING))
+        if key is None:
+            return True
+        reason = params.get("reason", "")
+        if not isinstance(reason, str):
+            reason = ""
+        with self._active_lock:
+            execution = self._active.get(key)
+            if execution is not None:
+                execution.cancel(reason)
+        return True
+
+    def _write(self, response: Mapping[str, Any]) -> None:
+        rendered = json.dumps(
+            response,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        with self._write_lock:
+            self._stdout.write(rendered + "\n")
+            self._stdout.flush()
+
+    def _discard_line_remainder(self, raw_line: str) -> None:
+        if raw_line.endswith("\n"):
+            return
+        while True:
+            remainder = self._stdin.readline(
+                _MAX_JSONRPC_LINE_CHARS + 1
+            )
+            if remainder == "" or remainder.endswith("\n"):
+                return
+
+
+def serve_stdio(
+    server: BeliefMCPServer | None = None,
+    *,
+    stdin: TextIOBase | None = None,
+    stdout: TextIOBase | None = None,
+) -> int:
+    """Serve bounded newline-delimited MCP JSON-RPC until stdin reaches EOF."""
+
+    runtime = _StdioRuntime(
+        server or BeliefMCPServer(),
+        stdin=stdin or sys.stdin,
+        stdout=stdout or sys.stdout,
+    )
+    return runtime.run()
+
+
+def _decode_request(raw_line: str) -> object:
+    return json.loads(
+        raw_line,
+        object_pairs_hook=_unique_object,
+        parse_constant=_reject_json_constant,
+    )
+
+
+def _reject_json_constant(value: str) -> object:
+    raise ValueError(f"non-finite JSON number: {value}")
+
+
+def _unique_object(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateJSONKey(key)
+        result[key] = value
+    return result
+
+
+def _is_notification(request: object) -> bool:
+    return isinstance(request, dict) and "id" not in request
+
+
+def _request_key(
+    request: object,
+) -> tuple[str, object] | None:
+    if (
+        not isinstance(request, dict)
+        or request.get("jsonrpc") != _JSONRPC_VERSION
+        or not isinstance(request.get("method"), str)
+        or not request.get("method")
+        or "id" not in request
+    ):
+        return None
+    return _request_id_key(request["id"])
+
+
+def _request_id_key(value: object) -> tuple[str, object] | None:
+    if value is None:
+        return ("null", None)
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return ("integer", value)
+    if isinstance(value, str):
+        return ("string", value)
+    return None
 
 
 def main() -> int:
