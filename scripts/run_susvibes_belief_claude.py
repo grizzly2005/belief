@@ -55,9 +55,9 @@ ALLOWED_TOOLS = (
     "Grep",
     "NotebookEdit",
 )
-AGENT_PLAN_SCHEMA_VERSION = "belief.susvibes_agent_plan.v3"
-AGENT_RESULT_SCHEMA_VERSION = "belief.susvibes_agent_result.v3"
-AGENT_RUN_SCHEMA_VERSION = "belief.susvibes_agent_run.v3"
+AGENT_PLAN_SCHEMA_VERSION = "belief.susvibes_agent_plan.v4"
+AGENT_RESULT_SCHEMA_VERSION = "belief.susvibes_agent_result.v4"
+AGENT_RUN_SCHEMA_VERSION = "belief.susvibes_agent_run.v4"
 _CONTAINER_IDENTIFIER_RE = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
 )
@@ -67,6 +67,10 @@ _ACCOUNTING_USAGE_FIELDS = (
     "cache_creation_input_tokens",
     "cache_read_input_tokens",
 )
+CONTAINER_CPU_LIMIT = "4"
+CONTAINER_MEMORY_LIMIT = "8g"
+CONTAINER_PIDS_LIMIT = "512"
+CONTAINER_TMPFS_LIMIT = "1g"
 
 
 def _arguments() -> argparse.Namespace:
@@ -172,6 +176,14 @@ def _arguments() -> argparse.Namespace:
         "--allow-agent-network",
         action="store_true",
         help="Required acknowledgement for Docker pulls and model API access",
+    )
+    parser.add_argument(
+        "--confirm-scoped-agent-credential",
+        action="store_true",
+        help=(
+            "Confirm the container credential is benchmark-only, revocable, "
+            "spend-limited, and not a host OAuth session"
+        ),
     )
     parser.add_argument(
         "--plan-output",
@@ -340,6 +352,13 @@ def build_sanitized_plan(
             "docker_auto_start": False,
             "parallel_workers": 1,
             "belief_stop_hook_enabled": stop_hook_enabled,
+            "container_network_mode": "bridge",
+            "container_cpu_limit": CONTAINER_CPU_LIMIT,
+            "container_memory_limit": CONTAINER_MEMORY_LIMIT,
+            "container_pids_limit": CONTAINER_PIDS_LIMIT,
+            "container_capabilities_dropped": "ALL",
+            "container_no_new_privileges": True,
+            "container_tmpfs_limit": CONTAINER_TMPFS_LIMIT,
         },
     }
 
@@ -526,6 +545,14 @@ def _aggregate_agent_accounting(
     cache_creation_tokens = 0
     cache_read_tokens = 0
     invalid_count = 0
+    provider_duration_ms = 0
+    provider_duration_count = 0
+    provider_api_duration_ms = 0
+    provider_api_duration_count = 0
+    reported_turns = 0
+    turns_reported_count = 0
+    task_wall_duration_seconds = 0.0
+    model_patch_bytes = 0
     for result in results:
         stream = result.get("agent_stream")
         if not isinstance(stream, Mapping):
@@ -550,6 +577,41 @@ def _aggregate_agent_accounting(
         invalid_fields = accounting.get("invalid_fields")
         if isinstance(invalid_fields, list) and invalid_fields:
             invalid_count += 1
+        duration_ms = accounting.get("duration_ms")
+        if isinstance(duration_ms, int) and not isinstance(
+            duration_ms,
+            bool,
+        ):
+            provider_duration_ms += duration_ms
+            provider_duration_count += 1
+        api_duration_ms = accounting.get("duration_api_ms")
+        if isinstance(api_duration_ms, int) and not isinstance(
+            api_duration_ms,
+            bool,
+        ):
+            provider_api_duration_ms += api_duration_ms
+            provider_api_duration_count += 1
+        turns = accounting.get("num_turns")
+        if isinstance(turns, int) and not isinstance(turns, bool):
+            reported_turns += turns
+            turns_reported_count += 1
+        wall_duration = result.get("duration_seconds")
+        if (
+            not isinstance(wall_duration, (int, float))
+            or isinstance(wall_duration, bool)
+            or not math.isfinite(float(wall_duration))
+            or wall_duration < 0
+        ):
+            raise ValueError("agent result wall duration is invalid")
+        task_wall_duration_seconds += float(wall_duration)
+        patch_bytes = result.get("model_patch_bytes")
+        if (
+            not isinstance(patch_bytes, int)
+            or isinstance(patch_bytes, bool)
+            or patch_bytes < 0
+        ):
+            raise ValueError("agent result patch size is invalid")
+        model_patch_bytes += patch_bytes
     return {
         "reported_total_cost_usd": round(total_cost, 12),
         "cost_reported_task_count": cost_count,
@@ -558,6 +620,19 @@ def _aggregate_agent_accounting(
         "cache_creation_input_tokens": cache_creation_tokens,
         "cache_read_input_tokens": cache_read_tokens,
         "invalid_accounting_task_count": invalid_count,
+        "provider_duration_ms": provider_duration_ms,
+        "provider_duration_reported_task_count": provider_duration_count,
+        "provider_api_duration_ms": provider_api_duration_ms,
+        "provider_api_duration_reported_task_count": (
+            provider_api_duration_count
+        ),
+        "reported_turns": reported_turns,
+        "turns_reported_task_count": turns_reported_count,
+        "task_wall_duration_seconds": round(
+            task_wall_duration_seconds,
+            6,
+        ),
+        "model_patch_bytes": model_patch_bytes,
     }
 
 
@@ -761,6 +836,7 @@ def _run_task(
             "model_patch_bytes": len(patch.encode("utf-8")),
             "workspace_sanitization": sanitization,
             "belief_feedback": belief_feedback,
+            "runner_failure": None,
             "duration_seconds": round(
                 time.perf_counter() - started,
                 6,
@@ -776,6 +852,163 @@ def _run_task(
         integration.cleanup()
 
 
+def _run_task_resilient(
+    task: dict[str, str],
+    *,
+    susvibes_root: Path,
+    results_dir: Path,
+    workspace_root: Path,
+    model: str,
+    claude_version: str,
+    feedback_mode: str,
+    max_stop_blocks: int,
+    keep_workspace: bool,
+) -> dict[str, Any]:
+    """Run one task and convert bounded infrastructure failures into evidence."""
+
+    started = time.perf_counter()
+    try:
+        return _run_task(
+            task,
+            susvibes_root=susvibes_root,
+            results_dir=results_dir,
+            workspace_root=workspace_root,
+            model=model,
+            claude_version=claude_version,
+            feedback_mode=feedback_mode,
+            max_stop_blocks=max_stop_blocks,
+            keep_workspace=keep_workspace,
+        )
+    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+        return _record_failed_task(
+            task,
+            results_dir=results_dir,
+            model=model,
+            claude_version=claude_version,
+            feedback_mode=feedback_mode,
+            max_stop_blocks=max_stop_blocks,
+            started=started,
+            failure=exc,
+        )
+
+
+def _record_failed_task(
+    task: Mapping[str, str],
+    *,
+    results_dir: Path,
+    model: str,
+    claude_version: str,
+    feedback_mode: str,
+    max_stop_blocks: int,
+    started: float,
+    failure: BaseException,
+) -> dict[str, Any]:
+    _validate_feedback_configuration(feedback_mode, max_stop_blocks)
+    task_dir = results_dir / task["instance_id"]
+    task_dir.mkdir(parents=True, exist_ok=True)
+    raw_stdout = _failure_stream_bytes(failure, "stdout")
+    raw_stderr = _failure_stream_bytes(failure, "stderr")
+    stdout_path = task_dir / "agent.stdout.jsonl"
+    stderr_path = task_dir / "agent.stderr.txt"
+    if not stdout_path.exists():
+        stdout_path.write_bytes(raw_stdout)
+    if not stderr_path.exists():
+        stderr_path.write_bytes(raw_stderr)
+    if stdout_path.is_file():
+        raw_stdout = stdout_path.read_bytes()
+    stream_metadata = _summarize_agent_stream(raw_stdout)
+    transcript = raw_stdout.decode("utf-8", errors="replace")
+    model_identity = _model_identity_status(
+        model,
+        stream_metadata["assistant_models_observed"],
+    )
+    belief_feedback = _empty_belief_feedback(
+        enabled=feedback_mode == "belief",
+        configured_max_blocks=max_stop_blocks,
+    )
+    hook_reports = task_dir / "hook-reports"
+    hook_state = task_dir / "hook-state"
+    if feedback_mode == "belief" and (
+        hook_reports.is_dir() or hook_state.is_dir()
+    ):
+        belief_feedback = _summarize_belief_feedback(
+            hook_reports,
+            hook_state,
+            configured_max_blocks=max_stop_blocks,
+        )
+    failure_message = _redact_agent_secrets(str(failure))[:4_000]
+    record = {
+        "instance_id": task["instance_id"],
+        "model_name_or_path": _prediction_model_path(
+            feedback_mode,
+            model,
+        ),
+        "model_patch": "",
+    }
+    provenance = {
+        "schema_version": AGENT_RESULT_SCHEMA_VERSION,
+        "instance_id": task["instance_id"],
+        "image_name": task["image_name"],
+        "model": model,
+        "feedback_mode": feedback_mode,
+        "max_stop_blocks": max_stop_blocks,
+        "model_identity_status": model_identity,
+        "automatic_model_fallback_configured": False,
+        "claude_code_version": claude_version,
+        "claude_code_version_observed": "",
+        "agent_return_code": -1,
+        "agent_success": False,
+        "agent_stream": stream_metadata,
+        "policy_violation_suspected": _trajectory_policy_suspected(
+            transcript
+        ),
+        "model_patch_sha256": hashlib.sha256(b"").hexdigest(),
+        "model_patch_bytes": 0,
+        "workspace_sanitization": {
+            "status": "unavailable_after_runner_failure",
+        },
+        "belief_feedback": belief_feedback,
+        "runner_failure": {
+            "type": type(failure).__name__,
+            "message": failure_message,
+            "timed_out": isinstance(failure, subprocess.TimeoutExpired),
+        },
+        "duration_seconds": round(
+            time.perf_counter() - started,
+            6,
+        ),
+        "prediction": record,
+    }
+    _write_new_json(task_dir / "result.json", provenance)
+    return provenance
+
+
+def _failure_stream_bytes(
+    failure: BaseException,
+    field: str,
+) -> bytes:
+    value = getattr(failure, field, b"")
+    if value is None:
+        return b""
+    if isinstance(value, bytes):
+        text_value = value.decode("utf-8", errors="replace")
+    else:
+        text_value = str(value)
+    return _redact_agent_secrets(text_value).encode(
+        "utf-8",
+        errors="replace",
+    )
+
+
+def _redact_agent_secrets(value: str) -> str:
+    redacted = value
+    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+        secret = str(os.environ.get(name) or "")
+        if secret:
+            redacted = redacted.replace(secret, "[REDACTED]")
+    return redacted
+
+
 def _load_official_harness(
     susvibes_root: Path,
 ) -> tuple[type, str]:
@@ -788,7 +1021,80 @@ def _load_official_harness(
         sys.modules.pop(name, None)
     module = importlib.import_module("run_docker")
     prompts = importlib.import_module("prompts")
-    return module.DockerIntegration, str(prompts.USER_PROMPT_TEMPLATE)
+    DockerIntegration = module.DockerIntegration
+
+    class HardenedDockerIntegration(DockerIntegration):
+        def _start_persistent_container(self) -> None:
+            container_name = (
+                f"belief_agent_{os.getpid()}_{time.time_ns()}"
+            )
+            arguments = _hardened_container_run_arguments(
+                container_name=container_name,
+                workspace=Path(self.local_work_dir).resolve(),
+                container_work_dir=str(self.container_work_dir),
+                docker_image=str(self.docker_image),
+            )
+            _docker(*arguments, timeout=120)
+            self.work_container = container_name
+
+    return HardenedDockerIntegration, str(prompts.USER_PROMPT_TEMPLATE)
+
+
+def _hardened_container_run_arguments(
+    *,
+    container_name: str,
+    workspace: Path,
+    container_work_dir: str,
+    docker_image: str,
+) -> list[str]:
+    if not _CONTAINER_IDENTIFIER_RE.fullmatch(container_name):
+        raise ValueError("invalid hardened Docker container name")
+    resolved_workspace = workspace.resolve()
+    if not resolved_workspace.is_dir():
+        raise ValueError("hardened Docker workspace does not exist")
+    if (
+        not container_work_dir.startswith("/")
+        or not container_work_dir.strip("/")
+    ):
+        raise ValueError("invalid container work directory")
+    if not docker_image.strip():
+        raise ValueError("Docker image name is empty")
+    return [
+        "run",
+        "-d",
+        "--name",
+        container_name,
+        "--network",
+        "bridge",
+        "--cpus",
+        CONTAINER_CPU_LIMIT,
+        "--memory",
+        CONTAINER_MEMORY_LIMIT,
+        "--memory-swap",
+        CONTAINER_MEMORY_LIMIT,
+        "--pids-limit",
+        CONTAINER_PIDS_LIMIT,
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges:true",
+        "--ulimit",
+        "nofile=4096:4096",
+        "--tmpfs",
+        (
+            "/tmp:rw,nosuid,nodev,size="
+            f"{CONTAINER_TMPFS_LIMIT}"
+        ),
+        "--init",
+        "-v",
+        f"{resolved_workspace}:{container_work_dir}",
+        "-w",
+        container_work_dir,
+        docker_image,
+        "tail",
+        "-f",
+        "/dev/null",
+    ]
 
 
 def _install_belief_hook_bundle(container: str) -> None:
@@ -1377,6 +1683,11 @@ def main() -> int:
                 raise ValueError(
                     "execution requires --allow-agent-network explicitly"
                 )
+            if not args.confirm_scoped_agent_credential:
+                raise ValueError(
+                    "execution requires "
+                    "--confirm-scoped-agent-credential explicitly"
+                )
             if not model:
                 raise ValueError("--model is required for execution")
             if not (
@@ -1407,6 +1718,7 @@ def main() -> int:
                     runner_path=Path(__file__).resolve(),
                     feedback_mode=feedback_mode,
                     max_stop_blocks=max_stop_blocks,
+                    scoped_credential_acknowledged=True,
                 ),
             }
         plan = build_sanitized_plan(
@@ -1448,7 +1760,7 @@ def main() -> int:
         )
         results = []
         for task in tasks:
-            results.append(_run_task(
+            results.append(_run_task_resilient(
                 task,
                 susvibes_root=susvibes_root,
                 results_dir=results_dir,
@@ -1493,6 +1805,17 @@ def main() -> int:
             "feedback_mode": feedback_mode,
             "max_stop_blocks": max_stop_blocks,
             "accounting": _aggregate_agent_accounting(results),
+            "runner_failure_count": sum(
+                result.get("runner_failure") is not None
+                for result in results
+            ),
+            "timeout_count": sum(
+                bool(
+                    isinstance(result.get("runner_failure"), Mapping)
+                    and result["runner_failure"].get("timed_out") is True
+                )
+                for result in results
+            ),
             "belief_feedback_review_count": sum(
                 result["belief_feedback"]["review_count"]
                 for result in results

@@ -157,12 +157,18 @@ and the 49-case holdout remains unconsumed.
 
 ### Verified
 
-- Agent artifacts now use explicit v3 schemas that distinguish a true
+- Agent artifacts now use explicit v4 schemas that distinguish a true
   no-feedback control (`feedback_mode=none`, zero Stop blocks) from a BELIEF
   treatment (`feedback_mode=belief`, one to three bounded Stop blocks).
+- The merger keeps explicit compatibility adapters for the prior v2/v3 JSON
+  artifacts rather than silently reinterpreting them.
 - Both arms retain the same history-removal, web/Git anti-cheating policy,
   model pin, CLI pin, prompt, timeout, pass@1 semantics, and sequential
   execution.
+- The local adapter replaces the upstream host-network container launch with
+  bridge networking, fixed CPU/RAM/PID limits, dropped capabilities,
+  `no-new-privileges`, bounded temporary storage, and only the isolated task
+  workspace mounted.
 - The control settings omit the `Stop` hook entirely. A zero-budget BELIEF
   review is no longer mislabeled as a no-feedback baseline.
 - Ready preflight reports bind the feedback mode and budget. The prediction
@@ -170,11 +176,14 @@ and the 49-case holdout remains unconsumed.
 - Result streams retain validated provider-reported cost, token, duration, and
   turn accounting when those fields are emitted; raw stdout remains the source
   artifact.
+- A per-task timeout or bounded runner failure now becomes a redacted,
+  scoreable empty-patch submission with explicit failure telemetry; it no
+  longer aborts the remaining tasks or silently changes the denominator.
 - A create-only `belief.susvibes_paired_agent_preregistration.v1` generator
   freezes the same three smoke tasks by ordered digest, two distinct output
   paths, arms A=`none/0` and B=`belief/1`, and the no-union scoring rule.
-- Post-control validation: 941 tests passed and 31 skipped in the full/CI
-  filter; 487 security tests passed; Ruff, first-party Python compilation, and
+- Post-control validation: 945 tests passed and 31 skipped in the full suite;
+  491 security tests passed; Ruff, first-party Python compilation, and
   repository-isolated dependency consistency passed.
 
 ### Not tested

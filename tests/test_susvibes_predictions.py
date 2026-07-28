@@ -77,11 +77,14 @@ def _write_batch(
     schema_version: int = 2,
     feedback_mode: str = "belief",
     max_stop_blocks: int = 1,
+    runner_failures: int = 0,
 ) -> Path:
     run_dir.mkdir()
     start_index = all_ids.index(ids[0])
     assert all_ids[start_index:start_index + len(ids)] == ids
-    assert schema_version in {2, 3}
+    assert schema_version in {2, 3, 4}
+    assert 0 <= runner_failures <= len(ids)
+    assert schema_version == 4 or runner_failures == 0
     model_name = (
         f"claude-code-baseline/{model}"
         if feedback_mode == "none"
@@ -90,9 +93,14 @@ def _write_batch(
     records = []
     tasks = []
     for index, instance_id in enumerate(ids):
+        failed = index < runner_failures
         patch = (
-            "diff --git a/app.py b/app.py\n"
-            f"+SAFE_{instance_id[-4:]} = {index}\n"
+            ""
+            if failed
+            else (
+                "diff --git a/app.py b/app.py\n"
+                f"+SAFE_{instance_id[-4:]} = {index}\n"
+            )
         )
         record = {
             "instance_id": instance_id,
@@ -133,42 +141,71 @@ def _write_batch(
                             "feedback_delivered": False,
                             "terminal_statuses": [],
                         },
+                        **(
+                            {
+                                "runner_failure": (
+                                    {
+                                        "type": "TimeoutExpired",
+                                        "message": "agent command timed out",
+                                        "timed_out": True,
+                                    }
+                                    if failed
+                                    else None
+                                ),
+                            }
+                            if schema_version == 4
+                            else {}
+                        ),
                     }
-                    if schema_version == 3
+                    if schema_version >= 3
                     else {}
                 ),
-                "model_identity_status": "matched",
+                "model_identity_status": (
+                    "not_observed" if failed else "matched"
+                ),
                 "automatic_model_fallback_configured": False,
                 "claude_code_version": "2.1.218",
-                "claude_code_version_observed": "2.1.218",
-                "agent_return_code": 0,
-                "agent_success": True,
+                "claude_code_version_observed": (
+                    "" if failed else "2.1.218"
+                ),
+                "agent_return_code": -1 if failed else 0,
+                "agent_success": not failed,
                 "agent_stream": {
-                    "valid_json_event_count": 1,
+                    "valid_json_event_count": 0 if failed else 1,
                     "invalid_json_line_count": 0,
-                    "assistant_models_observed": [model],
-                    "stop_reasons_observed": ["end_turn"],
+                    "assistant_models_observed": [] if failed else [model],
+                    "stop_reasons_observed": [] if failed else ["end_turn"],
                     "model_refusal_observed": False,
                     "refusal_categories_observed": [],
                     "api_retry_event_count": 0,
-                    "result_event_count": 1,
-                    "result_subtypes_observed": ["success"],
+                    "result_event_count": 0 if failed else 1,
+                    "result_subtypes_observed": (
+                        [] if failed else ["success"]
+                    ),
                     "result_error_observed": False,
                     **(
                         {
                             "result_accounting": {
-                                "total_cost_usd": 0.1,
-                                "duration_ms": 1000,
-                                "duration_api_ms": 800,
-                                "num_turns": 1,
-                                "usage": {
-                                    "input_tokens": 100,
-                                    "output_tokens": 20,
-                                },
+                                "total_cost_usd": (
+                                    None if failed else 0.1
+                                ),
+                                "duration_ms": None if failed else 1000,
+                                "duration_api_ms": (
+                                    None if failed else 800
+                                ),
+                                "num_turns": None if failed else 1,
+                                "usage": (
+                                    {}
+                                    if failed
+                                    else {
+                                        "input_tokens": 100,
+                                        "output_tokens": 20,
+                                    }
+                                ),
                                 "invalid_fields": [],
                             },
                         }
-                        if schema_version == 3
+                        if schema_version >= 3
                         else {}
                     ),
                 },
@@ -177,6 +214,7 @@ def _write_batch(
                     patch_bytes
                 ).hexdigest(),
                 "model_patch_bytes": len(patch_bytes),
+                "duration_seconds": 0.25 if failed else 1.0,
                 "prediction": record,
             }, indent=2, sort_keys=True)
             + "\n",
@@ -211,7 +249,7 @@ def _write_batch(
                     ),
                     "feedback_mode": feedback_mode,
                 }
-                if schema_version == 3
+                if schema_version >= 3
                 else {}
             ),
             "results_dir": str(run_dir.resolve()),
@@ -236,7 +274,7 @@ def _write_batch(
                         "feedback_mode": feedback_mode,
                         "max_stop_blocks": max_stop_blocks,
                     }
-                    if schema_version == 3
+                    if schema_version >= 3
                     else {}
                 ),
             },
@@ -267,8 +305,21 @@ def _write_batch(
                         "belief_stop_hook_enabled": (
                             feedback_mode == "belief"
                         ),
+                        **(
+                            {
+                                "container_network_mode": "bridge",
+                                "container_cpu_limit": "4",
+                                "container_memory_limit": "8g",
+                                "container_pids_limit": "512",
+                                "container_capabilities_dropped": "ALL",
+                                "container_no_new_privileges": True,
+                                "container_tmpfs_limit": "1g",
+                            }
+                            if schema_version == 4
+                            else {}
+                        ),
                     }
-                    if schema_version == 3
+                    if schema_version >= 3
                     else {}
                 ),
             },
@@ -276,14 +327,51 @@ def _write_batch(
         + "\n",
         encoding="utf-8",
     )
+    accounting = {
+        "reported_total_cost_usd": round(
+            0.1 * (len(ids) - runner_failures),
+            12,
+        ),
+        "cost_reported_task_count": len(ids) - runner_failures,
+        "input_tokens": 100 * (len(ids) - runner_failures),
+        "output_tokens": 20 * (len(ids) - runner_failures),
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "invalid_accounting_task_count": 0,
+    }
+    if schema_version == 4:
+        accounting.update({
+            "provider_duration_ms": (
+                1000 * (len(ids) - runner_failures)
+            ),
+            "provider_duration_reported_task_count": (
+                len(ids) - runner_failures
+            ),
+            "provider_api_duration_ms": (
+                800 * (len(ids) - runner_failures)
+            ),
+            "provider_api_duration_reported_task_count": (
+                len(ids) - runner_failures
+            ),
+            "reported_turns": len(ids) - runner_failures,
+            "turns_reported_task_count": len(ids) - runner_failures,
+            "task_wall_duration_seconds": round(
+                (len(ids) - runner_failures) + runner_failures * 0.25,
+                6,
+            ),
+            "model_patch_bytes": sum(
+                len(record["model_patch"].encode("utf-8"))
+                for record in records
+            ),
+        })
     (run_dir / "summary.json").write_text(
         json.dumps({
             "schema_version": (
                 f"belief.susvibes_agent_run.v{schema_version}"
             ),
             "task_count": len(ids),
-            "successful_agent_runs": len(ids),
-            "model_identity_verified_runs": len(ids),
+            "successful_agent_runs": len(ids) - runner_failures,
+            "model_identity_verified_runs": len(ids) - runner_failures,
             "model_refusal_observed_count": 0,
             "api_retry_event_count": 0,
             "automatic_model_fallback_configured": False,
@@ -294,20 +382,17 @@ def _write_batch(
                     "belief_feedback_review_count": 0,
                     "belief_feedback_block_count": 0,
                     "belief_feedback_delivered_runs": 0,
-                    "accounting": {
-                        "reported_total_cost_usd": round(
-                            0.1 * len(ids),
-                            12,
-                        ),
-                        "cost_reported_task_count": len(ids),
-                        "input_tokens": 100 * len(ids),
-                        "output_tokens": 20 * len(ids),
-                        "cache_creation_input_tokens": 0,
-                        "cache_read_input_tokens": 0,
-                        "invalid_accounting_task_count": 0,
-                    },
+                    "accounting": accounting,
+                    **(
+                        {
+                            "runner_failure_count": runner_failures,
+                            "timeout_count": runner_failures,
+                        }
+                        if schema_version == 4
+                        else {}
+                    ),
                 }
-                if schema_version == 3
+                if schema_version >= 3
                 else {}
             ),
             "policy_violation_suspected_count": suspected,
@@ -382,7 +467,7 @@ def test_merge_accepts_explicit_no_feedback_arm(tmp_path):
         ids=ids,
         all_ids=ids,
         selection=selection,
-        schema_version=3,
+        schema_version=4,
         feedback_mode="none",
         max_stop_blocks=0,
     )
@@ -401,6 +486,61 @@ def test_merge_accepts_explicit_no_feedback_arm(tmp_path):
     assert payload["execution"]["model_name_or_path"].startswith(
         "claude-code-baseline/"
     )
+
+
+def test_merge_preserves_v3_feedback_artifact_compatibility(tmp_path):
+    dataset, manifest, ids, selection = _experiment(tmp_path)
+    legacy_v3 = _write_batch(
+        tmp_path / "legacy-v3",
+        ids=ids,
+        all_ids=ids,
+        selection=selection,
+        schema_version=3,
+        feedback_mode="belief",
+        max_stop_blocks=1,
+    )
+
+    payload = write_merged_susvibes_predictions(
+        tmp_path / "legacy-v3-predictions.jsonl",
+        tmp_path / "legacy-v3-provenance.json",
+        experiment_manifest=manifest,
+        dataset=dataset,
+        cohort="full",
+        run_dirs=[legacy_v3],
+    )
+
+    assert payload["execution"]["feedback_mode"] == "belief"
+    assert payload["quality_flags"]["runner_failure_count"] == 0
+    assert payload["accounting"]["provider_duration_ms"] == 5000
+
+
+def test_merge_retains_timeout_as_failed_submission(tmp_path):
+    dataset, manifest, ids, selection = _experiment(tmp_path)
+    run = _write_batch(
+        tmp_path / "failure-aware",
+        ids=ids,
+        all_ids=ids,
+        selection=selection,
+        schema_version=4,
+        feedback_mode="belief",
+        max_stop_blocks=1,
+        runner_failures=1,
+    )
+
+    payload = write_merged_susvibes_predictions(
+        tmp_path / "failure-aware-predictions.jsonl",
+        tmp_path / "failure-aware-provenance.json",
+        experiment_manifest=manifest,
+        dataset=dataset,
+        cohort="full",
+        run_dirs=[run],
+    )
+
+    assert payload["coverage"]["complete"] is True
+    assert payload["quality_flags"]["failed_agent_run_count"] == 1
+    assert payload["quality_flags"]["runner_failure_count"] == 1
+    assert payload["quality_flags"]["timeout_count"] == 1
+    assert payload["accounting"]["cost_reported_task_count"] == 4
 
 
 def test_merge_rejects_duplicate_predictions(tmp_path):

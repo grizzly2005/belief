@@ -27,6 +27,10 @@ _SCHEMA_FAMILIES = {
         "belief.susvibes_agent_run.v3",
         "belief.susvibes_agent_result.v3",
     ),
+    "belief.susvibes_agent_plan.v4": (
+        "belief.susvibes_agent_run.v4",
+        "belief.susvibes_agent_result.v4",
+    ),
 }
 _PREDICTION_FIELDS = frozenset({
     "instance_id",
@@ -181,6 +185,14 @@ def write_merged_susvibes_predictions(
         batch["belief_feedback_delivered_runs"]
         for batch in batch_payloads
     )
+    runner_failures = sum(
+        batch["runner_failure_count"]
+        for batch in batch_payloads
+    )
+    timeouts = sum(
+        batch["timeout_count"]
+        for batch in batch_payloads
+    )
     merged_accounting = {
         "reported_total_cost_usd": round(sum(
             batch["accounting"]["reported_total_cost_usd"]
@@ -208,6 +220,42 @@ def write_merged_susvibes_predictions(
         ),
         "invalid_accounting_task_count": sum(
             batch["accounting"]["invalid_accounting_task_count"]
+            for batch in batch_payloads
+        ),
+        "provider_duration_ms": sum(
+            batch["accounting"]["provider_duration_ms"]
+            for batch in batch_payloads
+        ),
+        "provider_duration_reported_task_count": sum(
+            batch["accounting"][
+                "provider_duration_reported_task_count"
+            ]
+            for batch in batch_payloads
+        ),
+        "provider_api_duration_ms": sum(
+            batch["accounting"]["provider_api_duration_ms"]
+            for batch in batch_payloads
+        ),
+        "provider_api_duration_reported_task_count": sum(
+            batch["accounting"][
+                "provider_api_duration_reported_task_count"
+            ]
+            for batch in batch_payloads
+        ),
+        "reported_turns": sum(
+            batch["accounting"]["reported_turns"]
+            for batch in batch_payloads
+        ),
+        "turns_reported_task_count": sum(
+            batch["accounting"]["turns_reported_task_count"]
+            for batch in batch_payloads
+        ),
+        "task_wall_duration_seconds": round(sum(
+            batch["accounting"]["task_wall_duration_seconds"]
+            for batch in batch_payloads
+        ), 6),
+        "model_patch_bytes": sum(
+            batch["accounting"]["model_patch_bytes"]
             for batch in batch_payloads
         ),
     }
@@ -243,6 +291,8 @@ def write_merged_susvibes_predictions(
             "belief_feedback_review_count": feedback_reviews,
             "belief_feedback_block_count": feedback_blocks,
             "belief_feedback_delivered_run_count": feedback_runs,
+            "runner_failure_count": runner_failures,
+            "timeout_count": timeouts,
             "automatic_model_fallback_configured": False,
             "policy_violation_suspected_count": suspected,
             "anti_cheating_adjudication_required": suspected > 0,
@@ -329,7 +379,11 @@ def _load_batch_run(
     expected_run_schema, expected_result_schema = schema_family
     if summary.get("schema_version") != expected_run_schema:
         raise ValueError(f"unsupported BELIEF run summary schema: {run_dir}")
-    explicit_feedback_schema = plan_schema.endswith(".v3")
+    explicit_feedback_schema = plan_schema in {
+        "belief.susvibes_agent_plan.v3",
+        "belief.susvibes_agent_plan.v4",
+    }
+    failure_aware_schema = plan_schema == "belief.susvibes_agent_plan.v4"
     if Path(str(plan.get("results_dir") or "")).resolve() != run_dir:
         raise ValueError(f"BELIEF plan results directory mismatch: {run_dir}")
     if plan.get("dataset_sha256") != selection["dataset_sha256"]:
@@ -391,8 +445,22 @@ def _load_batch_run(
         required_boundaries["belief_stop_hook_enabled"] = (
             feedback_mode == "belief"
         )
+    if failure_aware_schema:
+        required_boundaries.update({
+            "container_network_mode": "bridge",
+            "container_cpu_limit": "4",
+            "container_memory_limit": "8g",
+            "container_pids_limit": "512",
+            "container_capabilities_dropped": "ALL",
+            "container_no_new_privileges": True,
+            "container_tmpfs_limit": "1g",
+        })
     if not isinstance(boundaries, Mapping) or any(
-        boundaries.get(key) is not value
+        (
+            boundaries.get(key) is not value
+            if isinstance(value, bool)
+            else boundaries.get(key) != value
+        )
         for key, value in required_boundaries.items()
     ):
         raise ValueError(
@@ -558,10 +626,29 @@ def _load_batch_run(
             raise ValueError(
                 f"BELIEF summary feedback telemetry is invalid: {run_dir}"
             )
+        if failure_aware_schema:
+            summary_runner_failures = _integer(
+                summary,
+                "runner_failure_count",
+            )
+            summary_timeouts = _integer(summary, "timeout_count")
+            if (
+                not 0 <= summary_timeouts <= summary_runner_failures
+                or summary_runner_failures > len(task_ids)
+            ):
+                raise ValueError(
+                    "BELIEF summary failure telemetry is invalid: "
+                    f"{run_dir}"
+                )
+        else:
+            summary_runner_failures = 0
+            summary_timeouts = 0
     else:
         summary_feedback_reviews = 0
         summary_feedback_blocks = 0
         summary_feedback_runs = 0
+        summary_runner_failures = 0
+        summary_timeouts = 0
     model_selection = plan.get("model_selection")
     if model_selection != {
         "requested_model": model,
@@ -594,6 +681,16 @@ def _load_batch_run(
     observed_cache_creation_tokens = 0
     observed_cache_read_tokens = 0
     observed_invalid_accounting = 0
+    observed_runner_failures = 0
+    observed_timeouts = 0
+    observed_provider_duration_ms = 0
+    observed_provider_duration_count = 0
+    observed_provider_api_duration_ms = 0
+    observed_provider_api_duration_count = 0
+    observed_turns = 0
+    observed_turns_count = 0
+    observed_task_wall_duration = 0.0
+    observed_model_patch_bytes = 0
     for task_id, record in zip(task_ids, records):
         result_path = _safe_child(run_dir, task_id) / "result.json"
         result = _read_json_object(
@@ -624,7 +721,35 @@ def _load_batch_run(
             observed_feedback_reviews += feedback_counts[0]
             observed_feedback_blocks += feedback_counts[1]
             observed_feedback_runs += feedback_counts[2]
-        if result.get("model_identity_status") != "matched":
+            if failure_aware_schema:
+                failure_counts = _validate_runner_failure(
+                    result.get("runner_failure"),
+                    task_id=task_id,
+                )
+                observed_runner_failures += failure_counts[0]
+                observed_timeouts += failure_counts[1]
+            else:
+                failure_counts = (0, 0)
+        else:
+            failure_counts = (0, 0)
+        task_success = result.get("agent_success")
+        if not isinstance(task_success, bool):
+            raise ValueError(f"BELIEF task success flag is invalid: {task_id}")
+        model_identity_status = result.get("model_identity_status")
+        if (
+            model_identity_status == "mismatch"
+            or (
+                task_success
+                and model_identity_status != "matched"
+            )
+            or (
+                not task_success
+                and model_identity_status not in {
+                    "matched",
+                    "not_observed",
+                }
+            )
+        ):
             raise ValueError(
                 f"BELIEF task model identity is unverified: {task_id}"
             )
@@ -636,7 +761,19 @@ def _load_batch_run(
             raise ValueError(
                 f"BELIEF task result Claude version mismatch: {task_id}"
             )
-        if result.get("claude_code_version_observed") != claude_version:
+        observed_claude_version = result.get(
+            "claude_code_version_observed"
+        )
+        if (
+            (
+                not failure_counts[0]
+                and observed_claude_version != claude_version
+            )
+            or (
+                failure_counts[0]
+                and observed_claude_version not in {"", claude_version}
+            )
+        ):
             raise ValueError(
                 f"BELIEF task observed Claude version mismatch: {task_id}"
             )
@@ -651,8 +788,18 @@ def _load_batch_run(
             raise ValueError(f"BELIEF task patch hash mismatch: {task_id}")
         if result.get("model_patch_bytes") != len(patch_bytes):
             raise ValueError(f"BELIEF task patch size mismatch: {task_id}")
-        if not isinstance(result.get("agent_success"), bool):
-            raise ValueError(f"BELIEF task success flag is invalid: {task_id}")
+        duration_seconds = result.get("duration_seconds")
+        if (
+            not isinstance(duration_seconds, (int, float))
+            or isinstance(duration_seconds, bool)
+            or not math.isfinite(float(duration_seconds))
+            or duration_seconds < 0
+        ):
+            raise ValueError(
+                f"BELIEF task wall duration is invalid: {task_id}"
+            )
+        observed_task_wall_duration += float(duration_seconds)
+        observed_model_patch_bytes += len(patch_bytes)
         stream = result.get("agent_stream")
         expected_stream_fields = {
             "valid_json_event_count",
@@ -694,20 +841,61 @@ def _load_batch_run(
             observed_invalid_accounting += accounting_values[
                 "invalid_accounting_task_count"
             ]
+            observed_provider_duration_ms += accounting_values[
+                "provider_duration_ms"
+            ]
+            observed_provider_duration_count += accounting_values[
+                "provider_duration_reported_task_count"
+            ]
+            observed_provider_api_duration_ms += accounting_values[
+                "provider_api_duration_ms"
+            ]
+            observed_provider_api_duration_count += accounting_values[
+                "provider_api_duration_reported_task_count"
+            ]
+            observed_turns += accounting_values["reported_turns"]
+            observed_turns_count += accounting_values[
+                "turns_reported_task_count"
+            ]
         valid_events = _integer(stream, "valid_json_event_count")
         invalid_lines = _integer(stream, "invalid_json_line_count")
         task_retries = _integer(stream, "api_retry_event_count")
         result_event_count = _integer(stream, "result_event_count")
-        if (
-            valid_events <= 0
-            or invalid_lines != 0
-            or task_retries < 0
-            or result_event_count != 1
-        ):
+        stream_integrity_valid = (
+            valid_events > 0
+            and invalid_lines == 0
+            and task_retries >= 0
+            and result_event_count == 1
+            if task_success
+            else (
+                valid_events >= 0
+                and invalid_lines >= 0
+                and task_retries >= 0
+                and 0 <= result_event_count <= 1
+            )
+        )
+        if not stream_integrity_valid:
             raise ValueError(
                 f"BELIEF task stream integrity is invalid: {task_id}"
             )
-        if stream.get("assistant_models_observed") != [model]:
+        observed_models = stream.get("assistant_models_observed")
+        if (
+            not isinstance(observed_models, list)
+            or observed_models != sorted(set(observed_models))
+            or any(
+                not isinstance(observed_model, str)
+                or not observed_model
+                for observed_model in observed_models
+            )
+            or (
+                task_success
+                and observed_models != [model]
+            )
+            or (
+                not task_success
+                and observed_models not in ([], [model])
+            )
+        ):
             raise ValueError(
                 f"BELIEF task observed model mismatch: {task_id}"
             )
@@ -746,7 +934,13 @@ def _load_batch_run(
                 f"BELIEF task result error flag is invalid: {task_id}"
             )
         result_subtypes = stream["result_subtypes_observed"]
-        if len(result_subtypes) != 1:
+        if (
+            task_success
+            and len(result_subtypes) != 1
+        ) or (
+            not task_success
+            and len(result_subtypes) > 1
+        ):
             raise ValueError(
                 f"BELIEF task result subtype is invalid: {task_id}"
             )
@@ -756,7 +950,7 @@ def _load_batch_run(
             and result_subtypes == ["success"]
             and not result_error
         )
-        if result["agent_success"] is not expected_success:
+        if task_success is not expected_success:
             raise ValueError(
                 f"BELIEF task success evidence mismatch: {task_id}"
             )
@@ -765,8 +959,10 @@ def _load_batch_run(
             bool,
         ):
             raise ValueError(f"BELIEF task policy flag is invalid: {task_id}")
-        observed_successful += int(result["agent_success"])
-        observed_identity_verified += 1
+        observed_successful += int(task_success)
+        observed_identity_verified += int(
+            model_identity_status == "matched"
+        )
         observed_refusals += int(task_refused)
         observed_retries += task_retries
         observed_suspected += int(result["policy_violation_suspected"])
@@ -788,6 +984,13 @@ def _load_batch_run(
         raise ValueError(
             f"BELIEF feedback telemetry count mismatch: {run_dir}"
         )
+    if (
+        summary_runner_failures != observed_runner_failures
+        or summary_timeouts != observed_timeouts
+    ):
+        raise ValueError(
+            f"BELIEF failure telemetry count mismatch: {run_dir}"
+        )
     observed_accounting = {
         "reported_total_cost_usd": round(observed_cost, 12),
         "cost_reported_task_count": observed_cost_count,
@@ -796,12 +999,41 @@ def _load_batch_run(
         "cache_creation_input_tokens": observed_cache_creation_tokens,
         "cache_read_input_tokens": observed_cache_read_tokens,
         "invalid_accounting_task_count": observed_invalid_accounting,
+        "provider_duration_ms": observed_provider_duration_ms,
+        "provider_duration_reported_task_count": (
+            observed_provider_duration_count
+        ),
+        "provider_api_duration_ms": observed_provider_api_duration_ms,
+        "provider_api_duration_reported_task_count": (
+            observed_provider_api_duration_count
+        ),
+        "reported_turns": observed_turns,
+        "turns_reported_task_count": observed_turns_count,
+        "task_wall_duration_seconds": round(
+            observed_task_wall_duration,
+            6,
+        ),
+        "model_patch_bytes": observed_model_patch_bytes,
     }
     if explicit_feedback_schema:
         summary_accounting = summary.get("accounting")
+        expected_summary_accounting = observed_accounting
+        if not failure_aware_schema:
+            expected_summary_accounting = {
+                key: observed_accounting[key]
+                for key in (
+                    "reported_total_cost_usd",
+                    "cost_reported_task_count",
+                    "input_tokens",
+                    "output_tokens",
+                    "cache_creation_input_tokens",
+                    "cache_read_input_tokens",
+                    "invalid_accounting_task_count",
+                )
+            }
         if (
             not isinstance(summary_accounting, Mapping)
-            or dict(summary_accounting) != observed_accounting
+            or dict(summary_accounting) != expected_summary_accounting
         ):
             raise ValueError(
                 f"BELIEF accounting summary mismatch: {run_dir}"
@@ -829,6 +1061,8 @@ def _load_batch_run(
         "belief_feedback_review_count": observed_feedback_reviews,
         "belief_feedback_block_count": observed_feedback_blocks,
         "belief_feedback_delivered_runs": observed_feedback_runs,
+        "runner_failure_count": observed_runner_failures,
+        "timeout_count": observed_timeouts,
         "accounting": observed_accounting,
         "policy_violation_suspected_count": suspected,
         "instance_ids_sha256": _instance_ids_digest(task_ids),
@@ -978,7 +1212,44 @@ def _validate_result_accounting(
             usage.get("cache_read_input_tokens", 0)
         ),
         "invalid_accounting_task_count": int(bool(invalid_fields)),
+        "provider_duration_ms": int(
+            payload.get("duration_ms") or 0
+        ),
+        "provider_duration_reported_task_count": int(
+            payload.get("duration_ms") is not None
+        ),
+        "provider_api_duration_ms": int(
+            payload.get("duration_api_ms") or 0
+        ),
+        "provider_api_duration_reported_task_count": int(
+            payload.get("duration_api_ms") is not None
+        ),
+        "reported_turns": int(payload.get("num_turns") or 0),
+        "turns_reported_task_count": int(
+            payload.get("num_turns") is not None
+        ),
     }
+
+
+def _validate_runner_failure(
+    payload: Any,
+    *,
+    task_id: str,
+) -> tuple[int, int]:
+    if payload is None:
+        return 0, 0
+    if (
+        not isinstance(payload, Mapping)
+        or set(payload) != {"type", "message", "timed_out"}
+        or not isinstance(payload.get("type"), str)
+        or not payload.get("type")
+        or not isinstance(payload.get("message"), str)
+        or not isinstance(payload.get("timed_out"), bool)
+    ):
+        raise ValueError(
+            f"BELIEF task runner failure is invalid: {task_id}"
+        )
+    return 1, int(payload["timed_out"])
 
 
 def _read_prediction_jsonl(

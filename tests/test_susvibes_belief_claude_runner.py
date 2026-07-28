@@ -7,6 +7,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -20,9 +21,14 @@ from belief.benchmark.susvibes_preflight import (
 )
 from scripts.run_susvibes_belief_claude import (
     ALLOWED_TOOLS,
+    CONTAINER_CPU_LIMIT,
+    CONTAINER_MEMORY_LIMIT,
+    CONTAINER_PIDS_LIMIT,
     _build_claude_command,
+    _hardened_container_run_arguments,
     _model_identity_status,
     _parse_claude_cli_version,
+    _record_failed_task,
     _sanitize_candidate_workspace,
     _summarize_agent_stream,
     _summarize_belief_feedback,
@@ -222,7 +228,7 @@ def test_runner_dry_run_has_true_no_feedback_control_arm(tmp_path):
 
     assert completed.returncode == 0, completed.stderr
     plan = json.loads(completed.stdout)
-    assert plan["schema_version"] == "belief.susvibes_agent_plan.v3"
+    assert plan["schema_version"] == "belief.susvibes_agent_plan.v4"
     assert plan["mode"] == "claude_code_without_belief_feedback"
     assert plan["feedback_mode"] == "none"
     assert plan["max_stop_blocks"] == 0
@@ -247,6 +253,43 @@ def test_claude_command_pins_model_and_disables_fallback_surfaces():
     assert "--disable-slash-commands" in arguments
     assert "--no-chrome" in arguments
     assert "--no-session-persistence" in arguments
+
+
+def test_container_arguments_apply_fixed_isolation_limits(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    arguments = _hardened_container_run_arguments(
+        container_name="belief_agent_fixture",
+        workspace=workspace,
+        container_work_dir="/project",
+        docker_image="example/susvibes:fixture",
+    )
+
+    assert arguments[arguments.index("--network") + 1] == "bridge"
+    assert "host" not in arguments
+    assert arguments[arguments.index("--cpus") + 1] == CONTAINER_CPU_LIMIT
+    assert (
+        arguments[arguments.index("--memory") + 1]
+        == CONTAINER_MEMORY_LIMIT
+    )
+    assert (
+        arguments[arguments.index("--memory-swap") + 1]
+        == CONTAINER_MEMORY_LIMIT
+    )
+    assert (
+        arguments[arguments.index("--pids-limit") + 1]
+        == CONTAINER_PIDS_LIMIT
+    )
+    assert arguments[arguments.index("--cap-drop") + 1] == "ALL"
+    assert (
+        arguments[arguments.index("--security-opt") + 1]
+        == "no-new-privileges:true"
+    )
+    assert "--init" in arguments
+    assert str(workspace.resolve()) in arguments[
+        arguments.index("-v") + 1
+    ]
 
 
 def test_agent_stream_records_model_refusal_and_same_model_retries():
@@ -331,6 +374,54 @@ def test_belief_feedback_summary_records_actual_blocks(tmp_path):
         "feedback_delivered": True,
         "terminal_statuses": ["blocked_for_repair"],
     }
+
+
+def test_timeout_becomes_redacted_scoreable_failure(
+    tmp_path,
+    monkeypatch,
+):
+    secret = "test-secret-that-must-not-leak"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
+    timeout = subprocess.TimeoutExpired(
+        cmd=["claude"],
+        timeout=3000,
+        output=(
+            b'{"type":"assistant","message":'
+            b'{"model":"claude-fable-5"}}\n'
+        ),
+        stderr=f"request failed with {secret}".encode(),
+    )
+    results = tmp_path / "results"
+
+    payload = _record_failed_task(
+        {
+            "instance_id": "owner__project_deadbeef",
+            "image_name": "example/susvibes:fixture",
+        },
+        results_dir=results,
+        model="claude-fable-5",
+        claude_version="2.1.218",
+        feedback_mode="belief",
+        max_stop_blocks=1,
+        started=time.perf_counter(),
+        failure=timeout,
+    )
+
+    assert payload["agent_success"] is False
+    assert payload["model_identity_status"] == "matched"
+    assert payload["runner_failure"]["timed_out"] is True
+    assert payload["prediction"]["model_patch"] == ""
+    task_dir = results / "owner__project_deadbeef"
+    persisted = json.loads(
+        (task_dir / "result.json").read_text(encoding="utf-8")
+    )
+    assert persisted == payload
+    assert secret not in (task_dir / "agent.stderr.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "[REDACTED]" in (
+        task_dir / "agent.stderr.txt"
+    ).read_text(encoding="utf-8")
 
 
 def test_claude_cli_version_probe_is_exact():
@@ -540,6 +631,7 @@ def test_execute_requires_and_records_matching_ready_preflight(
         claude_version="2.1.218",
         minimum_free_gib=1.0,
         acknowledge_agent_network=True,
+        acknowledge_scoped_credential=True,
         environment={"ANTHROPIC_API_KEY": "test-only-secret"},
         docker_probe=lambda: (True, "fixture|x86_64"),
         disk_free_probe=lambda _path: 500 * 1024 ** 3,
@@ -567,6 +659,8 @@ def test_execute_requires_and_records_matching_ready_preflight(
                 },
             },
             "policy_violation_suspected": False,
+            "duration_seconds": 1.25,
+            "model_patch_bytes": 0,
             "belief_feedback": {
                 "enabled": True,
                 "configured_max_blocks": 1,
@@ -602,6 +696,7 @@ def test_execute_requires_and_records_matching_ready_preflight(
         "claude-fable-5",
         "--execute",
         "--allow-agent-network",
+        "--confirm-scoped-agent-credential",
     ])
 
     assert runner_module.main() == 0
