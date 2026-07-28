@@ -595,13 +595,9 @@ python -m pytest -q -m "not slow and not external and not llm"
 
 ## Current Validation
 
-Current local regression baseline:
-
-- full suite: `1013 passed, 32 skipped`;
-- security suite: `559 passed, 1 skipped`;
-- non-slow / non-external / non-LLM suite: `1013 passed, 32 skipped`.
-
-These numbers may change as the project evolves.
+The authoritative regression baseline is reported by the latest successful
+GitHub Actions CI run. Exact counts may vary by platform, Python version, and
+optional dependencies.
 
 `ruff check belief tests` covers first-party code and test fixtures. Bundled
 compatibility assets, third-party rule data, and real-world snippets are kept
