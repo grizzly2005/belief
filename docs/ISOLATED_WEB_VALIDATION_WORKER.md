@@ -236,3 +236,7 @@ execute one. Dynamic MCP execution requires a separate stacked branch with an
 exact trusted binding to the fixture registry digest, fixture source digest,
 plan digest, case type, and source revision. Matching only by case type is
 forbidden because it would misattribute fixture evidence to a scanned target.
+
+The separate stacked MCP v0.2 branch implements that exact binding for
+registered transparent fixtures only. See
+[`MCP_DYNAMIC_VALIDATION_SECURITY.md`](MCP_DYNAMIC_VALIDATION_SECURITY.md).

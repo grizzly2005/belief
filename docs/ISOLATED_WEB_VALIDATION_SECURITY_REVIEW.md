@@ -275,9 +275,10 @@ Mutation tests rename IDs and swap posture labels while retaining behavior and
 prove that observations remain unchanged.
 
 Evidence still concerns the registered transparent fixture. It must not be
-attributed to an arbitrary scanned target. Any future MCP execution requires a
-separate exact trusted binding for the fixture registry digest, source digest,
-plan digest, case type, and source revision.
+attributed to an arbitrary scanned target. The stacked MCP v0.2 implementation
+therefore requires a separate exact trusted binding for the fixture registry
+digest, source digest, plan digest, case type, source revision, run, and case.
+See [`MCP_DYNAMIC_VALIDATION_SECURITY.md`](MCP_DYNAMIC_VALIDATION_SECURITY.md).
 
 ## Residual limitations
 

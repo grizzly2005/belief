@@ -89,15 +89,24 @@ This flow is local and deterministic. It does not call LLM APIs, model servers, 
 
 ## Local MCP for Codex
 
-BELIEF includes an experimental, read-first local MCP facade:
+BELIEF includes an experimental, fixture-bound local MCP facade:
 
 ```bash
 python -m belief.mcp.server
 ```
 
-It exposes status, confined static scans, `AuditCase` retrieval and explanation, non-executing validation-plan generation, run comparison, and the transparent local validation benchmark. Runs remain in memory. The MCP surface has no network, subprocess, shell, Docker, arbitrary adapter, target-write, dynamic-validation, or SusVibes holdout capability.
+It exposes status, confined static scans, `AuditCase` retrieval and explanation,
+validation-plan generation, run comparison, the transparent local benchmark,
+and local execution only for plans prepared from and exactly bound to
+first-party registered fixtures. Arbitrary project plans remain non-executable.
+Runs and bounded projected results remain in memory. The MCP surface has no
+external network, arbitrary subprocess, shell, Docker, arbitrary adapter,
+target-write, target-confirmation, or SusVibes holdout capability.
 
-See [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md) for the Codex configuration, resources, exact tool contracts, and security boundary.
+See [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md) for the Codex configuration,
+resources, exact tool contracts, and security boundary, and
+[`docs/MCP_DYNAMIC_VALIDATION_SECURITY.md`](docs/MCP_DYNAMIC_VALIDATION_SECURITY.md)
+for the trusted-binding, cancellation, storage, and human-confirmation model.
 
 ---
 
@@ -604,7 +613,10 @@ See
 for the protocol, registry, platform boundary, Python API, and limitations, and
 [`docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md`](docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md)
 for the independent threat model and confirmed defects.
-The read-first MCP surface is deliberately unchanged.
+The stacked MCP v0.2 surface may execute only an exact registered-fixture plan.
+Its results are always scoped to `registered_transparent_fixture_only`, set
+`target_vulnerability_confirmed=false`, and require human confirmation. It
+does not validate arbitrary Flask or FastAPI projects.
 
 Run the separate eight-case local experiment:
 
@@ -723,7 +735,8 @@ belief/validation/
   Generic validation result models and PDX verdict adaptation.
 
 belief/mcp/
-  Experimental local stdio MCP facade, public contracts, and read-first tools.
+  Experimental local stdio MCP facade, trusted fixture bindings, bounded
+  cancellation-aware execution, public contracts, and in-memory resources.
 
 belief/reasoning/
   Deterministic offline reasoning models, router, and rule-based engine.
@@ -793,6 +806,7 @@ pyproject.toml
 - [`docs/PDX_BELIEF_INTEGRATION.md`](docs/PDX_BELIEF_INTEGRATION.md)
 - [`docs/TOOL_BRIDGES.md`](docs/TOOL_BRIDGES.md)
 - [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md)
+- [`docs/MCP_DYNAMIC_VALIDATION_SECURITY.md`](docs/MCP_DYNAMIC_VALIDATION_SECURITY.md)
 - [`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md)
 - [`docs/ISOLATED_WEB_VALIDATION_WORKER.md`](docs/ISOLATED_WEB_VALIDATION_WORKER.md)
 - [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md)
