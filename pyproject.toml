@@ -27,6 +27,7 @@ multilang = [
 web-validation = [
     "Flask>=3.0,<4",
     "fastapi>=0.115,<1",
+    "requests>=2.31,<3",
 ]
 full = [
     "z3-solver>=4.12.0",
