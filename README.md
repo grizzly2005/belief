@@ -644,6 +644,10 @@ optional dependencies.
 `ruff check belief tests` covers first-party code and test fixtures. Bundled
 compatibility assets, third-party rule data, and real-world snippets are kept
 outside that lint target so upstream syntax and provenance remain intact.
+The separate `python -m belief.source_classification --root .` gate compiles
+every declared Python 3 source while allowing only the exact, digest-pinned
+historical Z3 Python 2 inventory documented in
+[`docs/PYTHON_SOURCE_CLASSIFICATION.md`](docs/PYTHON_SOURCE_CLASSIFICATION.md).
 
 ---
 
@@ -707,6 +711,7 @@ The main regression commands are:
 python -m pytest -q
 python -m pytest -q -m security
 python -m pytest -q -m "not slow and not external and not llm"
+python -m belief.source_classification --root .
 ```
 
 The project also includes bridge tests, access-model tests, dataset tests, reasoning tests, feedback tests, and benchmark tests.
@@ -808,6 +813,7 @@ pyproject.toml
 - [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md)
 - [`docs/MCP_DYNAMIC_VALIDATION_SECURITY.md`](docs/MCP_DYNAMIC_VALIDATION_SECURITY.md)
 - [`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md)
+- [`docs/PYTHON_SOURCE_CLASSIFICATION.md`](docs/PYTHON_SOURCE_CLASSIFICATION.md)
 - [`docs/ISOLATED_WEB_VALIDATION_WORKER.md`](docs/ISOLATED_WEB_VALIDATION_WORKER.md)
 - [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md)
 - [`benchmark_reportability/README.md`](benchmark_reportability/README.md)
