@@ -2,132 +2,103 @@
 
 ## Purpose
 
-BELIEF can execute a canonical `ValidationPlan` against eight transparent,
-deterministic Flask and FastAPI applications in a separate local process. The
-worker is intended to gather reproducible path-traversal and IDOR/BOLA evidence
-without starting a server, opening a port, or extending the MCP surface.
+BELIEF can execute a canonical `ValidationPlan` against eight transparent
+Flask and FastAPI fixtures in a separate local process. The worker gathers
+deterministic path-traversal and IDOR/BOLA evidence without starting a server,
+opening a port, or loading caller-selected code.
 
-The worker reuses BELIEF's existing contracts:
+This is an **isolated process with Python-level controls**, not a secure
+sandbox. Only reviewed first-party registered fixtures are supported.
 
-- `ValidationPlan`;
-- `ValidationExecutionContext`;
-- `ValidationObservation`;
-- `ValidationExecutionSummary`;
-- `ValidationResult`;
-- `run_validation_plan`.
-
-`IsolatedWebValidationExecutor` converts the child response into the existing
-`ValidationExecutionSummary`. The existing runner then creates the normal
-`ValidationResult`; there is no parallel verdict pipeline.
-
-## Architecture
+## Data flow
 
 ```text
-parent / existing runner
-    |
-    | strict bounded JSON over multiprocessing.Connection.send_bytes()
-    v
-spawn-only child process
-    |
-    +-- strict request decoder
-    +-- minimal environment and temporary working directory
-    +-- ordinary network, listener, subprocess, and shell API guards
-    +-- immutable closed fixture registry
-    +-- Flask test_client() or direct local ASGI transport
-    |
-    v
-strict versioned JSON response
-    |
-    v
-ValidationExecutionSummary -> ValidationResult
+ValidationPlan + exact registered fixture ID
+  -> canonical request JSON bytes (maximum 16 KiB)
+  -> parent-owned spawn worker and private root
+  -> sanitized environment + network/process policy
+  -> fixed adapter/framework preparation
+  -> filesystem-confined Flask test_client or direct ASGI execution
+  -> canonical response JSON bytes (maximum 256 KiB)
+  -> binding and semantic-digest verification
+  -> ValidationExecutionSummary
+  -> existing ValidationResult
 ```
 
-The implementation is split across:
+The transport uses two one-way `multiprocessing.Connection` pipes and only
+`send_bytes`/`recv_bytes`. Caller data is never accepted through a Python
+object-unpickling transport.
 
-```text
-belief/validation/worker/contracts.py
-belief/validation/worker/registry.py
-belief/validation/worker/process.py
-belief/validation/worker/entrypoint.py
-belief/validation/web/_shared.py
-belief/validation/web/flask_adapter.py
-belief/validation/web/fastapi_adapter.py
-```
+The parent always requests the `spawn` start method, including on POSIX.
 
-The parent always requests a `multiprocessing` context with the `spawn` start
-method, including on Linux. The caller-controlled message is sent with
-`send_bytes`; no caller object is unpickled by the child.
+## Request contract
 
-## Request Protocol
+Schema: `belief.validation_worker_request.v2`
 
-Schema: `belief.validation_worker_request.v1`
-
-The JSON object must contain exactly these fields:
+The request contains exactly:
 
 | Field | Contract |
 | --- | --- |
-| `schema_version` | Exact protocol version |
-| `fixture_id` | Stable lowercase ID from the closed registry |
+| `schema_version` | Exact v2 request schema |
+| `fixture_id` | Exact lowercase ID from the closed registry |
 | `validation_plan_id` | Canonical `vp_` identifier |
 | `validation_plan_digest` | Lowercase SHA-256 of the canonical plan |
-| `source_revision` | Bounded revision label, not a path |
+| `source_revision` | Bounded revision label, never a path |
 | `test_parameters` | Empty or `{"include_symlink": boolean}` |
-| `timeout_ms` | Integer from 1 through 30,000 |
-| `correlation_id` | Bounded correlation label |
+| `timeout_ms` | Integer, not boolean, from 100 through 30,000 |
+| `correlation_id` | Bounded routing label |
 
-The complete request is limited to 16 KiB. Missing fields, extra fields,
-non-canonical values, non-finite JSON numbers, and invalid UTF-8 are rejected.
+There is no module, callable, expression, command, URL, host, port, adapter,
+source-code, or fixture-path field.
 
-There is no request field for a module, import, callable, expression, command,
-URL, port, network configuration, or fixture path. The child cannot use the
-request to discover another fixture.
+The decoder requires canonical UTF-8 JSON and rejects unknown/missing fields,
+duplicate keys, non-finite numbers, malformed Unicode, extra/trailing values,
+oversize or deeply nested structures, invalid identifiers, and malformed
+digests before fixture execution.
 
-The complete plan is deliberately not copied into the child. The parent runner
-is authoritative for canonical plan parsing, plan identity, digest binding,
-case type, and safety policy. The child echoes the exact ID and digest so the
-parent can reject a mismatched response.
+## Response and attestation
 
-## Response Protocol
+Schemas:
 
-Schema: `belief.validation_worker_response.v1`
+```text
+belief.validation_worker_response.v2
+belief.validation_worker_attestation.v2
+belief.validation_worker_diagnostics.v1
+```
 
-The response is limited to 256 KiB and contains:
+The response binds its envelope and attestation to the request, registered
+fixture source, and complete registry. It contains tri-state baseline evidence,
+bounded observations, oracle counts, normalized errors and limitations,
+runtime-only diagnostics, and a semantic digest.
 
-- correlation, fixture, plan ID, and plan digest bindings;
-- `worker_status`;
-- bounded observations;
-- tri-state functional baseline (`true`, `false`, or `null`);
-- evaluated, passed, failed, and unevaluated oracle counts;
-- stable limitations;
-- normalized error codes and messages;
-- elapsed milliseconds;
-- a capability attestation;
-- a deterministic evidence digest.
+The semantic digest excludes correlation, elapsed time, child exit code,
+captured output, cancellation text, temporary paths, and other runtime-only
+values. On one platform, two semantically identical runs therefore have the
+same digest.
 
-The evidence digest excludes elapsed time. Runtime duration may vary, while
-the observations, execution summary, and `ValidationResult` remain
-semantically deterministic.
+The fixed protocol error taxonomy is:
 
-The possible worker statuses are:
+```text
+invalid_request
+unsupported_protocol
+unknown_fixture
+binding_mismatch
+dependency_unavailable
+timeout
+cancelled
+child_crash
+malformed_response
+response_too_large
+policy_violation
+internal_error
+```
 
-- `completed`;
-- `inconclusive`;
-- `unsupported`;
-- `invalid_request`;
-- `crashed`;
-- `timed_out`.
+Crash, timeout, cancellation, malformed output, missing dependency, unknown
+fixture, and policy violation always project to an inconclusive BELIEF result.
 
-A timeout, crash, invalid response, missing optional dependency, or unknown
-fixture always maps to an `inconclusive` BELIEF result. It cannot become
-`bypassed`, `enforced`, or `false_positive`.
+## Registered fixtures
 
-## Closed Fixture Registry
-
-The public registry snapshot contains metadata only and is returned as a
-defensive copy. Internal entries are frozen and include fixed trusted
-entrypoints.
-
-| Fixture ID | Framework | Vertical | Posture |
+| Fixture ID | Framework | Vertical | Expected posture |
 | --- | --- | --- | --- |
 | `flask_path_traversal_vulnerable_v1` | Flask | Path traversal | Vulnerable |
 | `flask_path_traversal_protected_v1` | Flask | Path traversal | Protected |
@@ -138,132 +109,67 @@ entrypoints.
 | `fastapi_idor_vulnerable_v1` | FastAPI | IDOR/BOLA | Vulnerable |
 | `fastapi_idor_protected_v1` | FastAPI | IDOR/BOLA | Protected |
 
-Flask applications are called only with `test_client()`. FastAPI applications
-are called through a bounded direct ASGI transport. The ASGI transport drives
-only immediately local request/response operations and rejects an attempt to
-wait on an external asynchronous operation. Neither adapter calls `run()`,
-Uvicorn, Hypercorn, a socket client, or a listening socket.
+The expected-posture label is descriptive. Runtime behavior uses an independent
+immutable field, and verdicts derive only from baseline and security-oracle
+observations.
 
-## Path-Traversal Oracles
+Each fixture has a normalized source manifest and SHA-256. The registry digest
+commits to every fixture's framework, case type, behavior, source digest, and
+public metadata.
 
-Each path fixture creates only controlled public and sentinel files below its
-worker-owned temporary directory. It checks:
+## Oracles
 
-- a legitimate relative path;
-- a parent segment (`../`);
-- an absolute path to the controlled sentinel;
-- a normalized equivalent path;
-- a symlink boundary when supported;
-- final public and sentinel file state.
+Path traversal checks a legitimate file, parent escape, absolute controlled
+sentinel path, normalized equivalent, optional symlink boundary, and final file
+state. The application considers `allowed/` its authorized root; the worker
+policy permits only the larger private worker root. No host file is used as a
+sentinel.
 
-The vulnerable route joins and resolves the path without enforcing the allowed
-root. The protected route requires the resolved path to remain below that
-root. An outer fixture boundary prevents even the intentionally vulnerable
-route from reading outside the worker-owned temporary fixture.
+IDOR/BOLA checks owner read/update baselines, same-tenant foreign-owner
+read/update, cross-tenant read/update, returned ownership/tenant evidence, and
+final state for protected resources. Authentication is represented separately
+from owner and tenant authorization.
 
-The symlink oracle is unevaluated with an explicit `symlink_unavailable` or
-`symlink_disabled_by_test_parameters` limitation when it cannot run.
+## Isolation controls
 
-## IDOR/BOLA Oracles
+Before framework or fixture import, the inert standard-library bootstrap:
 
-Each authorization fixture creates:
+- enters the parent-created private root;
+- redirects HOME/profile/app-data/XDG/cache/temp locations below it;
+- replaces the environment with a small allowlist;
+- redirects native stdout/stderr to the null device;
+- installs bounded Python output capture;
+- installs network and process policy;
+- resolves one exact hardcoded registry entry.
 
-- `user_a` and `user_b`;
-- `tenant_a` and `tenant_b`;
-- two same-tenant resources with different owners;
-- one resource owned by `user_a` in the other tenant.
+After fixed adapter/framework import and required framework preparation,
+ordinary fixture file operations are confined to the private root.
 
-It checks:
+Network policy denies IPv4/IPv6, connect, bind, listen, UDP send, DNS, asyncio,
+urllib, `http.client`, Requests, and non-local HTTPX dispatch. Flask uses only
+`test_client()` and FastAPI uses BELIEF's direct in-memory ASGI transport.
 
-- legitimate owner read;
-- legitimate owner modification;
-- foreign-owner read and modification;
-- cross-tenant read and modification;
-- final state for the foreign-owner and cross-tenant resources;
-- returned owner and tenant evidence.
+Process policy denies subprocess/shell helpers, spawn/exec/fork APIs, nested
+multiprocessing, process pools, and `pty.spawn`. POSIX additionally attempts
+CPU, descriptor, file-size, and child-count limits; Windows reports those
+controls as unavailable.
 
-All requests contain an authenticated user. The vulnerable fixture checks only
-authentication; the protected fixture separately enforces owner and tenant
-authorization. This prevents an authentication success from being
-misrepresented as an authorization decision.
+Full threat-model details and residual limitations are in
+`docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md`.
 
-## Isolation Boundary
+## Lifecycle and cancellation
 
-The worker provides process separation and a narrow application protocol. It
-does not claim to be a complete operating-system sandbox.
+`WorkerRunHandle` supports cancellation before start and during execution.
+The parent owns the temp root and all handles. Timeout or cancellation first
+sets a cooperative event, then uses terminate/join and kill/join fallback.
+Every terminal path closes all four pipe endpoints, closes the process handle,
+removes the validated temp root, and attests cleanup success or failure.
 
-The worker enforces:
+Child stdout/stderr is bounded to 4 KiB per stream, sanitized, redacted, and
+kept in runtime diagnostics only. It cannot write a JSON-RPC line to an MCP
+server's stdout.
 
-- `spawn` process creation;
-- a daemon child that cannot create another multiprocessing child;
-- hard timeout, terminate, and kill fallback;
-- strict request and response sizes and schemas;
-- a minimal environment containing temporary-directory settings, Python
-  runtime flags, a worker marker, and Windows system-root values when needed;
-- a worker-owned temporary directory and working directory;
-- a closed registry with no caller-controlled import or path;
-- guards on ordinary socket connect/bind/listen/send, DNS lookup, subprocess,
-  asyncio subprocess, `os.system`, and `os.popen` APIs;
-- normalized errors without exception text or tracebacks in the protocol.
-
-The worker still runs as the invoking operating-system user. Trusted BELIEF
-fixture code could theoretically bypass Python-level guards through native
-code, direct system calls, or an unguarded API. The worker does not use OS
-containers, seccomp, AppContainer, namespaces, a restricted token, or a
-separate account. Consequently, only reviewed built-in fixtures belong in the
-registry; arbitrary target code must never be added through this interface.
-
-Capability attestation reports the Python-level guards and local client
-actually used. For a crash or hard timeout, child-side attestation is
-unavailable rather than guessed.
-
-## Timeout and Crash Behavior
-
-The timeout includes process startup, optional framework import, fixture
-execution, serialization, and response receipt. At the deadline the parent:
-
-1. terminates the worker;
-2. waits for shutdown;
-3. uses `kill()` as a fallback when available;
-4. returns a normalized `timed_out` response.
-
-A non-zero exit or missing response returns a normalized `crashed` response.
-An invalid or mismatched response returns `inconclusive`. All three retain
-baseline `null` and contain no security verdict.
-
-## Windows and Linux
-
-- Both platforms use `spawn`; the implementation does not depend on `fork`.
-- Windows may require Developer Mode or suitable privileges for symlink
-  creation. Failure is an explicit limitation, not a failed security oracle.
-- The child leaves its temporary working directory before cleanup so Windows
-  can remove it deterministically.
-- FastAPI uses the direct ASGI transport on both platforms. This avoids the
-  loopback socketpair that an asyncio test client may create on Windows.
-- Path labels in evidence are logical POSIX-style fixture labels, not host
-  absolute paths.
-
-## Optional Dependencies
-
-Flask and FastAPI are optional:
-
-```bash
-python -m pip install -e ".[web-validation]"
-```
-
-The extra installs:
-
-- `Flask>=3.0,<4`;
-- `fastapi>=0.115,<1`.
-
-If the selected framework is absent or outside the supported version range,
-the worker returns `unsupported` with an
-`optional_dependency_unavailable` error. The existing runner converts that
-to an explicit abstention (`inconclusive`), never a false security failure.
-
-## Python Integration
-
-Given an existing canonical plan:
+## Python API
 
 ```python
 from belief.validation.worker import run_isolated_web_validation_plan
@@ -276,60 +182,57 @@ result = run_isolated_web_validation_plan(
 )
 ```
 
-The returned object is the normal `ValidationResult`. Its
-`metadata["execution"]` is the normal versioned `ValidationExecutionSummary`.
-The meanings of `bypassed`, `enforced`, `inconclusive`, tri-state baseline, and
-metrics v2 are unchanged.
+The returned value remains the existing `ValidationResult`. Deterministic
+worker status, semantic digest, and attestation are available under
+`result.metadata["isolated_worker"]`. Runtime diagnostics are available only
+from the lower-level `run_worker_request` response.
+
+## Optional dependencies
+
+```bash
+python -m pip install -e ".[web-validation]"
+```
+
+Supported ranges:
+
+- `Flask>=3.0,<4`;
+- `fastapi>=0.115,<1`.
+
+An absent or unsupported framework produces `dependency_unavailable` and an
+explicit abstention.
 
 ## Verification
 
-Run the targeted worker coverage:
+Targeted worker and adversarial coverage:
 
 ```bash
 python -m pytest -q \
   tests/test_isolated_web_worker_contracts.py \
   tests/test_isolated_web_worker_safety.py \
+  tests/test_isolated_web_worker_adversarial.py \
   tests/test_isolated_web_validation.py
 ```
 
-Run the complete required gates:
+Repository gates:
 
 ```bash
 python -m pytest -q -m security
 python -m pytest -q -m "not slow and not external and not llm"
 python -m ruff check belief tests
 python -m pip check
+python -m compileall -q belief
 git diff --check
 ```
 
-When an optional framework is absent, framework-specific tests skip and the
-runtime produces an explicit abstention.
+The repository contains legacy Python 2 Z3 samples under
+`belief/tools_bundled/z3_playground`. They are data excluded from first-party
+lint and are not Python 3 compile targets; use a first-party scoped compile in
+addition to recording the exact repository-wide `compileall` result.
 
-## Limitations
+## MCP boundary
 
-- Only the eight registered miniature applications are supported.
-- No arbitrary project application or untrusted application code is loaded.
-- The worker does not prove exploitability outside its transparent fixtures.
-- Python-level capability guards are not a system sandbox.
-- Hard termination cannot recover child-side capability attestation.
-- Timing is observational and is excluded from deterministic security evidence.
-- The worker has no CLI artifact bundle yet; the current integration is a
-  Python runner API.
-
-## Why MCP Is Unchanged
-
-The current MCP is intentionally read-first and does not expose dynamic
-validation. Adding `belief_validate_plan` would change its capability and
-threat model. That change should be a separate review that defines:
-
-- an explicit MCP opt-in;
-- exact fixture and timeout allowlists;
-- user-visible execution confirmation;
-- worker-result retention and resource contracts;
-- cancellation and concurrency limits;
-- capability and abstention presentation;
-- tests proving that arbitrary targets, paths, URLs, adapters, and imports
-  remain unreachable.
-
-Until those contracts are reviewed, MCP can build and explain plans but cannot
-start this worker.
+MCP v0.1 remains unchanged on the Phase A branch. It may build a plan but cannot
+execute one. Dynamic MCP execution requires a separate stacked branch with an
+exact trusted binding to the fixture registry digest, fixture source digest,
+plan digest, case type, and source revision. Matching only by case type is
+forbidden because it would misattribute fixture evidence to a scanned target.

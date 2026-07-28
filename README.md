@@ -589,16 +589,21 @@ FastAPI path-traversal and IDOR/BOLA fixtures. It uses Flask `test_client()` or
 a direct local ASGI transport; it never starts a real server or accepts a URL,
 port, module, callable, command, or fixture path from the caller.
 
-The worker has strict JSON message limits, a hard timeout, a minimal
-temporary environment, a closed fixture registry, and normalized
-`inconclusive` results for crashes, timeouts, and missing optional frameworks.
-It reuses the existing `ValidationExecutionSummary` and `ValidationResult`
-semantics. This is process isolation with Python-level capability guards, not
-a complete operating-system sandbox.
+The v2 worker requires canonical duplicate-free JSON, owns a private temporary
+root from the parent, replaces the child environment with an allowlist,
+confines ordinary fixture file access, blocks network/process APIs, captures
+bounded stdout/stderr, supports cancellation, and binds results to registry
+and fixture-source digests. Crashes, timeouts, cancellations, policy
+violations, and missing optional frameworks remain explicit `inconclusive`
+results. It reuses the existing `ValidationExecutionSummary` and
+`ValidationResult` semantics. This is an isolated process with Python-level
+controls, not a secure operating-system sandbox.
 
 See
 [`docs/ISOLATED_WEB_VALIDATION_WORKER.md`](docs/ISOLATED_WEB_VALIDATION_WORKER.md)
-for the protocol, registry, platform boundary, Python API, and limitations.
+for the protocol, registry, platform boundary, Python API, and limitations, and
+[`docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md`](docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md)
+for the independent threat model and confirmed defects.
 The read-first MCP surface is deliberately unchanged.
 
 Run the separate eight-case local experiment:

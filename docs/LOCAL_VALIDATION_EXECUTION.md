@@ -313,15 +313,17 @@ digest.
 
 - Built-in fixtures model behavior; they do not prove that a real application
   uses the same adapter.
-- Flask and FastAPI test-client adapters are not auto-discovered in this
-  version.
+- Flask and FastAPI fixtures remain opt-in and are resolved only through the
+  separately documented immutable worker registry; they are never
+  auto-discovered.
 - Untrusted target code is never imported into the main process.
 - Platform-dependent symlink support remains visible in limitations.
 - No timing or performance claim is derived from deterministic operation
   counts.
-- A future isolated worker may add reviewed Flask/FastAPI adapters, but it must
-  preserve create-only artifacts, explicit registration, network denial, and
-  the same oracle invariants.
+- The separately hardened isolated worker preserves explicit registration,
+  network/process denial, private temporary state, and these oracle invariants.
+  It still does not load arbitrary application code. See
+  [`ISOLATED_WEB_VALIDATION_WORKER.md`](ISOLATED_WEB_VALIDATION_WORKER.md).
 
 See
 [`examples/local_validation_chain.json`](examples/local_validation_chain.json)
