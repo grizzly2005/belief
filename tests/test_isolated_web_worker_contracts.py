@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import copy
+import json
 
 import pytest
 
 from belief.validation.worker.contracts import (
+    MAX_JSON_COLLECTION_LENGTH,
+    MAX_JSON_DEPTH,
+    MAX_JSON_STRING_CHARS,
     MAX_WORKER_REQUEST_BYTES,
     WORKER_REQUEST_SCHEMA_VERSION,
-    WorkerCapabilityAttestation,
+    WorkerAttestation,
+    WorkerDiagnostics,
     WorkerObservation,
     WorkerProtocolError,
     WorkerRequest,
@@ -20,6 +25,9 @@ from belief.validation.worker.contracts import (
     encode_worker_response,
 )
 from belief.validation.worker.registry import (
+    fixture_registry_digest,
+    fixture_source_digest,
+    get_fixture_spec,
     registered_fixture_ids,
     registered_fixture_metadata,
 )
@@ -67,6 +75,7 @@ def _response(request: WorkerRequest) -> WorkerResponse:
             evidence=("response_status:403",),
         ),
     )
+    spec = get_fixture_spec(request.fixture_id)
     return WorkerResponse(
         correlation_id=request.correlation_id,
         fixture_id=request.fixture_id,
@@ -76,11 +85,32 @@ def _response(request: WorkerRequest) -> WorkerResponse:
         observations=observations,
         baseline=True,
         duration_ms=12,
-        capabilities=WorkerCapabilityAttestation(
-            status="attested",
-            used=("multiprocessing_spawn", "flask_test_client"),
-            blocked=("network", "shell", "subprocess"),
+        attestation=WorkerAttestation(
+            fixture_id=request.fixture_id,
+            fixture_registry_digest=fixture_registry_digest(),
+            fixture_source_digest=fixture_source_digest(spec),
+            validation_plan_id=request.validation_plan_id,
+            validation_plan_digest=request.validation_plan_digest,
+            source_revision=request.source_revision,
+            framework="flask",
+            framework_version="3.1.3",
+            python_version="3.12.0",
+            platform="test-platform",
+            environment_policy_installed=True,
+            environment_secret_probe_passed=True,
+            filesystem_policy_installed=True,
+            network_policy_installed=True,
+            process_policy_installed=True,
+            timeout_enforced=True,
+            cleanup_completed=True,
+            resource_limits={
+                "cpu": None,
+                "open_files": None,
+                "file_size": None,
+                "child_processes": None,
+            },
         ),
+        diagnostics=WorkerDiagnostics(summary="bounded diagnostic"),
     )
 
 
@@ -173,7 +203,7 @@ def test_response_round_trip_verifies_oracles_and_evidence_digest():
         "failed": 0,
         "unevaluated": 0,
     }
-    assert len(restored.evidence_digest) == 64
+    assert len(restored.semantic_digest) == 64
 
     tampered = copy.deepcopy(restored.to_dict())
     tampered["oracles"]["failed"] = 1
@@ -202,3 +232,110 @@ def test_registry_metadata_is_a_defensive_callable_free_snapshot():
     assert second[0]["fixture_id"] != "tampered"
     assert all("runner" not in item for item in second)
     assert all("callable" not in item for item in second)
+    assert all(len(item["fixture_source_digest"]) == 64 for item in second)
+
+
+def _canonical_bytes(payload):
+    return json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def test_request_rejects_duplicate_keys_and_noncanonical_json():
+    canonical = encode_worker_request(_request())
+    duplicate = canonical.replace(
+        b'"timeout_ms":5000',
+        b'"timeout_ms":5000,"timeout_ms":5000',
+    )
+
+    with pytest.raises(WorkerProtocolError) as duplicate_error:
+        decode_worker_request(duplicate)
+    assert duplicate_error.value.code == "invalid_request"
+
+    with pytest.raises(WorkerProtocolError, match="canonical"):
+        decode_worker_request(b" " + canonical)
+
+
+@pytest.mark.parametrize("constant", (b"NaN", b"Infinity", b"-Infinity"))
+def test_request_rejects_nonfinite_json_numbers(constant):
+    message = encode_worker_request(_request()).replace(b"5000", constant, 1)
+
+    with pytest.raises(WorkerProtocolError) as error:
+        decode_worker_request(message)
+    assert error.value.code == "invalid_request"
+
+
+@pytest.mark.parametrize("timeout", (True, False, -1, 0, 30_001))
+def test_request_rejects_boolean_negative_or_out_of_range_timeout(timeout):
+    payload = _request().to_dict()
+    payload["timeout_ms"] = timeout
+
+    with pytest.raises(WorkerProtocolError):
+        decode_worker_request(_canonical_bytes(payload))
+
+
+def test_request_rejects_excessive_depth_collection_and_string_bounds():
+    payload = _request().to_dict()
+    nested = {}
+    cursor = nested
+    for _index in range(MAX_JSON_DEPTH + 1):
+        cursor["x"] = {}
+        cursor = cursor["x"]
+    payload["unexpected"] = nested
+    with pytest.raises(WorkerProtocolError, match="structure"):
+        decode_worker_request(_canonical_bytes(payload))
+
+    payload = _request().to_dict()
+    payload["unexpected"] = list(range(MAX_JSON_COLLECTION_LENGTH + 1))
+    with pytest.raises(WorkerProtocolError, match="collection"):
+        decode_worker_request(_canonical_bytes(payload))
+
+    payload = _request().to_dict()
+    payload["unexpected"] = "x" * (MAX_JSON_STRING_CHARS + 1)
+    with pytest.raises(WorkerProtocolError, match="string"):
+        decode_worker_request(_canonical_bytes(payload))
+
+
+def test_request_rejects_invalid_utf8_and_lone_surrogates():
+    with pytest.raises(WorkerProtocolError):
+        decode_worker_request(b"\xff")
+
+    payload = _request().to_dict()
+    payload["correlation_id"] = "\ud800"
+    with pytest.raises(WorkerProtocolError):
+        decode_worker_request(_canonical_bytes(payload))
+
+
+def test_response_rejects_duplicate_keys_trailing_data_and_multiple_values():
+    message = encode_worker_response(_response(_request()))
+    duplicate = message.replace(
+        b'"worker_status":"completed"',
+        b'"worker_status":"completed","worker_status":"completed"',
+    )
+    for invalid in (duplicate, message + b"{}", message + b"\n"):
+        with pytest.raises(WorkerProtocolError) as error:
+            decode_worker_response(invalid)
+        assert error.value.code == "malformed_response"
+
+
+def test_semantic_digest_excludes_correlation_and_runtime_diagnostics():
+    request = _request()
+    first = _response(request)
+    second = WorkerResponse(
+        **{
+            **first.__dict__,
+            "correlation_id": "corr_other",
+            "duration_ms": 999,
+            "diagnostics": WorkerDiagnostics(
+                summary="different runtime",
+                child_exit_code=23,
+            ),
+            "semantic_digest": "",
+        }
+    )
+
+    assert first.semantic_digest == second.semantic_digest

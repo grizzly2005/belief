@@ -264,18 +264,18 @@ def test_raw_worker_response_attests_guards_without_claiming_os_sandbox():
     ))
 
     assert response.worker_status == "completed"
-    assert response.capabilities.status == "attested"
-    assert "multiprocessing_spawn" in response.capabilities.used
-    assert "temporary_directory" in response.capabilities.used
-    assert "flask_test_client" in response.capabilities.used
-    assert {
-        "network",
-        "listener",
-        "subprocess",
-        "shell",
-        "caller_dynamic_import",
-        "arbitrary_fixture_path",
-    } <= set(response.capabilities.blocked)
+    attestation = response.attestation
+    assert attestation.environment_policy_installed is True
+    assert attestation.filesystem_policy_installed is True
+    assert attestation.network_policy_installed is True
+    assert attestation.process_policy_installed is True
+    assert attestation.timeout_enforced is True
+    assert attestation.cleanup_completed is True
+    assert attestation.framework == "flask"
+    assert attestation.fixture_id == response.fixture_id
+    assert len(attestation.fixture_registry_digest) == 64
+    assert len(attestation.fixture_source_digest) == 64
+    assert attestation.io_policy_violations == ()
 
 
 def test_fixture_case_type_mismatch_is_inconclusive():
@@ -337,7 +337,7 @@ def test_existing_direct_executors_keep_their_original_semantics():
         fixture_id="flask_path_traversal_protected_v1",
         source_revision="fixture-source-v1",
     )
-    assert path_context.adapter == "isolated_web_worker_v1"
+    assert path_context.adapter == "isolated_web_worker_v2"
 
     from belief.validation.execution_models import (
         ValidationExecutionContext,

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import multiprocessing
+import os
 import socket
 import subprocess
 
@@ -22,7 +22,6 @@ from belief.validation.worker.process import (
     run_isolated_web_validation_plan,
 )
 from belief.validation.worker.registry import (
-    FixtureSpec,
     OptionalWebDependencyUnavailable,
 )
 from belief.validation.plans import build_validation_plan
@@ -78,11 +77,16 @@ def test_worker_environment_is_minimal_and_temp_scoped(tmp_path):
     )
 
     assert "SECRET_TOKEN" not in values
-    assert "USERPROFILE" not in values
+    assert values["USERPROFILE"] == str(tmp_path / "home")
+    assert values["HOME"] == str(tmp_path / "home")
+    assert values["APPDATA"] == str(tmp_path / "appdata")
+    assert values["LOCALAPPDATA"] == str(tmp_path / "localappdata")
+    assert values["XDG_CONFIG_HOME"] == str(tmp_path / "config")
+    assert values["XDG_CACHE_HOME"] == str(tmp_path / "cache")
     assert values["SYSTEMROOT"] == r"C:\Windows"
-    assert values["TMP"] == str(tmp_path)
-    assert values["TEMP"] == str(tmp_path)
-    assert values["TMPDIR"] == str(tmp_path)
+    assert values["TMP"] == str(tmp_path / "tmp")
+    assert values["TEMP"] == str(tmp_path / "tmp")
+    assert values["TMPDIR"] == str(tmp_path / "tmp")
     assert values["BELIEF_VALIDATION_WORKER"] == "1"
 
 
@@ -90,13 +94,13 @@ def test_capability_guard_blocks_network_listener_subprocess_and_shell():
     network_socket = socket.socket()
     try:
         with capability_guard():
-            with pytest.raises(WorkerCapabilityDenied, match="listener"):
+            with pytest.raises(WorkerCapabilityDenied, match="bind"):
                 network_socket.bind(("127.0.0.1", 0))
-            with pytest.raises(WorkerCapabilityDenied, match="network"):
+            with pytest.raises(WorkerCapabilityDenied, match="connect"):
                 network_socket.connect(("127.0.0.1", 9))
-            with pytest.raises(WorkerCapabilityDenied, match="subprocess"):
+            with pytest.raises(WorkerCapabilityDenied, match="subprocess_run"):
                 subprocess.run(["python", "--version"], check=False)
-            with pytest.raises(WorkerCapabilityDenied, match="shell"):
+            with pytest.raises(WorkerCapabilityDenied, match="os_system"):
                 os.system("exit 0")
     finally:
         network_socket.close()
@@ -112,18 +116,19 @@ def test_unknown_fixture_is_an_explicit_spawned_abstention():
 
 
 def test_hard_timeout_terminates_worker_and_remains_inconclusive():
-    response = run_worker_request(_request(timeout_ms=1))
+    response = run_worker_request(_request(timeout_ms=100))
 
     assert response.worker_status == "timed_out"
     assert response.baseline is None
-    assert [error.code for error in response.errors] == ["worker_timeout"]
-    assert response.capabilities.status == "unavailable"
+    assert [error.code for error in response.errors] == ["timeout"]
+    assert response.attestation.environment_policy_installed is None
+    assert response.attestation.cleanup_completed is True
 
     result = run_isolated_web_validation_plan(
         _plan(),
         fixture_id="flask_path_traversal_protected_v1",
         source_revision="fixture-source-v1",
-        timeout_ms=1,
+        timeout_ms=100,
     )
     assert result.outcome == "inconclusive"
     assert result.metadata["baseline_functional"] is None
@@ -164,6 +169,9 @@ class _CrashContext:
     def Process(self, **_kwargs):
         return _CrashedProcess()
 
+    def Event(self):
+        return multiprocessing.get_context("spawn").Event()
+
 
 def _crash_immediately(*_args):
     os._exit(23)
@@ -180,6 +188,9 @@ class _RealCrashContext:
         kwargs["target"] = _crash_immediately
         return self._delegate.Process(**kwargs)
 
+    def Event(self):
+        return self._delegate.Event()
+
 
 def test_real_spawned_worker_crash_is_detected(monkeypatch):
     monkeypatch.setattr(
@@ -192,7 +203,7 @@ def test_real_spawned_worker_crash_is_detected(monkeypatch):
 
     assert response.worker_status == "crashed"
     assert response.baseline is None
-    assert [error.code for error in response.errors] == ["worker_crash"]
+    assert [error.code for error in response.errors] == ["child_crash"]
 
 
 def test_worker_crash_is_normalized_and_never_becomes_a_security_verdict(
@@ -209,7 +220,7 @@ def test_worker_crash_is_normalized_and_never_becomes_a_security_verdict(
     assert response.worker_status == "crashed"
     assert response.baseline is None
     assert response.observations == ()
-    assert [error.code for error in response.errors] == ["worker_crash"]
+    assert [error.code for error in response.errors] == ["child_crash"]
 
     result = run_isolated_web_validation_plan(
         _plan(),
@@ -225,19 +236,12 @@ def test_missing_framework_is_an_explicit_unsupported_result(
     monkeypatch,
     tmp_path,
 ):
-    def unavailable(_spec, _root, _parameters):
+    def unavailable(_spec):
         raise OptionalWebDependencyUnavailable("flask")
 
-    spec = FixtureSpec(
-        fixture_id="flask_path_traversal_protected_v1",
-        framework="flask",
-        case_type="path_traversal_possible",
-        vulnerable=False,
-        runner=unavailable,
-    )
     monkeypatch.setattr(
-        "belief.validation.worker.entrypoint.get_fixture_spec",
-        lambda _fixture_id: spec,
+        "belief.validation.worker.entrypoint.load_fixture_runner",
+        unavailable,
     )
 
     response = execute_registered_request(
@@ -248,10 +252,10 @@ def test_missing_framework_is_an_explicit_unsupported_result(
     assert response.worker_status == "unsupported"
     assert response.baseline is None
     assert response.limitations == (
-        "optional_dependency_unavailable:flask",
+        "dependency_unavailable",
     )
     assert [error.code for error in response.errors] == [
-        "optional_dependency_unavailable"
+        "dependency_unavailable"
     ]
 
 
@@ -274,10 +278,11 @@ def test_actually_absent_framework_is_a_spawned_abstention(
     assert response.worker_status == "unsupported"
     assert response.baseline is None
     assert [error.code for error in response.errors] == [
-        "optional_dependency_unavailable"
+        "dependency_unavailable"
     ]
     assert response.limitations == (
-        f"optional_dependency_unavailable:{framework}",
+        f"dependency_unavailable:{framework}",
+        "dependency_unavailable",
     )
 
     result = run_isolated_web_validation_plan(
