@@ -540,6 +540,32 @@ python -m belief benchmark reportability \
   --json-output out/benchmark.json
 ```
 
+Build and execute explicit local validation fixtures:
+
+```bash
+python scripts/build_validation_plans.py \
+  --audit out/audit.json \
+  --output out/validation-plans.json
+
+belief validate-plan \
+  --plan out/validation-plans.json \
+  --fixture out/validation-fixtures.json \
+  --output out/validation-results.json
+```
+
+The validation executor supports only controlled path traversal and IDOR/BOLA
+fixtures. It never imports a target repository, starts a server, connects to a
+network, or launches a subprocess. Fixture configuration is explicit and
+outputs are create-only. See
+[`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md).
+
+Run the separate eight-case local experiment:
+
+```bash
+python scripts/benchmark_local_validation.py \
+  --output out/local-validation-benchmark.json
+```
+
 Run the test suite:
 
 ```bash
@@ -554,9 +580,9 @@ python -m pytest -q -m "not slow and not external and not llm"
 
 Current local regression baseline:
 
-- full suite: `924 passed, 31 skipped`;
-- security suite: `470 passed`;
-- non-slow / non-external / non-LLM suite: `924 passed, 31 skipped`.
+- full suite: `1011 passed, 32 skipped`;
+- security suite: `557 passed, 1 skipped`;
+- non-slow / non-external / non-LLM suite: `1011 passed, 32 skipped`.
 
 These numbers may change as the project evolves.
 
@@ -595,7 +621,8 @@ See [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md) for the current asset inventory and
 - The SusVibes candidate-review score is oracle-separated static feedback discrimination, not official `SecPass`.
 - The agent harness produces a comparable score only after official functional and hidden security tests evaluate its predictions.
 - The reasoning engine is deterministic and local; it is not an LLM agent.
-- Dynamic validation is intentionally not enabled by default.
+- Local validation is opt-in and limited to explicit, trusted path traversal
+  and IDOR/BOLA fixtures; arbitrary applications are never auto-executed.
 - External tools are not vendored as full runtimes.
 - Manual validation in authorized scope remains required before any real-world claim.
 

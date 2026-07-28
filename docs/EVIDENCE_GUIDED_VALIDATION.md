@@ -68,9 +68,9 @@ build_validation_plans.py
 belief.validation_plan_bundle.v1
     |
     +--> human validation
-    +--> future pytest/local HTTP adapter
-    +--> future mocked transport/database adapter
-    +--> future bounded fuzzing or concolic adapter
+    +--> local path traversal executor
+    +--> local IDOR/BOLA executor
+    +--> future isolated framework adapters
     |
     v
 belief.validation_result.v1
@@ -231,21 +231,20 @@ Suggested metrics:
 - a published Draft 2020-12 JSON Schema;
 - unit, safety, tamper, and CLI tests.
 
-### Phase 2 - local adapters
+### Phase 2 - local adapters (implemented for two verticals)
 
-Implement opt-in executors that consume a plan and produce
-`ValidationResult`. Executors should call
-`validation_result_from_plan()` so the result remains attached to the original
-`AuditCase` and records `validation_plan_id` in metadata:
+The opt-in execution layer now consumes a plan and produces a linked
+`ValidationResult` for `path_traversal_possible` and `idor_bola_possible`.
+It uses temporary sentinel files or an in-memory authorization store, an
+explicit adapter registry, deterministic operation costs, and separate
+functional/security oracles. Unsupported strategies remain inconclusive.
 
-- pytest function adapter;
-- Flask/FastAPI test-client adapter;
-- recording subprocess adapter;
-- mocked HTTP/DNS adapter;
-- SQLite/recording DB-API adapter.
+See [`LOCAL_VALIDATION_EXECUTION.md`](LOCAL_VALIDATION_EXECUTION.md) for the
+threat model, CLI, metrics, complete artifact example, and limitations.
 
-Executors must be separate from planning and must enforce scope, budgets,
-timeouts, and safety contracts.
+Flask/FastAPI test-client adapters, recording database adapters, and isolated
+workers remain future work. No subprocess or mocked network adapter is enabled
+by the current executor.
 
 ### Phase 3 - evidence-guided reachability
 
