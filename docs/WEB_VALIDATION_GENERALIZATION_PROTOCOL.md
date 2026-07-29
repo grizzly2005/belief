@@ -162,11 +162,14 @@ This checkpoint implements:
 - create-only result writing outside the sealed corpus;
 - tests for classification, metric formulas, closed inputs, and non-execution.
 
-At this commit, the real development corpus has not yet been executed by the
-runner and no aggregate result has been inspected. The next increment records
-that first result without changing the policy or thresholds. Runtime worker
-integration must remain bound to a closed benchmark-only registry and must not
-expand MCP to arbitrary paths, modules, or callables.
+The runner was frozen at `9ba5334` before its first real execution. The
+versioned
+[`negative development result`](WEB_VALIDATION_GENERALIZATION_RESULT.md)
+records 0.0 static precision and 0.0 static recall without changing the policy
+or thresholds. Development-only tuning may now improve general semantics, but
+the initial result remains immutable. Runtime worker integration must remain
+bound to a closed benchmark-only registry and must not expand MCP to arbitrary
+paths, modules, or callables.
 
 Reserved generation and execution require a later, separate freeze
 attestation. If development fails any gate, the negative result is published

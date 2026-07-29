@@ -263,6 +263,11 @@ python scripts/run_web_validation_development.py \
 Executable-plan coverage, runtime outcomes, and cross-platform agreement
 remain explicitly unmeasured at this stage.
 
+The frozen first
+[`development result`](docs/WEB_VALIDATION_GENERALIZATION_RESULT.md) is
+negative: static precision and recall are both `0.0`. It is retained as the
+pre-tuning baseline; the reserved cohort remains sealed.
+
 ---
 
 ## Toolchain Manager / Orchestrator v1

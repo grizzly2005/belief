@@ -22,6 +22,11 @@ ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / "benchmark_web_validation"
 MANIFEST_PATH = CORPUS / "development" / "cases.json"
 PREREGISTRATION_PATH = CORPUS / "preregistration.json"
+RESULT_PATH = (
+    ROOT
+    / "benchmark_web_validation_results"
+    / "development-static.json"
+)
 
 
 def _manifest() -> dict:
@@ -276,6 +281,34 @@ def test_cli_rejects_existing_output_before_analysis(tmp_path):
     assert completed.returncode == 2
     assert "refusing to overwrite" in completed.stderr
     assert output.read_text(encoding="utf-8") == "unchanged\n"
+
+
+def test_committed_negative_baseline_is_digest_bound_and_non_executing():
+    payload = json.loads(RESULT_PATH.read_text(encoding="utf-8"))
+    unsigned = dict(payload)
+    expected_digest = unsigned.pop("deterministic_digest")
+
+    assert canonical_digest(unsigned) == expected_digest
+    assert (
+        payload["runner_policy_digest"]
+        == runner.WEB_VALIDATION_STATIC_RUNNER_POLICY_DIGEST
+    )
+    assert payload["metrics"]["static_precision"] == 0.0
+    assert payload["metrics"]["static_recall"] == 0.0
+    assert payload["gate_evaluations"]["minimum_static_precision"][
+        "status"
+    ] == "fail"
+    assert payload["gate_evaluations"]["minimum_static_recall"][
+        "status"
+    ] == "fail"
+    assert payload["reproducibility"]["identical"] is True
+    assert payload["execution_boundaries"][
+        "validation_plans_executed"
+    ] is False
+    assert payload["execution_boundaries"]["reserved_source_opened"] is False
+    assert payload["execution_boundaries"][
+        "susvibes_artifacts_opened"
+    ] is False
 
 
 def _pure_path_name(value: str) -> str:
