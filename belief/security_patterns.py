@@ -20,6 +20,7 @@ from .models import (
     Predicate,
     Scope,
 )
+from .web_security_semantics import analyze_web_security_semantics
 
 logger = logging.getLogger("belief.structural.security")
 
@@ -162,6 +163,13 @@ class SecurityPatternExtractor:
             line_start=1, line_end=len(source_code.splitlines()),
         )
         beliefs.extend(self._check_module_dynamic_code_execution(tree, module_scope))
+        if self.analysis_profile == "default":
+            beliefs.extend(
+                self._check_web_security_semantics(
+                    tree,
+                    module_scope,
+                )
+            )
 
         class_names: dict[int, str] = {}
         for class_node in ast.walk(tree):
@@ -924,6 +932,11 @@ class SecurityPatternExtractor:
         """Detect path operations reached from likely external path input (CWE-22)."""
         beliefs = []
         tainted_vars, constant_vars = self._path_assignment_facts(node)
+        parents = {
+            id(child): parent
+            for parent in ast.walk(node)
+            for child in ast.iter_child_nodes(parent)
+        }
         path_sinks = {
             "open",
             "builtins.open",
@@ -938,6 +951,14 @@ class SecurityPatternExtractor:
                 continue
             name = self._get_call_name(child)
             if name not in path_sinks:
+                continue
+            parent = parents.get(id(child))
+            if (
+                name in {"Path", "pathlib.Path"}
+                and isinstance(parent, ast.Attribute)
+                and parent.value is child
+                and parent.attr == "name"
+            ):
                 continue
             source_arg = next(
                 (
@@ -956,6 +977,49 @@ class SecurityPatternExtractor:
                 scope, child.lineno, "high", "CWE-22",
                 variables=(source_name,),
             ))
+        return beliefs
+
+    def _check_web_security_semantics(
+        self,
+        tree: ast.AST,
+        module_scope: Scope,
+    ) -> list[Belief]:
+        beliefs = []
+        for issue in analyze_web_security_semantics(tree):
+            scope = Scope(
+                file_path=module_scope.file_path,
+                function_name=issue.function_name,
+                module=module_scope.module,
+                line_start=issue.line_start,
+                line_end=issue.line_end,
+            )
+            beliefs.append(
+                self._make_belief(
+                    issue.predicate,
+                    issue.description,
+                    scope,
+                    issue.line,
+                    "high",
+                    issue.cwe,
+                    variables=issue.variables,
+                    metadata={
+                        "detector": "web_security_semantics_v1",
+                        "dataflow": {
+                            "source": issue.source,
+                            "source_line": issue.line_start,
+                            "sink": issue.sink,
+                            "sink_line": issue.line,
+                            "path": [
+                                issue.source,
+                                issue.sink,
+                            ],
+                            "missing_guarantees": list(
+                                issue.missing_guarantees
+                            ),
+                        },
+                    },
+                )
+            )
         return beliefs
 
     def _path_assignment_facts(
