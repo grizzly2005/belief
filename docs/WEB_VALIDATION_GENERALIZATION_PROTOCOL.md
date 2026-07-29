@@ -113,21 +113,60 @@ They may not be lowered after observing results.
 - golden patches, CVE labels, or upstream project identities;
 - a successful reserved result used to tune production rules.
 
+## Frozen static runner
+
+The development runner is frozen before its first real corpus execution. It:
+
+1. resolves only the repository-bundled `benchmark_web_validation` corpus;
+2. verifies every generated artifact, case ID, source path, and source digest;
+3. scans the complete 32-file development source directory twice with fixed
+   audit, route, reportability, and deduplication options;
+4. maps only audit cases whose type matches the preregistered case vertical;
+5. generates canonical non-executing `ValidationPlan` summaries;
+6. writes a create-only JSON result outside the sealed corpus.
+
+It accepts no caller-provided source path, module, callable, external project,
+tool result, registry entry, or execution target. It uses no network,
+subprocess, shell, Docker, reserved source, or SusVibes artifact.
+
+The static classification rule is fixed as follows:
+
+- any `actionable` or `needs_review` matching case means `candidate`;
+- only `protected` or `false_positive_likely` matching cases mean `safe`;
+- no matching case means `safe`;
+- conflicting status groups or an unknown status mean `abstain`.
+
+Ground truth is never an input to that classification. Static precision and
+recall use only `vulnerable` and `safe` ground truth; ambiguous cases are
+reported separately. A vulnerable abstention counts as a false negative.
+The maximum-abstention gate uses all 32 development cases.
+Plan-generation coverage is reported separately from executable-plan
+coverage. The latter remains unmeasured because this runner creates no
+execution binding.
+
+The exact runner policy is bound by a canonical digest in every result. Two
+same-checkout, same-platform repetitions must produce identical semantic
+digests. Windows/Linux agreement and all dynamic validation gates remain
+unmeasured.
+
 ## Current checkpoint
 
-This checkpoint implements only:
+This checkpoint implements:
 
 - the deterministic generator;
 - exact create-only preregistration;
 - the public 32-case development source corpus;
 - regeneration and drift verification;
-- path-safety, syntax, balance, coverage, and sealing tests.
+- path-safety, syntax, balance, coverage, and sealing tests;
+- the frozen two-pass static-analysis and plan-generation runner;
+- create-only result writing outside the sealed corpus;
+- tests for classification, metric formulas, closed inputs, and non-execution.
 
-It does not execute the corpus or measure any gate. The next increment must
-freeze a static-analysis/plan-generation runner before inspecting aggregate
-development results. Runtime worker integration must remain bound to a closed
-benchmark-only registry and must not expand MCP to arbitrary paths, modules,
-or callables.
+At this commit, the real development corpus has not yet been executed by the
+runner and no aggregate result has been inspected. The next increment records
+that first result without changing the policy or thresholds. Runtime worker
+integration must remain bound to a closed benchmark-only registry and must not
+expand MCP to arbitrary paths, modules, or callables.
 
 Reserved generation and execution require a later, separate freeze
 attestation. If development fails any gate, the negative result is published

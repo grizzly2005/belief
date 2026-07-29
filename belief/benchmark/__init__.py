@@ -49,6 +49,14 @@ from .web_generalization import (
     verify_web_validation_development_corpus,
     write_web_validation_development_corpus,
 )
+from .web_validation_runner import (
+    WEB_VALIDATION_STATIC_REPETITIONS,
+    WEB_VALIDATION_STATIC_RUNNER_POLICY_DIGEST,
+    WEB_VALIDATION_STATIC_RUNNER_VERSION,
+    WEB_VALIDATION_STATIC_RUN_SCHEMA_VERSION,
+    evaluate_web_validation_development,
+    write_web_validation_development_result,
+)
 
 __all__ = [
     "REPORTABILITY_BENCHMARK_SCHEMA_VERSION",
@@ -67,6 +75,10 @@ __all__ = [
     "WEB_VALIDATION_BENCHMARK_ID",
     "WEB_VALIDATION_CORPUS_SCHEMA_VERSION",
     "WEB_VALIDATION_PREREGISTRATION_SCHEMA_VERSION",
+    "WEB_VALIDATION_STATIC_REPETITIONS",
+    "WEB_VALIDATION_STATIC_RUNNER_POLICY_DIGEST",
+    "WEB_VALIDATION_STATIC_RUNNER_VERSION",
+    "WEB_VALIDATION_STATIC_RUN_SCHEMA_VERSION",
     "SusVibesThresholds",
     "build_web_validation_development_manifest",
     "build_web_validation_preregistration",
@@ -76,6 +88,7 @@ __all__ = [
     "evaluate_reportability_benchmark",
     "evaluate_static_analysis_benchmark",
     "evaluate_susvibes_paired_benchmark",
+    "evaluate_web_validation_development",
     "load_benchmark_cases",
     "load_patcheval_development_cohort",
     "load_static_analysis_cases",
@@ -89,4 +102,5 @@ __all__ = [
     "write_susvibes_paired_benchmark_json",
     "write_susvibes_paired_smoke_preregistration",
     "write_web_validation_development_corpus",
+    "write_web_validation_development_result",
 ]

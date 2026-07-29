@@ -250,6 +250,19 @@ are bound only by preregistration digests, with no reserved source or outcome
 committed. This scaffold is create-only, opens no SusVibes artifact, executes
 no target code, and is not `SecPass`-comparable.
 
+Its static runner is closed over that exact bundled development corpus and
+accepts no arbitrary source path, module, callable, or execution target. The
+runner performs two deterministic offline scans, generates unbound
+`ValidationPlan` summaries, and refuses to overwrite its result:
+
+```bash
+python scripts/run_web_validation_development.py \
+  --output benchmark_web_validation_results/development-static.json
+```
+
+Executable-plan coverage, runtime outcomes, and cross-platform agreement
+remain explicitly unmeasured at this stage.
+
 ---
 
 ## Toolchain Manager / Orchestrator v1
