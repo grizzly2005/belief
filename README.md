@@ -268,6 +268,12 @@ The frozen first
 negative: static precision and recall are both `0.0`. It is retained as the
 pre-tuning baseline; the reserved cohort remains sealed.
 
+The separately versioned
+[`v2 development result`](docs/WEB_VALIDATION_GENERALIZATION_RESULT_V2.md)
+passes the measured static gates at `1.0` precision and `1.0` recall after
+public-cohort tuning. It is not an unseen holdout result, and all runtime,
+executable-plan, and cross-platform gates remain unmeasured.
+
 ---
 
 ## Toolchain Manager / Orchestrator v1

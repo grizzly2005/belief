@@ -27,6 +27,11 @@ RESULT_PATH = (
     / "benchmark_web_validation_results"
     / "development-static.json"
 )
+RESULT_V2_PATH = (
+    ROOT
+    / "benchmark_web_validation_results"
+    / "development-static-v2.json"
+)
 
 
 def _manifest() -> dict:
@@ -309,6 +314,40 @@ def test_committed_negative_baseline_is_digest_bound_and_non_executing():
     assert payload["execution_boundaries"][
         "susvibes_artifacts_opened"
     ] is False
+
+
+def test_committed_v2_passes_only_static_development_gates():
+    payload = json.loads(RESULT_V2_PATH.read_text(encoding="utf-8"))
+    unsigned = dict(payload)
+    expected_digest = unsigned.pop("deterministic_digest")
+
+    assert canonical_digest(unsigned) == expected_digest
+    assert (
+        payload["runner_policy_digest"]
+        == runner.WEB_VALIDATION_STATIC_RUNNER_POLICY_DIGEST
+    )
+    assert payload["metrics"]["confusion"] == {
+        "binary_abstention": 0,
+        "false_negative": 0,
+        "false_positive": 0,
+        "true_negative": 16,
+        "true_positive": 8,
+    }
+    assert payload["metrics"]["static_precision"] == 1.0
+    assert payload["metrics"]["static_recall"] == 1.0
+    assert payload["metrics"]["executable_plan_coverage"] is None
+    assert payload["gate_evaluations"][
+        "minimum_executable_plan_coverage"
+    ]["status"] == "not_measured"
+    assert payload["gate_evaluations"][
+        "minimum_windows_linux_outcome_agreement_rate"
+    ]["status"] == "not_measured"
+    assert payload["reproducibility"]["run_digests"] == [
+        "087c4d39dd054d4c717379c4bd4239de78abef4083a7a5581992ae485e579c71",
+        "087c4d39dd054d4c717379c4bd4239de78abef4083a7a5581992ae485e579c71",
+    ]
+    assert payload["execution_boundaries"]["secpass_equivalent"] is False
+    assert payload["execution_boundaries"]["reserved_source_opened"] is False
 
 
 def _pure_path_name(value: str) -> str:

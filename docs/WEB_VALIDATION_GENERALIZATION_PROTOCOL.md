@@ -171,6 +171,13 @@ the initial result remains immutable. Runtime worker integration must remain
 bound to a closed benchmark-only registry and must not expand MCP to arbitrary
 paths, modules, or callables.
 
+The versioned
+[`v2 development result`](WEB_VALIDATION_GENERALIZATION_RESULT_V2.md) records
+1.0 static precision and 1.0 static recall after public-cohort tuning. It
+passes the measured static gates but is not an unseen generalization result.
+The reserved cohort remains sealed, and every dynamic and cross-platform gate
+remains unmeasured.
+
 Reserved generation and execution require a later, separate freeze
 attestation. If development fails any gate, the negative result is published
 and the reserved cohort remains sealed.
