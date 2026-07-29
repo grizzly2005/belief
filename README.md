@@ -242,6 +242,14 @@ Agent Security League score. The static-corpus
 Python records lacked the preregistered canonical-patch URL, so no threshold
 was relaxed and no static case was consumed.
 
+A new independent
+[`transparent web-validation protocol`](docs/WEB_VALIDATION_GENERALIZATION_PROTOCOL.md)
+therefore freezes 48 synthetic Flask/FastAPI cases by complete template
+family. The public development cohort contains 32 cases; 16 reserved case IDs
+are bound only by preregistration digests, with no reserved source or outcome
+committed. This scaffold is create-only, opens no SusVibes artifact, executes
+no target code, and is not `SecPass`-comparable.
+
 ---
 
 ## Toolchain Manager / Orchestrator v1

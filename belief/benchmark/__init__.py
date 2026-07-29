@@ -40,6 +40,15 @@ from .susvibes_paired_smoke import (
     build_susvibes_paired_smoke_preregistration,
     write_susvibes_paired_smoke_preregistration,
 )
+from .web_generalization import (
+    WEB_VALIDATION_BENCHMARK_ID,
+    WEB_VALIDATION_CORPUS_SCHEMA_VERSION,
+    WEB_VALIDATION_PREREGISTRATION_SCHEMA_VERSION,
+    build_web_validation_development_manifest,
+    build_web_validation_preregistration,
+    verify_web_validation_development_corpus,
+    write_web_validation_development_corpus,
+)
 
 __all__ = [
     "REPORTABILITY_BENCHMARK_SCHEMA_VERSION",
@@ -55,7 +64,12 @@ __all__ = [
     "SUSVIBES_PAIRED_MODE",
     "SUSVIBES_PAIRED_SCHEMA_VERSION",
     "SUSVIBES_PAIRED_SMOKE_SCHEMA_VERSION",
+    "WEB_VALIDATION_BENCHMARK_ID",
+    "WEB_VALIDATION_CORPUS_SCHEMA_VERSION",
+    "WEB_VALIDATION_PREREGISTRATION_SCHEMA_VERSION",
     "SusVibesThresholds",
+    "build_web_validation_development_manifest",
+    "build_web_validation_preregistration",
     "compute_confusion_matrix",
     "build_patcheval_experiment_manifest",
     "build_susvibes_paired_smoke_preregistration",
@@ -69,8 +83,10 @@ __all__ = [
     "load_susvibes_cases",
     "summarize_reportability_metrics",
     "validate_patcheval_experiment_manifest",
+    "verify_web_validation_development_corpus",
     "write_patcheval_experiment_manifest",
     "write_static_analysis_benchmark_json",
     "write_susvibes_paired_benchmark_json",
     "write_susvibes_paired_smoke_preregistration",
+    "write_web_validation_development_corpus",
 ]
