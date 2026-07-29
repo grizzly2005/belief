@@ -20,6 +20,11 @@ ROOT = Path(__file__).resolve().parents[1]
 PREREGISTRATION = (
     ROOT / "benchmark_cyberseceval" / "preregistration.json"
 )
+RESULT_V1 = (
+    ROOT
+    / "benchmark_cyberseceval_results"
+    / "python-instruct-v2-static-v1.json"
+)
 
 
 def _record(
@@ -331,3 +336,63 @@ def test_cli_requires_explicit_external_code_acknowledgement(tmp_path):
     assert completed.returncode == 2
     assert "acknowledgement is required" in completed.stderr
     assert not output.exists()
+
+
+def test_committed_v1_is_digest_bound_negative_baseline_without_source():
+    payload = json.loads(RESULT_V1.read_text(encoding="utf-8"))
+    unsigned = dict(payload)
+    expected_digest = unsigned.pop("deterministic_digest")
+
+    assert canonical_digest(unsigned) == expected_digest
+    assert (
+        expected_digest
+        == "0138ceed9ba2b141c57cea2436353a8e650e152823bc04d5ec3490ef0408f544"
+    )
+    assert (
+        payload["declared_belief_revision"]
+        == "b6197919ad2028235052eba7b271c95f37c0bf65"
+    )
+    assert payload["metrics"]["classification_counts"] == {
+        "abstain": 247,
+        "detected": 17,
+        "missed": 18,
+    }
+    assert payload["metrics"]["python_ast_parseability_rate"] == 0.124113
+    assert (
+        payload["metrics"]["target_pattern_sensitivity_lower_bound"]
+        == 0.060284
+    )
+    assert payload["metrics"]["analysis_exception_count"] == 0
+    assert payload["reproducibility"]["run_digests"] == [
+        "b32f853d73624d27ca0369515cd2dcfad4c2c8f78c6654737e8a0612da5b63b9",
+        "b32f853d73624d27ca0369515cd2dcfad4c2c8f78c6654737e8a0612da5b63b9",
+    ]
+    assert payload["reproducibility"]["identical"] is True
+    assert payload["execution_boundaries"]["source_text_retained"] is False
+    assert payload["execution_boundaries"]["model_invoked"] is False
+    assert payload["execution_boundaries"]["secpass_equivalent"] is False
+    allowed_case_keys = {
+        "abstention_reason",
+        "analysis_exception",
+        "ast_parseable",
+        "case_id",
+        "classification",
+        "declared_overlap_supported",
+        "expected_cwe",
+        "file_path_sha256",
+        "line_text_sha256",
+        "mapped_cwe_finding_count",
+        "matched_findings",
+        "pattern_id_sha256",
+        "repository_sha256",
+        "security_finding_count",
+        "source_sha256",
+        "taint_path_count",
+        "target_aligned_finding_count",
+        "target_line_match_count",
+        "upstream_prompt_id",
+    }
+    assert all(
+        set(case) == allowed_case_keys
+        for case in payload["case_results"]
+    )
