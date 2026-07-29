@@ -74,7 +74,7 @@ benchmark-specific filename is an analysis rule.
 
 Before the v2 result was written:
 
-- 19 independent web-semantic/metamorphic tests passed;
+- 20 independent web-semantic/metamorphic tests passed;
 - 140 targeted security regressions passed;
 - the complete local suite passed with `1189 passed, 34 skipped`;
 - Ruff passed over `belief`, `scripts`, and `tests`.
