@@ -1,0 +1,185 @@
+{
+  "benchmark_id": "belief-cyberseceval4-python-static-preflight-v1",
+  "boundaries": {
+    "arbitrary_callable_allowed": false,
+    "arbitrary_execution_target_allowed": false,
+    "arbitrary_module_allowed": false,
+    "authorization_required": true,
+    "docker_allowed": false,
+    "external_code_execution_allowed": false,
+    "external_module_import_allowed": false,
+    "model_calls_allowed": false,
+    "network_allowed": false,
+    "reserved_web_corpus_allowed": false,
+    "shell_allowed": false,
+    "subprocess_allowed": false,
+    "susvibes_artifacts_allowed": false
+  },
+  "corpus": {
+    "functional_oracles_present": false,
+    "label_semantics": "positive proxy: upstream ICD observed an insecure coding practice used to derive the prompt",
+    "manual_vulnerability_ground_truth": false,
+    "negative_controls_present": false,
+    "python_record_count": 282,
+    "python_repository_count": 279,
+    "python_unique_source_count": 281,
+    "upstream_record_count": 1681
+  },
+  "decision": "eligible for an external positive-only static sensitivity preflight; ineligible for a primary comparative security score",
+  "deterministic_digest": "ce70029caaaf23278e99041efc6c29b2d8887185eef7cd07c4b6d119554f385f",
+  "forbidden_claims": [
+    "precision",
+    "specificity",
+    "accuracy",
+    "false_positive_rate",
+    "functional_correctness",
+    "official_cyberseceval_pass_rate",
+    "secpass",
+    "fable_leaderboard_comparison",
+    "kimi_known_cve_comparison",
+    "unseen_holdout_generalization"
+  ],
+  "permitted_outputs": [
+    "dataset_binding_verification",
+    "python_ast_parseability_rate",
+    "target_pattern_sensitivity_lower_bound",
+    "target_pattern_sensitivity_on_evaluable_cases",
+    "abstention_rate",
+    "per_cwe_positive_only_diagnostics",
+    "deterministic_repetition_digest"
+  ],
+  "runner_policy": {
+    "adapter": "exact_public_json_dataset",
+    "analysis": {
+      "external_source_executed": false,
+      "external_source_imported": false,
+      "fixed_analyzers": [
+        "belief.security_patterns.default",
+        "belief.taint.default"
+      ],
+      "parser": "python_ast_parse_only",
+      "source_field": "origin_code",
+      "target_alignment": "trimmed_exact_line_match",
+      "target_field": "line_text"
+    },
+    "boundaries": {
+      "arbitrary_callable_allowed": false,
+      "arbitrary_execution_target_allowed": false,
+      "arbitrary_module_allowed": false,
+      "authorization_required": true,
+      "docker_allowed": false,
+      "external_code_execution_allowed": false,
+      "external_module_import_allowed": false,
+      "model_calls_allowed": false,
+      "network_allowed": false,
+      "reserved_web_corpus_allowed": false,
+      "shell_allowed": false,
+      "subprocess_allowed": false,
+      "susvibes_artifacts_allowed": false
+    },
+    "classification": {
+      "abstain": [
+        "python_ast_parse_failed",
+        "target_line_not_located",
+        "analysis_exception"
+      ],
+      "cwe_mapping": {
+        "CWE-312": [
+          "CWE-312"
+        ],
+        "CWE-328": [
+          "CWE-327",
+          "CWE-328"
+        ],
+        "CWE-338": [
+          "CWE-330",
+          "CWE-338"
+        ],
+        "CWE-502": [
+          "CWE-502"
+        ],
+        "CWE-78": [
+          "CWE-78"
+        ],
+        "CWE-798": [
+          "CWE-798"
+        ],
+        "CWE-89": [
+          "CWE-89"
+        ],
+        "CWE-94": [
+          "CWE-94",
+          "CWE-95"
+        ]
+      },
+      "declared_overlap_cwes": [
+        "CWE-328",
+        "CWE-338",
+        "CWE-502",
+        "CWE-78",
+        "CWE-798",
+        "CWE-89",
+        "CWE-94"
+      ],
+      "detected": "mapped BELIEF CWE anchor intersects an upstream target line",
+      "missed": "source is evaluable but no mapped BELIEF CWE anchor intersects an upstream target line"
+    },
+    "dataset_binding": {
+      "relative_path": "CybersecurityBenchmarks/datasets/instruct/instruct-v2.json",
+      "repository": "https://github.com/meta-llama/PurpleLlama.git",
+      "revision": "acfdd58f7c605eec53af4eed3f7ecf302267f0f8",
+      "sha256": "fa583f17875a7822355f0e29a21b5169eba445f9cfe24d87afcdc23adb270f82",
+      "size_bytes": 3033298
+    },
+    "metric_semantics": {
+      "abstention_counts_as_lower_bound_miss": true,
+      "accuracy_available": false,
+      "functional_correctness_available": false,
+      "leaderboard_comparable": false,
+      "official_cyberseceval_metric": false,
+      "positive_only": true,
+      "precision_available": false,
+      "secpass_equivalent": false,
+      "specificity_available": false
+    },
+    "repetitions": 2,
+    "retention": {
+      "external_input_path_in_result": false,
+      "line_text_in_result": false,
+      "source_sha256_in_result": true,
+      "source_text_in_result": false,
+      "test_case_prompt_in_result": false
+    },
+    "selection": {
+      "dataset_variant": "instruct-v2",
+      "expected_dataset_records": 1681,
+      "expected_selected_records": 282,
+      "language": "python",
+      "selection_uses_belief_outcomes": false
+    }
+  },
+  "runner_policy_digest": "4361bb247ce12a68ac485ac835b5a78fe4c012ff66fd1317d1f65ce009bbfbfb",
+  "runner_version": "belief.cyberseceval_static_preflight_runner.v1",
+  "schema_version": "belief.cyberseceval_static_preflight_preregistration.v1",
+  "starting_commit": "236bcdb36e859e4432f71f8a2da1d56dbfa14843",
+  "status": "protocol_frozen_before_belief_outcomes",
+  "thresholds": {
+    "maximum_abstention_rate": 0.15,
+    "maximum_analysis_exception_rate": 0.0,
+    "minimum_all_case_target_sensitivity_lower_bound": 0.5,
+    "minimum_evaluable_target_sensitivity": 0.6,
+    "minimum_python_ast_parseability_rate": 0.85,
+    "minimum_repetition_stability_rate": 1.0,
+    "minimum_supported_cwe_target_sensitivity_lower_bound": 0.55
+  },
+  "upstream": {
+    "component_license_relative_path": "CybersecurityBenchmarks/LICENSE",
+    "component_license_sha256": "63e8210e6bf3e8c032dc0c69b1d1d2e3ab72c14b02cabcc0dada2618bb188b97",
+    "component_license_spdx": "MIT",
+    "dataset_relative_path": "CybersecurityBenchmarks/datasets/instruct/instruct-v2.json",
+    "dataset_sha256": "fa583f17875a7822355f0e29a21b5169eba445f9cfe24d87afcdc23adb270f82",
+    "dataset_size_bytes": 3033298,
+    "repository": "https://github.com/meta-llama/PurpleLlama.git",
+    "revision": "acfdd58f7c605eec53af4eed3f7ecf302267f0f8"
+  }
+}
