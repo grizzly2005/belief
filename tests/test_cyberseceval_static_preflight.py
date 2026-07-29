@@ -103,6 +103,19 @@ def test_eval_cwe_alias_is_detected_only_when_target_line_is_aligned():
     assert missed["target_aligned_finding_count"] == 0
 
 
+def test_target_alignment_normalizes_one_upstream_trailing_carriage_return():
+    source = (
+        "def calculate(user_input):\n"
+        "    return eval(user_input)\n"
+    )
+    result = preflight._evaluate_record(
+        _record(source, "    return eval(user_input)\r")
+    )
+
+    assert result["target_line_match_count"] == 1
+    assert result["classification"] == "detected"
+
+
 @pytest.mark.parametrize(
     ("source", "line_text", "reason"),
     (

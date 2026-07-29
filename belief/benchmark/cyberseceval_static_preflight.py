@@ -68,6 +68,7 @@ CYBERSECEVAL_EXPECTED_RECORD_COUNT = 1_681
 CYBERSECEVAL_EXPECTED_PYTHON_RECORD_COUNT = 282
 CYBERSECEVAL_EXPECTED_PYTHON_REPOSITORY_COUNT = 279
 CYBERSECEVAL_EXPECTED_PYTHON_UNIQUE_SOURCE_COUNT = 281
+CYBERSECEVAL_EXPECTED_TRAILING_CR_LINE_TEXT_COUNT = 10
 CYBERSECEVAL_PREREGISTRATION_STARTING_COMMIT = (
     "236bcdb36e859e4432f71f8a2da1d56dbfa14843"
 )
@@ -132,7 +133,9 @@ _RUNNER_POLICY: dict[str, Any] = {
     "analysis": {
         "source_field": "origin_code",
         "target_field": "line_text",
-        "target_alignment": "trimmed_exact_line_match",
+        "target_alignment": (
+            "trimmed_exact_line_match_with_trailing_cr_normalization"
+        ),
         "parser": "python_ast_parse_only",
         "fixed_analyzers": [
             "belief.security_patterns.default",
@@ -243,6 +246,9 @@ def build_cyberseceval_static_preflight_preregistration() -> dict[str, Any]:
             ),
             "python_unique_source_count": (
                 CYBERSECEVAL_EXPECTED_PYTHON_UNIQUE_SOURCE_COUNT
+            ),
+            "trailing_cr_line_text_count": (
+                CYBERSECEVAL_EXPECTED_TRAILING_CR_LINE_TEXT_COUNT
             ),
             "label_semantics": (
                 "positive proxy: upstream ICD observed an insecure coding "
@@ -559,6 +565,7 @@ def _validated_python_records(
     payload: Sequence[Any],
 ) -> list[dict[str, Any]]:
     selected = []
+    trailing_cr_line_text_count = 0
     for raw in payload:
         if not isinstance(raw, Mapping):
             raise ValueError("CyberSecEval dataset row must be an object")
@@ -571,8 +578,16 @@ def _validated_python_records(
         if len(source) > CYBERSECEVAL_MAX_SOURCE_CHARS:
             raise ValueError("CyberSecEval Python origin_code exceeds limit")
         line_text = _bounded_text(raw.get("line_text"), "line_text")
-        if "\n" in line_text or "\r" in line_text:
+        if "\n" in line_text:
             raise ValueError("CyberSecEval Python line_text must be one line")
+        carriage_returns = line_text.count("\r")
+        if carriage_returns:
+            if carriage_returns != 1 or not line_text.endswith("\r"):
+                raise ValueError(
+                    "CyberSecEval Python line_text has an internal "
+                    "carriage return"
+                )
+            trailing_cr_line_text_count += 1
         cwe = _bounded_text(raw.get("cwe_identifier"), "cwe_identifier")
         if cwe not in CYBERSECEVAL_SOURCE_CWE_TO_BELIEF_CWES:
             raise ValueError("CyberSecEval Python CWE is outside frozen map")
@@ -622,6 +637,13 @@ def _validated_python_records(
     ):
         raise ValueError(
             "CyberSecEval Python unique source count mismatch"
+        )
+    if (
+        trailing_cr_line_text_count
+        != CYBERSECEVAL_EXPECTED_TRAILING_CR_LINE_TEXT_COUNT
+    ):
+        raise ValueError(
+            "CyberSecEval Python trailing-CR line_text count mismatch"
         )
     return sorted(selected, key=lambda item: int(item["prompt_id"]))
 

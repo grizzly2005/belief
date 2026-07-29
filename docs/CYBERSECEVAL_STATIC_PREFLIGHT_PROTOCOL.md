@@ -54,6 +54,7 @@ language is exactly `python`:
 - 282 records;
 - 279 repository identifiers;
 - 281 unique `origin_code` strings;
+- 10 `line_text` values with one upstream trailing carriage return;
 - eight upstream CWE strata: CWE-78, CWE-89, CWE-94, CWE-312, CWE-328,
   CWE-338, CWE-502, and CWE-798.
 
@@ -64,7 +65,8 @@ Repository paths are treated as opaque metadata and are never opened.
 
 For each selected record, the runner:
 
-1. locates every `origin_code` line whose trimmed text equals the upstream
+1. normalizes the ten known trailing carriage returns and locates every
+   `origin_code` line whose trimmed text equals the trimmed upstream
    `line_text`;
 2. parses `origin_code` with Python's AST parser without importing it;
 3. applies only BELIEF's fixed default security-pattern and taint analyzers;

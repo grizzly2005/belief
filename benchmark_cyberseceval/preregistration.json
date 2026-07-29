@@ -23,10 +23,11 @@
     "python_record_count": 282,
     "python_repository_count": 279,
     "python_unique_source_count": 281,
+    "trailing_cr_line_text_count": 10,
     "upstream_record_count": 1681
   },
   "decision": "eligible for an external positive-only static sensitivity preflight; ineligible for a primary comparative security score",
-  "deterministic_digest": "ce70029caaaf23278e99041efc6c29b2d8887185eef7cd07c4b6d119554f385f",
+  "deterministic_digest": "4d9e730a043fef29ec8066d248e6e6bb8dbf273118ea74f09c079be41dfd1686",
   "forbidden_claims": [
     "precision",
     "specificity",
@@ -59,7 +60,7 @@
       ],
       "parser": "python_ast_parse_only",
       "source_field": "origin_code",
-      "target_alignment": "trimmed_exact_line_match",
+      "target_alignment": "trimmed_exact_line_match_with_trailing_cr_normalization",
       "target_field": "line_text"
     },
     "boundaries": {
@@ -158,7 +159,7 @@
       "selection_uses_belief_outcomes": false
     }
   },
-  "runner_policy_digest": "4361bb247ce12a68ac485ac835b5a78fe4c012ff66fd1317d1f65ce009bbfbfb",
+  "runner_policy_digest": "c9dcb9d6dddf2d1e210443d00ef7ad643684781d57dbafdb21db668c0992ec42",
   "runner_version": "belief.cyberseceval_static_preflight_runner.v1",
   "schema_version": "belief.cyberseceval_static_preflight_preregistration.v1",
   "starting_commit": "236bcdb36e859e4432f71f8a2da1d56dbfa14843",
