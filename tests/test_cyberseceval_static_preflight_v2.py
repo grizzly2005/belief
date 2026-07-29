@@ -21,6 +21,11 @@ ROOT = Path(__file__).resolve().parents[1]
 PREREGISTRATION_V2 = (
     ROOT / "benchmark_cyberseceval" / "preregistration-v2.json"
 )
+RESULT_V2 = (
+    ROOT
+    / "benchmark_cyberseceval_results"
+    / "python-instruct-v2-static-v2.json"
+)
 
 
 def _record(
@@ -277,3 +282,86 @@ def test_v2_cli_requires_explicit_external_code_acknowledgement(tmp_path):
     assert completed.returncode == 2
     assert "acknowledgement is required" in completed.stderr
     assert not output.exists()
+
+
+def test_committed_v2_is_digest_bound_and_passes_only_preflight_gates():
+    payload = json.loads(RESULT_V2.read_text(encoding="utf-8"))
+    unsigned = dict(payload)
+    expected_digest = unsigned.pop("deterministic_digest")
+
+    assert canonical_digest(unsigned) == expected_digest
+    assert (
+        expected_digest
+        == "9669a18cec9b1c3df4dde2664cd4487465a21ffd6342e2251eab9172a45d11f2"
+    )
+    assert (
+        payload["declared_belief_revision"]
+        == "b658d61618eea74dcca20573d3b872b008f820a4"
+    )
+    assert payload["metrics"]["classification_counts"] == {
+        "abstain": 7,
+        "detected": 203,
+        "missed": 72,
+    }
+    assert payload["metrics"]["raw_ast_parseability_rate"] == 0.124113
+    assert payload["metrics"]["recovery_evaluability_rate"] == 0.975177
+    assert (
+        payload["metrics"]["target_pattern_sensitivity_lower_bound"]
+        == 0.719858
+    )
+    assert (
+        payload["metrics"][
+            "target_pattern_sensitivity_on_evaluable_cases"
+        ]
+        == 0.738182
+    )
+    assert payload["metrics"]["analysis_exception_count"] == 0
+    assert payload["metrics"]["per_cwe"]["CWE-338"]["detected"] == 0
+    assert all(
+        gate["status"] == "pass"
+        for gate in payload["gate_evaluations"].values()
+    )
+    assert payload["reproducibility"]["run_digests"] == [
+        "837b3ec025a5a6ba4a4199317f3d1862c6e61997855653c90e79a40eac0d6e14",
+        "837b3ec025a5a6ba4a4199317f3d1862c6e61997855653c90e79a40eac0d6e14",
+    ]
+    assert payload["reproducibility"]["identical"] is True
+    boundaries = payload["execution_boundaries"]
+    assert boundaries["external_source_executed"] is False
+    assert boundaries["source_text_retained"] is False
+    assert boundaries["recovered_source_retained"] is False
+    assert boundaries["public_development_tuned"] is True
+    assert boundaries["unseen_holdout"] is False
+    assert boundaries["official_cyberseceval_metric"] is False
+    assert boundaries["secpass_equivalent"] is False
+
+    allowed_case_keys = {
+        "abstention_reason",
+        "analysis_exception",
+        "case_id",
+        "classification",
+        "declared_overlap_supported",
+        "expected_cwe",
+        "file_path_sha256",
+        "line_text_sha256",
+        "mapped_cwe_finding_count",
+        "matched_findings",
+        "maximum_synthetic_parameter_count",
+        "maximum_window_span",
+        "pattern_id_sha256",
+        "projection_count",
+        "raw_ast_parseable",
+        "recovery_available",
+        "recovery_methods",
+        "repository_sha256",
+        "security_finding_count",
+        "source_sha256",
+        "taint_path_count",
+        "target_aligned_finding_count",
+        "target_line_match_count",
+        "upstream_prompt_id",
+    }
+    assert all(
+        set(case) == allowed_case_keys
+        for case in payload["case_results"]
+    )

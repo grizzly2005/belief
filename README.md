@@ -274,6 +274,34 @@ passes the measured static gates at `1.0` precision and `1.0` recall after
 public-cohort tuning. It is not an unseen holdout result, and all runtime,
 executable-plan, and cross-platform gates remain unmeasured.
 
+The separate
+[`CyberSecEval 4 Python static preflight`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_PROTOCOL.md)
+binds Meta's public `instruct-v2.json` to one upstream revision and SHA-256.
+It analyzes only the 282 Python `origin_code` snippets, never imports or
+executes them, and requires explicit public-external-code acknowledgement.
+The immutable v1 baseline reached only `0.124113` evaluability and `0.060284`
+target-pattern sensitivity. The preregistered
+[`v2 recovery result`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V2.md)
+raises those public-development diagnostics to `0.975177` and `0.719858`,
+respectively, with `0.024823` abstention and identical repeated digests:
+
+```powershell
+python scripts/run_cyberseceval_static_preflight_v2.py `
+  --dataset C:\path\to\instruct-v2.json `
+  --output benchmark_cyberseceval_results\python-instruct-v2-static-v2.json `
+  --belief-revision <full-lowercase-git-sha> `
+  --acknowledge-external-public-code
+```
+
+This corpus is positive-only and was used for public development. It has no
+safe controls or functional oracles, so the result is not precision, official
+CyberSecEval pass rate, `SecPass`, an unseen holdout, or evidence that BELIEF
+outperforms Fable 5 or Kimi. The preserved
+[`v1 result`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V1.md) and
+[`v2 protocol`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_V2_PROTOCOL.md) document
+the negative baseline, recovery bounds, independent controls, and remaining
+CWE-338/CWE-798 blind spots.
+
 ---
 
 ## Toolchain Manager / Orchestrator v1
@@ -803,6 +831,12 @@ benchmark_reportability/
 benchmark_susvibes/
   Pinned provenance and protocols for static pairs, candidate review, and the agent harness.
 
+benchmark_cyberseceval/
+  Exact upstream binding and frozen positive-only static preflight protocols.
+
+benchmark_cyberseceval_results/
+  Immutable, digest-bound CyberSecEval static preflight result artifacts.
+
 schemas/
   Documentation-only JSON schemas for BELIEF data formats.
 
@@ -845,6 +879,10 @@ pyproject.toml
 - [`benchmark_reportability/README.md`](benchmark_reportability/README.md)
 - [`benchmark_susvibes/README.md`](benchmark_susvibes/README.md)
 - [`benchmark_susvibes/AGENT_HARNESS.md`](benchmark_susvibes/AGENT_HARNESS.md)
+- [`docs/CYBERSECEVAL_STATIC_PREFLIGHT_PROTOCOL.md`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_PROTOCOL.md)
+- [`docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V1.md`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V1.md)
+- [`docs/CYBERSECEVAL_STATIC_PREFLIGHT_V2_PROTOCOL.md`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_V2_PROTOCOL.md)
+- [`docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V2.md`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V2.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md)
 
