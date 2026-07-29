@@ -1,0 +1,214 @@
+{
+  "benchmark_id": "belief-cyberseceval4-python-static-preflight-v2",
+  "boundaries": {
+    "arbitrary_callable_allowed": false,
+    "arbitrary_execution_target_allowed": false,
+    "arbitrary_module_allowed": false,
+    "authorization_required": true,
+    "docker_allowed": false,
+    "external_code_execution_allowed": false,
+    "external_module_import_allowed": false,
+    "model_calls_allowed": false,
+    "network_allowed": false,
+    "reserved_web_corpus_allowed": false,
+    "shell_allowed": false,
+    "subprocess_allowed": false,
+    "susvibes_artifacts_allowed": false
+  },
+  "corpus": {
+    "functional_oracles_present": false,
+    "manual_vulnerability_ground_truth": false,
+    "negative_controls_present": false,
+    "positive_only": true,
+    "python_record_count": 282,
+    "upstream_record_count": 1681
+  },
+  "decision": "eligible only as a public positive-only static development preflight; still ineligible for comparative security claims",
+  "deterministic_digest": "f138a36f0e3c235fe8b8a1944678eb89cd9d63c873fd923034c4791362e8a9bf",
+  "development_context": {
+    "generic_recovery_committed_before_v2_runner": true,
+    "public_corpus_tuning": true,
+    "unseen_holdout_opened": false,
+    "v1_ast_parse_failed_count": 247,
+    "v1_preregistration_digest": "4d9e730a043fef29ec8066d248e6e6bb8dbf273118ea74f09c079be41dfd1686",
+    "v1_result_digest": "0138ceed9ba2b141c57cea2436353a8e650e152823bc04d5ec3490ef0408f544"
+  },
+  "forbidden_claims": [
+    "precision",
+    "specificity",
+    "accuracy",
+    "false_positive_rate",
+    "functional_correctness",
+    "official_cyberseceval_pass_rate",
+    "secpass",
+    "fable_leaderboard_comparison",
+    "kimi_known_cve_comparison",
+    "unseen_holdout_generalization"
+  ],
+  "permitted_outputs": [
+    "dataset_binding_verification",
+    "raw_ast_parseability_rate",
+    "recovery_evaluability_rate",
+    "target_pattern_sensitivity_lower_bound",
+    "target_pattern_sensitivity_on_evaluable_cases",
+    "abstention_rate",
+    "per_cwe_positive_only_diagnostics",
+    "v1_public_development_delta",
+    "deterministic_repetition_digest"
+  ],
+  "runner_policy": {
+    "adapter": "exact_public_json_dataset",
+    "analysis": {
+      "external_source_executed": false,
+      "external_source_imported": false,
+      "fixed_analyzers": [
+        "belief.security_patterns.default",
+        "belief.taint.default"
+      ],
+      "projection_findings": "union_after_original_line_mapping",
+      "source_field": "origin_code",
+      "target_field": "line_text"
+    },
+    "boundaries": {
+      "arbitrary_callable_allowed": false,
+      "arbitrary_execution_target_allowed": false,
+      "arbitrary_module_allowed": false,
+      "authorization_required": true,
+      "docker_allowed": false,
+      "external_code_execution_allowed": false,
+      "external_module_import_allowed": false,
+      "model_calls_allowed": false,
+      "network_allowed": false,
+      "reserved_web_corpus_allowed": false,
+      "shell_allowed": false,
+      "subprocess_allowed": false,
+      "susvibes_artifacts_allowed": false
+    },
+    "classification": {
+      "abstain": [
+        "partial_recovery_failed",
+        "analysis_exception"
+      ],
+      "cwe_mapping": {
+        "CWE-312": [
+          "CWE-312"
+        ],
+        "CWE-328": [
+          "CWE-327",
+          "CWE-328"
+        ],
+        "CWE-338": [
+          "CWE-330",
+          "CWE-338"
+        ],
+        "CWE-502": [
+          "CWE-502"
+        ],
+        "CWE-78": [
+          "CWE-78"
+        ],
+        "CWE-798": [
+          "CWE-798"
+        ],
+        "CWE-89": [
+          "CWE-89"
+        ],
+        "CWE-94": [
+          "CWE-94",
+          "CWE-95"
+        ]
+      },
+      "declared_overlap_cwes": [
+        "CWE-328",
+        "CWE-338",
+        "CWE-502",
+        "CWE-78",
+        "CWE-798",
+        "CWE-89",
+        "CWE-94"
+      ],
+      "detected": "mapped BELIEF CWE anchor intersects an upstream target line",
+      "missed": "at least one recovered projection is evaluable but no mapped BELIEF CWE anchor intersects an upstream target line"
+    },
+    "dataset_binding": {
+      "relative_path": "CybersecurityBenchmarks/datasets/instruct/instruct-v2.json",
+      "repository": "https://github.com/meta-llama/PurpleLlama.git",
+      "revision": "acfdd58f7c605eec53af4eed3f7ecf302267f0f8",
+      "sha256": "fa583f17875a7822355f0e29a21b5169eba445f9cfe24d87afcdc23adb270f82",
+      "size_bytes": 3033298
+    },
+    "metric_semantics": {
+      "abstention_counts_as_lower_bound_miss": true,
+      "accuracy_available": false,
+      "functional_correctness_available": false,
+      "leaderboard_comparable": false,
+      "official_cyberseceval_metric": false,
+      "positive_only": true,
+      "precision_available": false,
+      "public_development_tuned": true,
+      "secpass_equivalent": false,
+      "specificity_available": false,
+      "unseen_holdout": false
+    },
+    "recovery": {
+      "compile_validation_only": true,
+      "component": "belief.partial_python",
+      "label_or_cwe_used_for_recovery": false,
+      "maximum_synthetic_parameters": 64,
+      "maximum_window_lines": 25,
+      "methods": [
+        "raw",
+        "raw_wrapper",
+        "full_dedent",
+        "full_dedent_wrapper",
+        "target_window_sync",
+        "target_window_async"
+      ],
+      "source_execution": false,
+      "target_alignment": "trimmed_exact_line_match_with_trailing_cr_normalization",
+      "unbound_names": "bounded_synthetic_boundary_parameters",
+      "window_selection": "smallest_then_most_balanced_then_source_order"
+    },
+    "repetitions": 2,
+    "retention": {
+      "external_input_path_in_result": false,
+      "line_text_in_result": false,
+      "recovered_source_in_result": false,
+      "source_sha256_in_result": true,
+      "source_text_in_result": false,
+      "test_case_prompt_in_result": false
+    },
+    "selection": {
+      "dataset_variant": "instruct-v2",
+      "expected_dataset_records": 1681,
+      "expected_selected_records": 282,
+      "language": "python",
+      "selection_uses_belief_outcomes": false
+    },
+    "version": 2
+  },
+  "runner_policy_digest": "0a68fcfaa04c8f49a0c3def22f27aa2ffe002356ffd853f3cd52752627af6b37",
+  "runner_version": "belief.cyberseceval_static_preflight_runner.v2",
+  "schema_version": "belief.cyberseceval_static_preflight_preregistration.v2",
+  "starting_commit": "38ae761cbd989ab3ee7e7d87f81d39f9b0e76fb0",
+  "status": "v2_runner_frozen_before_v2_result",
+  "thresholds": {
+    "maximum_abstention_rate": 0.15,
+    "maximum_analysis_exception_rate": 0.0,
+    "minimum_all_case_target_sensitivity_lower_bound": 0.5,
+    "minimum_evaluable_target_sensitivity": 0.6,
+    "minimum_recovery_evaluability_rate": 0.85,
+    "minimum_repetition_stability_rate": 1.0,
+    "minimum_supported_cwe_target_sensitivity_lower_bound": 0.55
+  },
+  "upstream": {
+    "component_license_relative_path": "CybersecurityBenchmarks/LICENSE",
+    "component_license_sha256": "63e8210e6bf3e8c032dc0c69b1d1d2e3ab72c14b02cabcc0dada2618bb188b97",
+    "component_license_spdx": "MIT",
+    "dataset_relative_path": "CybersecurityBenchmarks/datasets/instruct/instruct-v2.json",
+    "dataset_sha256": "fa583f17875a7822355f0e29a21b5169eba445f9cfe24d87afcdc23adb270f82",
+    "dataset_size_bytes": 3033298,
+    "repository": "https://github.com/meta-llama/PurpleLlama.git",
+    "revision": "acfdd58f7c605eec53af4eed3f7ecf302267f0f8"
+  }
+}

@@ -13,6 +13,18 @@ from .cyberseceval_static_preflight import (
     verify_cyberseceval_static_preflight_preregistration,
     write_cyberseceval_python_static_preflight_result,
 )
+from .cyberseceval_static_preflight_v2 import (
+    CYBERSECEVAL_STATIC_PREFLIGHT_V2_BENCHMARK_ID,
+    CYBERSECEVAL_STATIC_PREFLIGHT_V2_PREREGISTRATION_SCHEMA_VERSION,
+    CYBERSECEVAL_STATIC_PREFLIGHT_V2_REPETITIONS,
+    CYBERSECEVAL_STATIC_PREFLIGHT_V2_RUNNER_POLICY_DIGEST,
+    CYBERSECEVAL_STATIC_PREFLIGHT_V2_RUNNER_VERSION,
+    CYBERSECEVAL_STATIC_PREFLIGHT_V2_SCHEMA_VERSION,
+    build_cyberseceval_static_preflight_v2_preregistration,
+    evaluate_cyberseceval_python_static_preflight_v2,
+    verify_cyberseceval_static_preflight_v2_preregistration,
+    write_cyberseceval_python_static_preflight_v2_result,
+)
 from .metrics import compute_confusion_matrix, summarize_reportability_metrics
 from .patcheval_experiment import (
     PATCHEVAL_EXPERIMENT_ALGORITHM,
@@ -79,6 +91,12 @@ __all__ = [
     "CYBERSECEVAL_STATIC_PREFLIGHT_RUNNER_POLICY_DIGEST",
     "CYBERSECEVAL_STATIC_PREFLIGHT_RUNNER_VERSION",
     "CYBERSECEVAL_STATIC_PREFLIGHT_SCHEMA_VERSION",
+    "CYBERSECEVAL_STATIC_PREFLIGHT_V2_BENCHMARK_ID",
+    "CYBERSECEVAL_STATIC_PREFLIGHT_V2_PREREGISTRATION_SCHEMA_VERSION",
+    "CYBERSECEVAL_STATIC_PREFLIGHT_V2_REPETITIONS",
+    "CYBERSECEVAL_STATIC_PREFLIGHT_V2_RUNNER_POLICY_DIGEST",
+    "CYBERSECEVAL_STATIC_PREFLIGHT_V2_RUNNER_VERSION",
+    "CYBERSECEVAL_STATIC_PREFLIGHT_V2_SCHEMA_VERSION",
     "REPORTABILITY_BENCHMARK_SCHEMA_VERSION",
     "REPORTABILITY_MODE",
     "VALID_EXPECTED_VERDICTS",
@@ -101,6 +119,7 @@ __all__ = [
     "WEB_VALIDATION_STATIC_RUN_SCHEMA_VERSION",
     "SusVibesThresholds",
     "build_cyberseceval_static_preflight_preregistration",
+    "build_cyberseceval_static_preflight_v2_preregistration",
     "build_web_validation_development_manifest",
     "build_web_validation_preregistration",
     "compute_confusion_matrix",
@@ -108,6 +127,7 @@ __all__ = [
     "build_susvibes_paired_smoke_preregistration",
     "evaluate_reportability_benchmark",
     "evaluate_cyberseceval_python_static_preflight",
+    "evaluate_cyberseceval_python_static_preflight_v2",
     "evaluate_static_analysis_benchmark",
     "evaluate_susvibes_paired_benchmark",
     "evaluate_web_validation_development",
@@ -120,6 +140,7 @@ __all__ = [
     "validate_patcheval_experiment_manifest",
     "verify_web_validation_development_corpus",
     "verify_cyberseceval_static_preflight_preregistration",
+    "verify_cyberseceval_static_preflight_v2_preregistration",
     "write_patcheval_experiment_manifest",
     "write_static_analysis_benchmark_json",
     "write_susvibes_paired_benchmark_json",
@@ -127,4 +148,5 @@ __all__ = [
     "write_web_validation_development_corpus",
     "write_web_validation_development_result",
     "write_cyberseceval_python_static_preflight_result",
+    "write_cyberseceval_python_static_preflight_v2_result",
 ]
