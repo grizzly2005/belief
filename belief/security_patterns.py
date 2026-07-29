@@ -2558,10 +2558,14 @@ class SecurityPatternExtractor:
         for pattern in patterns:
             match = pattern.search(func_src)
             if match:
+                match_line = (
+                    node.lineno
+                    + func_src[:match.start()].count("\n")
+                )
                 beliefs.append(self._make_belief(
                     "credentials.stored_securely == True",
-                    f"Hardcoded credential at line ~{node.lineno} (CWE-798).",
-                    scope, node.lineno, "high", "CWE-798",
+                    f"Hardcoded credential at line {match_line} (CWE-798).",
+                    scope, match_line, "high", "CWE-798",
                 ))
                 break
         return beliefs
@@ -2569,6 +2573,11 @@ class SecurityPatternExtractor:
     def _check_insecure_random(self, node: ast.FunctionDef, scope: Scope) -> list[Belief]:
         """Detect insecure randomness for security contexts (CWE-330)."""
         beliefs = []
+        parent_by_id = {
+            id(child): parent
+            for parent in ast.walk(node)
+            for child in ast.iter_child_nodes(parent)
+        }
         for child in ast.walk(node):
             if isinstance(child, ast.Call):
                 name = self._get_call_name(child)
@@ -2579,6 +2588,13 @@ class SecurityPatternExtractor:
                         "token", "secret", "key", "password", "auth",
                         "hash", "salt", "nonce", "session", "csrf",
                     ])
+                    security_ctx = (
+                        security_ctx
+                        or _random_call_has_security_assignment_context(
+                            child,
+                            parent_by_id,
+                        )
+                    )
                     if security_ctx:
                         beliefs.append(self._make_belief(
                             "random.is_cryptographic == True",
@@ -2726,6 +2742,66 @@ def _function_parameter_names(
     if node.args.kwarg:
         names.add(node.args.kwarg.arg)
     return names
+
+
+def _random_call_has_security_assignment_context(
+    call: ast.Call,
+    parent_by_id: dict[int, ast.AST],
+) -> bool:
+    current: ast.AST = call
+    while (parent := parent_by_id.get(id(current))) is not None:
+        targets: list[ast.AST] = []
+        if isinstance(parent, ast.Assign):
+            targets.extend(parent.targets)
+        elif isinstance(parent, ast.AnnAssign):
+            targets.append(parent.target)
+        elif isinstance(parent, ast.NamedExpr):
+            targets.append(parent.target)
+        if any(
+            _security_sensitive_identifier(identifier)
+            for target in targets
+            for identifier in _assignment_target_identifiers(target)
+        ):
+            return True
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return False
+        current = parent
+    return False
+
+
+def _assignment_target_identifiers(node: ast.AST) -> tuple[str, ...]:
+    if isinstance(node, ast.Name):
+        return (node.id,)
+    if isinstance(node, ast.Attribute):
+        return (node.attr,)
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return tuple(
+            identifier
+            for element in node.elts
+            for identifier in _assignment_target_identifiers(element)
+        )
+    return ()
+
+
+def _security_sensitive_identifier(value: str) -> bool:
+    separated = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value)
+    parts = {
+        part
+        for part in re.split(r"[^a-z0-9]+", separated.lower())
+        if part
+    }
+    return bool(parts & {
+        "auth",
+        "csrf",
+        "hash",
+        "key",
+        "nonce",
+        "password",
+        "salt",
+        "secret",
+        "session",
+        "token",
+    })
 
 
 def _is_patch_path_parameter(name: str) -> bool:
