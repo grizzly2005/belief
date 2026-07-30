@@ -10,7 +10,12 @@ if TYPE_CHECKING:
 
 
 class MCPRequestExecution:
-    """One cancellable MCP request and its optional isolated-worker handle."""
+    """Track cancellation; only a bound validation worker is actively stopped.
+
+    Non-worker tools may continue internally after cancellation. The stdio
+    runtime suppresses their eventual response but does not claim to interrupt
+    their computation.
+    """
 
     def __init__(self, request_id: object) -> None:
         self.request_id = request_id
@@ -49,7 +54,7 @@ class MCPRequestExecution:
                 self._worker = None
 
     def cancel(self, reason: str = "") -> bool:
-        """Mark an active request cancelled and terminate its current worker."""
+        """Mark a request cancelled and terminate only its current worker."""
 
         worker = None
         with self._lock:

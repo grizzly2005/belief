@@ -6,13 +6,19 @@ import json
 import socket
 import subprocess
 import sys
+from io import StringIO
 from pathlib import Path
 
 import pytest
 
 from belief.mcp.contracts import MCP_PROTOCOL_VERSION
-from belief.mcp.server import BeliefMCPServer
+from belief.mcp.server import (
+    BeliefMCPServer,
+    _decode_request,
+    serve_stdio,
+)
 from belief.mcp.tools import BeliefMCPError, BeliefMCPTools
+from belief.mcp.validation import MCP_MAX_RESPONSE_BYTES
 
 
 pytestmark = pytest.mark.security
@@ -110,7 +116,14 @@ def test_status_capabilities_and_schema_resources_are_explicit(tmp_path):
     )
 
     assert status["protocol_version"] == MCP_PROTOCOL_VERSION
-    assert status["network_enabled"] is False
+    assert status["live_network_target_allowed"] is False
+    assert status["worker_process_spawn"] is True
+    assert status["target_process_spawn"] is False
+    assert status["allowlisted_framework_imports"] is True
+    assert status["caller_controlled_imports"] is False
+    assert status["temporary_fixture_writes"] is True
+    assert status["target_workspace_writes"] is False
+    assert status["active_cancellation_scope"] == "dynamic_validation_only"
     assert status["dynamic_execution_enabled"] is True
     assert status["dynamic_execution_scope"] == (
         "registered_transparent_fixture_only"
@@ -121,7 +134,11 @@ def test_status_capabilities_and_schema_resources_are_explicit(tmp_path):
     assert capabilities["storage"]["retains_source_text"] is False
     assert capabilities["storage"]["retains_full_analysis"] is False
     assert capabilities["boundaries"]["susvibes_holdout"] is False
-    assert capabilities["boundaries"]["target_writes"] is False
+    assert capabilities["boundaries"]["target_workspace_writes"] is False
+    assert capabilities["boundaries"]["worker_process_spawn"] is True
+    assert capabilities["boundaries"]["target_process_spawn"] is False
+    assert capabilities["boundaries"]["allowlisted_framework_imports"] is True
+    assert capabilities["boundaries"]["caller_controlled_imports"] is False
     assert capabilities["boundaries"]["dynamic_execution"] is True
     assert mime_type == "application/schema+json"
     assert plan_schema["properties"]["schema_version"]["const"] == (
@@ -398,7 +415,10 @@ def test_protocol_dispatches_initialize_tools_resources_and_tool_errors(
     assert initialized["result"]["capabilities"]["tools"]["listChanged"] is False
     assert listed["result"]["tools"]
     assert status["result"]["isError"] is False
-    assert status["result"]["structuredContent"]["network_enabled"] is False
+    assert (
+        status["result"]["structuredContent"]["live_network_target_allowed"]
+        is False
+    )
     assert json.loads(status["result"]["content"][0]["text"]) == (
         status["result"]["structuredContent"]
     )
@@ -463,3 +483,76 @@ def test_real_stdio_server_emits_only_newline_delimited_json():
     assert len(payloads) == 2
     assert payloads[0]["result"]["protocolVersion"] == MCP_PROTOCOL_VERSION
     assert payloads[1]["result"]["tools"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {"value": "x" * 4_097},
+        {"value": list(range(129))},
+        {"value": [[0] * 128 for _index in range(33)]},
+    ),
+)
+def test_json_decoder_rejects_string_collection_and_node_excess(payload):
+    with pytest.raises(ValueError):
+        _decode_request(json.dumps(payload))
+
+
+def test_json_decoder_and_stdio_reject_excessive_depth_without_crashing(
+    tmp_path,
+):
+    excessive = "[" * 2_000 + "0" + "]" * 2_000
+    with pytest.raises((RecursionError, ValueError)):
+        _decode_request(excessive)
+
+    stdin = StringIO(
+        excessive
+        + "\n"
+        + json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"})
+        + "\n"
+    )
+    stdout = StringIO()
+    server = BeliefMCPServer(BeliefMCPTools(workspace_root=tmp_path))
+
+    assert serve_stdio(server, stdin=stdin, stdout=stdout) == 0
+    responses = [
+        json.loads(line)
+        for line in stdout.getvalue().splitlines()
+    ]
+    assert responses[0]["error"]["code"] == -32700
+    assert responses[1]["id"] == 1
+    assert responses[1]["result"] == {}
+
+
+def test_json_request_byte_bound_counts_utf8_bytes():
+    payload = {"value": ["😀" * 4_096 for _index in range(128)]}
+
+    with pytest.raises(ValueError, match="byte bound"):
+        _decode_request(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        )
+
+
+def test_request_id_and_response_bytes_are_bounded(monkeypatch, tmp_path):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    server = BeliefMCPServer(service)
+    invalid_id = server.handle({
+        "jsonrpc": "2.0",
+        "id": "x" * 257,
+        "method": "ping",
+    })
+    assert invalid_id["error"]["code"] == -32600
+
+    monkeypatch.setattr(
+        service,
+        "call_tool",
+        lambda *_args, **_kwargs: {"blob": "x" * MCP_MAX_RESPONSE_BYTES},
+    )
+    oversized = server.handle({
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {"name": "belief_status", "arguments": {}},
+    })
+    assert oversized["error"]["code"] == -32603
+    assert "size bound" in oversized["error"]["message"]

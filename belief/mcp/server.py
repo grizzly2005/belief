@@ -8,6 +8,7 @@ All domain work is delegated to :mod:`belief.mcp.tools`.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import threading
@@ -29,11 +30,20 @@ from .contracts import (
 )
 from .execution import MCPRequestExecution
 from .tools import BeliefMCPError, BeliefMCPTools
-from .validation import MCP_MAX_IN_FLIGHT_REQUESTS
+from .validation import (
+    MCP_MAX_IN_FLIGHT_REQUESTS,
+    MCP_MAX_RESPONSE_BYTES,
+)
 
 _JSONRPC_VERSION = "2.0"
 _MISSING = object()
 _MAX_JSONRPC_LINE_CHARS = 1024 * 1024
+_MAX_JSONRPC_LINE_BYTES = 1024 * 1024
+_MAX_JSON_DEPTH = 12
+_MAX_JSON_NODES = 4_096
+_MAX_JSON_COLLECTION_LENGTH = 128
+_MAX_JSON_STRING_LENGTH = 4_096
+_MAX_REQUEST_ID_STRING_LENGTH = 256
 
 
 class _MethodNotFound(LookupError):
@@ -68,6 +78,10 @@ class BeliefMCPServer:
         *,
         execution: MCPRequestExecution | None = None,
     ) -> dict[str, Any] | None:
+        try:
+            _validate_json_structure(request)
+        except (RecursionError, ValueError):
+            return _error(None, -32600, "Invalid Request")
         if not isinstance(request, dict):
             return _error(None, -32600, "Invalid Request")
         request_id = request.get("id", _MISSING)
@@ -103,11 +117,18 @@ class BeliefMCPServer:
             return _error(request_id, -32602, str(exc))
         except Exception:
             return _error(request_id, -32603, "Internal error")
-        return {
+        response = {
             "jsonrpc": _JSONRPC_VERSION,
             "id": request_id,
             "result": result,
         }
+        if _serialized_json_size(response) > MCP_MAX_RESPONSE_BYTES:
+            return _error(
+                request_id,
+                -32603,
+                "Response exceeds server size bound",
+            )
+        return response
 
     def _dispatch(
         self,
@@ -241,7 +262,15 @@ class _StdioRuntime:
                 )
                 if raw_line == "":
                     break
-                if len(raw_line) > _MAX_JSONRPC_LINE_CHARS:
+                try:
+                    raw_line_bytes = len(raw_line.encode("utf-8"))
+                except UnicodeEncodeError:
+                    self._write(_error(None, -32700, "Parse error"))
+                    continue
+                if (
+                    len(raw_line) > _MAX_JSONRPC_LINE_CHARS
+                    or raw_line_bytes > _MAX_JSONRPC_LINE_BYTES
+                ):
                     self._discard_line_remainder(raw_line)
                     self._write(_error(None, -32700, "Parse error"))
                     continue
@@ -253,6 +282,8 @@ class _StdioRuntime:
                     json.JSONDecodeError,
                     UnicodeDecodeError,
                     _DuplicateJSONKey,
+                    RecursionError,
+                    UnicodeError,
                     ValueError,
                 ):
                     self._write(_error(None, -32700, "Parse error"))
@@ -389,12 +420,40 @@ class _StdioRuntime:
         return True
 
     def _write(self, response: Mapping[str, Any]) -> None:
-        rendered = json.dumps(
-            response,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            allow_nan=False,
-        )
+        try:
+            rendered = json.dumps(
+                response,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        except (RecursionError, TypeError, ValueError):
+            rendered = json.dumps(
+                _error(None, -32603, "Internal error"),
+                separators=(",", ":"),
+            )
+        try:
+            rendered_size = len(rendered.encode("utf-8"))
+        except UnicodeEncodeError:
+            rendered = json.dumps(
+                _error(None, -32603, "Internal error"),
+                separators=(",", ":"),
+            )
+            rendered_size = len(rendered)
+        if rendered_size > MCP_MAX_RESPONSE_BYTES:
+            request_id = (
+                response.get("id")
+                if isinstance(response, Mapping)
+                else None
+            )
+            rendered = json.dumps(
+                _error(
+                    request_id,
+                    -32603,
+                    "Response exceeds server size bound",
+                ),
+                separators=(",", ":"),
+            )
         with self._write_lock:
             self._stdout.write(rendered + "\n")
             self._stdout.flush()
@@ -427,11 +486,18 @@ def serve_stdio(
 
 
 def _decode_request(raw_line: str) -> object:
-    return json.loads(
+    if (
+        len(raw_line) > _MAX_JSONRPC_LINE_CHARS
+        or len(raw_line.encode("utf-8")) > _MAX_JSONRPC_LINE_BYTES
+    ):
+        raise ValueError("JSON-RPC request exceeds byte bound")
+    request = json.loads(
         raw_line,
         object_pairs_hook=_unique_object,
         parse_constant=_reject_json_constant,
     )
+    _validate_json_structure(request)
+    return request
 
 
 def _reject_json_constant(value: str) -> object:
@@ -475,8 +541,69 @@ def _request_id_key(value: object) -> tuple[str, object] | None:
     if isinstance(value, int):
         return ("integer", value)
     if isinstance(value, str):
+        if len(value) > _MAX_REQUEST_ID_STRING_LENGTH:
+            return None
         return ("string", value)
     return None
+
+
+def _validate_json_structure(value: object) -> None:
+    """Reject JSON-shaped data that exceeds the reviewed structural budget."""
+
+    stack: list[tuple[object, int]] = [(value, 0)]
+    nodes = 0
+    while stack:
+        current, depth = stack.pop()
+        nodes += 1
+        if nodes > _MAX_JSON_NODES:
+            raise ValueError("JSON node limit exceeded")
+        if depth > _MAX_JSON_DEPTH:
+            raise ValueError("JSON depth limit exceeded")
+        if current is None or isinstance(current, (bool, int)):
+            continue
+        if isinstance(current, float):
+            if not math.isfinite(current):
+                raise ValueError("non-finite JSON number")
+            continue
+        if isinstance(current, str):
+            if len(current) > _MAX_JSON_STRING_LENGTH:
+                raise ValueError("JSON string limit exceeded")
+            try:
+                current.encode("utf-8")
+            except UnicodeEncodeError as exc:
+                raise ValueError("JSON string contains invalid Unicode") from exc
+            continue
+        if isinstance(current, list):
+            if len(current) > _MAX_JSON_COLLECTION_LENGTH:
+                raise ValueError("JSON collection limit exceeded")
+            stack.extend((item, depth + 1) for item in reversed(current))
+            continue
+        if isinstance(current, dict):
+            if len(current) > _MAX_JSON_COLLECTION_LENGTH:
+                raise ValueError("JSON collection limit exceeded")
+            for key, item in reversed(tuple(current.items())):
+                if not isinstance(key, str):
+                    raise ValueError("JSON object key must be a string")
+                stack.append((item, depth + 1))
+                stack.append((key, depth + 1))
+            continue
+        raise ValueError("value is not JSON compatible")
+
+
+def _serialized_json_size(value: object) -> int:
+    try:
+        rendered = json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (RecursionError, TypeError, ValueError):
+        return MCP_MAX_RESPONSE_BYTES + 1
+    try:
+        return len(rendered.encode("utf-8"))
+    except UnicodeEncodeError:
+        return MCP_MAX_RESPONSE_BYTES + 1
 
 
 def main() -> int:

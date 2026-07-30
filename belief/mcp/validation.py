@@ -44,7 +44,7 @@ REGISTERED_FIXTURE_BINDING_SCHEMA_VERSION = (
 MCP_FIXTURE_PREPARATION_SCHEMA_VERSION = (
     "belief.mcp_fixture_preparation.v2"
 )
-MCP_VALIDATION_RESULT_SCHEMA_VERSION = "belief.mcp_validation_result.v2"
+MCP_VALIDATION_RESULT_SCHEMA_VERSION = "belief.mcp_validation_result.v3"
 VALIDATION_CONTRACT_SEED_SCHEMA_VERSION = (
     "belief.validation_contract_seed.v1"
 )
@@ -57,6 +57,13 @@ REGISTERED_FIXTURE_BINDING_CREATOR = (
 MCP_MAX_STORED_RUNS = 32
 MCP_MAX_RESULTS_PER_RUN = 32
 MCP_MAX_TOTAL_RESULTS = 128
+MCP_MAX_CASES_PER_RUN = 512
+MCP_MAX_SERIALIZED_BYTES_PER_CASE = 64 * 1024
+MCP_MAX_BYTES_PER_RUN = 4 * 1024 * 1024
+MCP_MAX_TOTAL_STORE_BYTES = 16 * 1024 * 1024
+MCP_MAX_TOTAL_MEMORY_BYTES = 64 * 1024 * 1024
+MCP_MAX_RESOURCE_PAGE_SIZE = 32
+MCP_MAX_RESPONSE_BYTES = 512 * 1024
 MCP_MAX_CONCURRENT_VALIDATIONS = 1
 MCP_MAX_IN_FLIGHT_REQUESTS = 4
 MCP_MIN_VALIDATION_TIMEOUT_MS = 100
@@ -575,6 +582,12 @@ def project_validation_result(
         for item in _bounded_strings(attestation.get("limitations"), limit=16)
         if item not in limitations
     )
+    worker_status = str(worker.get("worker_status") or "unavailable")
+    worker_error_codes = sorted({
+        item.removeprefix("worker_error:")
+        for item in limitations
+        if item.startswith("worker_error:")
+    })
     outcome = str(result.get("outcome") or "inconclusive")
     decision = evaluate_evidence(
         policy_observations,
@@ -618,6 +631,11 @@ def project_validation_result(
             worker.get("attestation_digest") or ""
         ),
         "semantic_digest": str(worker.get("semantic_digest") or ""),
+        "execution_status": (
+            "completed" if worker_status == "completed" else "abstained"
+        ),
+        "worker_status": worker_status,
+        "worker_error_codes": worker_error_codes,
         "outcome": outcome,
         "baseline": execution.get("baseline_passed"),
         "observations": observations,
@@ -875,11 +893,18 @@ def _bounded_strings(value: object, *, limit: int) -> list[str]:
 __all__ = [
     "FixtureBindingError",
     "MCP_FIXTURE_PREPARATION_SCHEMA_VERSION",
+    "MCP_MAX_BYTES_PER_RUN",
+    "MCP_MAX_CASES_PER_RUN",
     "MCP_MAX_CONCURRENT_VALIDATIONS",
     "MCP_MAX_IN_FLIGHT_REQUESTS",
+    "MCP_MAX_RESOURCE_PAGE_SIZE",
+    "MCP_MAX_RESPONSE_BYTES",
     "MCP_MAX_RESULTS_PER_RUN",
+    "MCP_MAX_SERIALIZED_BYTES_PER_CASE",
     "MCP_MAX_STORED_RUNS",
+    "MCP_MAX_TOTAL_STORE_BYTES",
     "MCP_MAX_TOTAL_RESULTS",
+    "MCP_MAX_TOTAL_MEMORY_BYTES",
     "MCP_MAX_VALIDATION_TIMEOUT_MS",
     "MCP_MIN_VALIDATION_TIMEOUT_MS",
     "MCP_VALIDATION_RESULT_SCHEMA_VERSION",

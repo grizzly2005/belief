@@ -22,6 +22,7 @@ from belief.mcp.tools import (
     BeliefMCPTools,
     _RunStore,
 )
+from belief.mcp import tools as mcp_tools_module
 from belief.mcp.validation import (
     REGISTERED_FIXTURE_BINDING_SCHEMA_VERSION,
     REGISTERED_FIXTURE_EXECUTION_SCOPE,
@@ -29,6 +30,7 @@ from belief.mcp.validation import (
     prepare_registered_fixture,
 )
 from belief.validation.execution_models import ValidationContractError
+from belief.validation.models import ValidationResult
 from belief.validation.worker.registry import (
     fixture_source_documents,
     get_fixture_spec,
@@ -534,6 +536,239 @@ def test_result_store_enforces_global_limit_deterministically():
     assert list(store.get(second.run_id).results) == ["mvr_second"]
 
 
+def test_store_enforces_case_count_case_bytes_and_run_bytes():
+    too_many = _RunStore(max_cases_per_run=1)
+    analysis = _synthetic_analysis("case-count")
+    analysis["audit_cases"] = [
+        {"case_id": "case_one"},
+        {"case_id": "case_two"},
+    ]
+    with pytest.raises(BeliefMCPError, match="more audit cases"):
+        too_many.put(analysis)
+
+    tiny_cases = _RunStore(max_case_bytes=128)
+    oversized = _synthetic_analysis("case-bytes")
+    oversized["audit_cases"] = [
+        {"case_id": "case_large", "payload": "x" * 512}
+    ]
+    with pytest.raises(BeliefMCPError, match="serialized byte bound"):
+        tiny_cases.put(oversized)
+
+    probe = _RunStore()
+    baseline = probe.put(_synthetic_analysis("run-bytes"))
+    bounded = _RunStore(
+        max_bytes_per_run=baseline.serialized_bytes + 128,
+        max_total_store_bytes=baseline.serialized_bytes + 128,
+    )
+    stored = bounded.put(_synthetic_analysis("run-bytes"))
+    with pytest.raises(BeliefMCPError, match="run exceeds"):
+        bounded.store_plan(
+            stored.run_id,
+            {
+                "plan_id": "vp_0123456789abcdef",
+                "payload": "x" * 1_024,
+            },
+        )
+    assert bounded.get(stored.run_id).plans == {}
+
+
+def test_total_serialized_store_budget_evicts_oldest_run():
+    probe = _RunStore()
+    measured = probe.put(_synthetic_analysis("first"))
+    single_run_bytes = measured.serialized_bytes
+    store = _RunStore(
+        max_runs=4,
+        max_bytes_per_run=single_run_bytes + 128,
+        max_total_store_bytes=(single_run_bytes * 2) - 1,
+    )
+
+    first = store.put(_synthetic_analysis("first"))
+    second = store.put(_synthetic_analysis("other"))
+
+    with pytest.raises(BeliefMCPError, match="unknown or evicted"):
+        store.get(first.run_id)
+    assert store.get(second.run_id).run_id == second.run_id
+    capacities = store.capacities()
+    assert (
+        capacities["current_total_store_bytes"]
+        <= capacities["max_total_store_bytes"]
+    )
+    assert (
+        capacities["current_total_memory_bytes"]
+        <= capacities["max_total_memory_bytes"]
+    )
+
+
+def test_total_memory_budget_evicts_oldest_run():
+    probe = _RunStore()
+    first_probe = probe.put(_synthetic_analysis("first"))
+    one_run_memory = probe.capacities()["current_total_memory_bytes"]
+    probe.put(_synthetic_analysis("other"))
+    two_run_memory = probe.capacities()["current_total_memory_bytes"]
+    memory_limit = (one_run_memory + two_run_memory) // 2
+    store = _RunStore(
+        max_runs=4,
+        max_bytes_per_run=first_probe.serialized_bytes + 128,
+        max_total_store_bytes=(first_probe.serialized_bytes * 2) + 128,
+        max_total_memory_bytes=memory_limit,
+    )
+
+    first = store.put(_synthetic_analysis("first"))
+    second = store.put(_synthetic_analysis("other"))
+
+    with pytest.raises(BeliefMCPError, match="unknown or evicted"):
+        store.get(first.run_id)
+    assert store.get(second.run_id).run_id == second.run_id
+    capacities = store.capacities()
+    assert (
+        capacities["current_total_memory_bytes"]
+        <= capacities["max_total_memory_bytes"]
+    )
+
+
+def test_collection_resources_are_paginated_and_queries_are_bounded(tmp_path):
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    analysis = _synthetic_analysis("pagination")
+    analysis["audit_cases"] = [
+        {"case_id": f"case_{index}", "value": index}
+        for index in range(5)
+    ]
+    stored = service._runs.put(analysis)
+    base = f"belief://runs/{stored.run_id}/audit-cases"
+
+    first, _ = service.read_resource(f"{base}?cursor=0&limit=2")
+    second, _ = service.read_resource(first["next_uri"])
+    final, _ = service.read_resource(second["next_uri"])
+
+    assert first["count"] == 5
+    assert first["returned"] == 2
+    assert [item["value"] for item in first["audit_cases"]] == [0, 1]
+    assert [item["value"] for item in second["audit_cases"]] == [2, 3]
+    assert [item["value"] for item in final["audit_cases"]] == [4]
+    assert final["next_uri"] is None
+    with pytest.raises(BeliefMCPError, match="page limit"):
+        service.read_resource(f"{base}?cursor=0&limit=33")
+    with pytest.raises(BeliefMCPError, match="query is invalid"):
+        service.read_resource(f"{base}?cursor=0&cursor=1")
+
+
+def test_capabilities_publish_effective_configured_byte_and_count_limits(
+    tmp_path,
+):
+    service = BeliefMCPTools(
+        workspace_root=tmp_path,
+        max_stored_runs=2,
+        max_results_per_run=3,
+        max_total_results=4,
+        max_cases_per_run=5,
+        max_case_bytes=2_048,
+        max_bytes_per_run=8_192,
+        max_total_store_bytes=16_384,
+        max_total_memory_bytes=32_768,
+    )
+
+    capabilities = service.capabilities()
+    storage = capabilities["storage"]
+    status = service.status()
+    assert storage["max_runs"] == 2
+    assert storage["max_results_per_run"] == 3
+    assert storage["max_total_results"] == 4
+    assert storage["max_cases_per_run"] == 5
+    assert storage["max_serialized_bytes_per_case"] == 2_048
+    assert storage["max_serialized_bytes_per_run"] == 8_192
+    assert storage["max_total_store_bytes"] == 16_384
+    assert storage["max_total_memory_bytes"] == 32_768
+    assert status["max_stored_runs"] == 2
+    assert status["max_cases_per_run"] == 5
+    assert status["max_total_store_bytes"] == 16_384
+    assert status["max_total_memory_bytes"] == 32_768
+    assert capabilities["boundaries"]["active_cancellation_scope"] == (
+        "dynamic_validation_only"
+    )
+
+
+@pytest.mark.parametrize(
+    ("worker_status", "error_code"),
+    (
+        ("timed_out", "timeout"),
+        ("unsupported", "dependency_unavailable"),
+        ("policy_violation", "policy_violation"),
+        ("crashed", "child_crash"),
+        ("inconclusive", "malformed_response"),
+    ),
+)
+def test_worker_failures_are_stored_as_inconclusive_abstentions(
+    monkeypatch,
+    tmp_path,
+    worker_status,
+    error_code,
+):
+    if not optional_framework_available("flask"):
+        pytest.skip("optional dependency unavailable: flask")
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    prepared = _prepare(service)
+    original = mcp_tools_module.run_isolated_web_validation_plan
+
+    def abstaining(plan, **kwargs):
+        completed = original(plan, **kwargs)
+        return _as_worker_abstention(
+            completed,
+            worker_status=worker_status,
+            error_code=error_code,
+        )
+
+    monkeypatch.setattr(
+        mcp_tools_module,
+        "run_isolated_web_validation_plan",
+        abstaining,
+    )
+
+    result = _validate(service, prepared)
+    stored, _ = service.read_resource(
+        f"belief://runs/{prepared['run_id']}/validation-results"
+    )
+
+    assert result["outcome"] == "inconclusive"
+    assert result["execution_status"] == "abstained"
+    assert result["worker_status"] == worker_status
+    assert result["worker_error_codes"] == [error_code]
+    assert result["maturity"] == "contract_prepared"
+    assert result["target_vulnerability_confirmed"] is False
+    assert stored["validation_results"] == [result]
+
+
+def test_binding_failure_is_not_stored_as_a_normal_abstention(
+    monkeypatch,
+    tmp_path,
+):
+    if not optional_framework_available("flask"):
+        pytest.skip("optional dependency unavailable: flask")
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    prepared = _prepare(service)
+    original = mcp_tools_module.run_isolated_web_validation_plan
+
+    def mismatched(plan, **kwargs):
+        completed = original(plan, **kwargs)
+        return _as_worker_abstention(
+            completed,
+            worker_status="inconclusive",
+            error_code="binding_mismatch",
+        )
+
+    monkeypatch.setattr(
+        mcp_tools_module,
+        "run_isolated_web_validation_plan",
+        mismatched,
+    )
+
+    with pytest.raises(BeliefMCPError, match="did not match"):
+        _validate(service, prepared)
+    stored, _ = service.read_resource(
+        f"belief://runs/{prepared['run_id']}/validation-results"
+    )
+    assert stored["validation_results"] == []
+
+
 def test_validation_capacity_is_one_and_returns_busy(
     monkeypatch,
     tmp_path,
@@ -793,6 +1028,38 @@ def _all_keys(value: object) -> set[str]:
             result.update(_all_keys(nested))
         return result
     return set()
+
+
+def _as_worker_abstention(
+    completed: ValidationResult,
+    *,
+    worker_status: str,
+    error_code: str,
+) -> ValidationResult:
+    payload = completed.to_dict()
+    payload.pop("result_id", None)
+    payload["outcome"] = "inconclusive"
+    payload["tested"] = False
+    metadata = payload["metadata"]
+    execution = metadata["execution"]
+    execution.update({
+        "supported": error_code != "dependency_unavailable",
+        "executed": False,
+        "outcome": "inconclusive",
+        "baseline_passed": None,
+        "observations": [],
+        "resolved_evidence_gaps": [],
+        "limitations": [
+            f"worker_error:{error_code}",
+            f"worker_status:{worker_status}",
+        ],
+        "protected_regression": False,
+        "oracle_evaluated_count": 0,
+        "primary_oracle_evaluated_count": 0,
+        "deterministic_cost": {"unit": "local_operation", "value": 0},
+    })
+    metadata["isolated_worker"]["worker_status"] = worker_status
+    return ValidationResult.from_dict(payload)
 
 
 def _synthetic_analysis(label: str) -> dict:

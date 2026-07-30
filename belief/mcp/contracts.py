@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from belief import __version__
@@ -29,9 +30,8 @@ from .authorized_project import (
 from .validation import (
     MCP_MAX_CONCURRENT_VALIDATIONS,
     MCP_MAX_IN_FLIGHT_REQUESTS,
-    MCP_MAX_RESULTS_PER_RUN,
-    MCP_MAX_STORED_RUNS,
-    MCP_MAX_TOTAL_RESULTS,
+    MCP_MAX_RESOURCE_PAGE_SIZE,
+    MCP_MAX_RESPONSE_BYTES,
     MCP_MAX_VALIDATION_TIMEOUT_MS,
     MCP_MIN_VALIDATION_TIMEOUT_MS,
     MCP_VALIDATION_RESULT_SCHEMA_VERSION,
@@ -66,8 +66,9 @@ SERVER_INSTRUCTIONS = (
     "fixtures. Fixture evidence never confirms the scanned target. This server "
     "also exposes one separately authorized, exact-source flask-jwt-extended "
     "static pilot that always abstains from target execution. This server has "
-    "no network, shell, target-write, custom-import, Docker, or SusVibes holdout "
-    "capability."
+    "no live target network, shell, target-workspace write, caller-controlled "
+    "import, Docker, or SusVibes holdout capability. It does spawn one bounded "
+    "worker and writes only inside a parent-owned temporary fixture root."
 )
 
 _READ_ONLY_ANNOTATIONS = {
@@ -366,7 +367,7 @@ AUTHORIZED_PROJECT_BINDING_SCHEMA: dict[str, Any] = {
 VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "belief://schemas/validation-result",
-    "title": "BELIEF MCP fixture validation result v2",
+    "title": "BELIEF MCP fixture validation result v3",
     **_object(
         {
             "schema_version": {"const": MCP_VALIDATION_RESULT_SCHEMA_VERSION},
@@ -410,6 +411,15 @@ VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
             "semantic_digest": {
                 "type": "string",
                 "pattern": "^[0-9a-f]{64}$",
+            },
+            "execution_status": {
+                "type": "string",
+                "enum": ["completed", "abstained"],
+            },
+            "worker_status": _string(min_length=1),
+            "worker_error_codes": {
+                "type": "array",
+                "items": _string(min_length=1),
             },
             "outcome": _string(enum=sorted(VALIDATION_OUTCOMES)),
             "baseline": {"type": ["boolean", "null"]},
@@ -457,6 +467,9 @@ VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
             "evidence_digest",
             "attestation_digest",
             "semantic_digest",
+            "execution_status",
+            "worker_status",
+            "worker_error_codes",
             "outcome",
             "baseline",
             "observations",
@@ -740,21 +753,27 @@ def resource_template_definitions() -> list[dict[str, Any]]:
             "mimeType": "application/json",
         },
         {
-            "uriTemplate": "belief://runs/{run_id}/audit-cases",
+            "uriTemplate": (
+                "belief://runs/{run_id}/audit-cases{?cursor,limit}"
+            ),
             "name": "belief-run-audit-cases",
             "title": "BELIEF run audit cases",
-            "description": "All AuditCase objects produced by an in-memory run.",
+            "description": "Paginated AuditCase objects from an in-memory run.",
             "mimeType": "application/json",
         },
         {
-            "uriTemplate": "belief://runs/{run_id}/validation-plans",
+            "uriTemplate": (
+                "belief://runs/{run_id}/validation-plans{?cursor,limit}"
+            ),
             "name": "belief-run-validation-plans",
             "title": "BELIEF run validation plans",
             "description": "Plans explicitly built for cases in an in-memory run.",
             "mimeType": "application/json",
         },
         {
-            "uriTemplate": "belief://runs/{run_id}/validation-results",
+            "uriTemplate": (
+                "belief://runs/{run_id}/validation-results{?cursor,limit}"
+            ),
             "name": "belief-run-validation-results",
             "title": "BELIEF run validation results",
             "description": (
@@ -770,6 +789,7 @@ def status_payload(
     workspace_root: str,
     benchmark_available: bool,
     authorized_project_pilot_available: bool,
+    storage_limits: Mapping[str, int],
 ) -> dict[str, Any]:
     return {
         "version": MCP_SERVER_VERSION,
@@ -793,19 +813,43 @@ def status_payload(
             AUTHORIZED_PROJECT_EXECUTION_SCOPE
         ),
         "authorized_project_dynamic_execution_enabled": False,
-        "network_enabled": False,
-        "subprocess_enabled": False,
+        "live_network_target_allowed": False,
+        "worker_process_spawn": True,
+        "target_process_spawn": False,
         "shell_enabled": False,
         "docker_enabled": False,
-        "dynamic_import_enabled": False,
+        "allowlisted_framework_imports": True,
+        "caller_controlled_imports": False,
+        "temporary_fixture_writes": True,
+        "target_workspace_writes": False,
         "dynamic_execution_enabled": True,
         "dynamic_execution_scope": REGISTERED_FIXTURE_EXECUTION_SCOPE,
+        "active_cancellation_scope": "dynamic_validation_only",
         "local_worker_execution_enabled": True,
         "max_concurrent_validations": MCP_MAX_CONCURRENT_VALIDATIONS,
         "max_in_flight_requests": MCP_MAX_IN_FLIGHT_REQUESTS,
-        "max_stored_runs": MCP_MAX_STORED_RUNS,
-        "max_validation_results_per_run": MCP_MAX_RESULTS_PER_RUN,
-        "max_total_validation_results": MCP_MAX_TOTAL_RESULTS,
+        "max_stored_runs": storage_limits["max_runs"],
+        "max_validation_results_per_run": storage_limits[
+            "max_results_per_run"
+        ],
+        "max_total_validation_results": storage_limits[
+            "max_total_results"
+        ],
+        "max_cases_per_run": storage_limits["max_cases_per_run"],
+        "max_serialized_bytes_per_case": storage_limits[
+            "max_serialized_bytes_per_case"
+        ],
+        "max_serialized_bytes_per_run": storage_limits[
+            "max_serialized_bytes_per_run"
+        ],
+        "max_total_store_bytes": storage_limits[
+            "max_total_store_bytes"
+        ],
+        "max_total_memory_bytes": storage_limits[
+            "max_total_memory_bytes"
+        ],
+        "max_resource_page_size": MCP_MAX_RESOURCE_PAGE_SIZE,
+        "max_mcp_response_bytes": MCP_MAX_RESPONSE_BYTES,
         "write_tools_enabled": False,
         "custom_adapters_enabled": False,
         "holdout_access_enabled": False,

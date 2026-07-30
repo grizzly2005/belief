@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import copy
+import json
 import re
+import sys
 import threading
 from collections import OrderedDict
 from collections.abc import Mapping
@@ -48,9 +50,16 @@ from .execution import MCPRequestExecution
 from .validation import (
     FixtureBindingError,
     MCP_FIXTURE_PREPARATION_SCHEMA_VERSION,
+    MCP_MAX_BYTES_PER_RUN,
+    MCP_MAX_CASES_PER_RUN,
     MCP_MAX_CONCURRENT_VALIDATIONS,
+    MCP_MAX_RESOURCE_PAGE_SIZE,
+    MCP_MAX_RESPONSE_BYTES,
     MCP_MAX_RESULTS_PER_RUN,
+    MCP_MAX_SERIALIZED_BYTES_PER_CASE,
     MCP_MAX_STORED_RUNS,
+    MCP_MAX_TOTAL_MEMORY_BYTES,
+    MCP_MAX_TOTAL_STORE_BYTES,
     MCP_MAX_TOTAL_RESULTS,
     MCP_MAX_VALIDATION_TIMEOUT_MS,
     MCP_MIN_VALIDATION_TIMEOUT_MS,
@@ -63,7 +72,8 @@ from .validation import (
 
 _RUN_URI = re.compile(
     r"^belief://runs/(?P<run_id>run_[0-9a-f]{64})"
-    r"(?:/(?P<kind>audit-cases|validation-plans|validation-results))?$"
+    r"(?:/(?P<kind>audit-cases|validation-plans|validation-results))?"
+    r"(?P<query>\?[^#]*)?$"
 )
 _RUN_ID = re.compile(r"^run_[0-9a-f]{64}$")
 _SENSITIVE_DIRECTORY_NAMES = frozenset({"benchmark_susvibes"})
@@ -91,6 +101,8 @@ class _StoredRun:
     registered_fixture_id: str = ""
     authorized_project_adapter_id: str = ""
     project_bindings: dict[str, dict[str, Any]] = field(default_factory=dict)
+    serialized_bytes: int = 0
+    memory_bytes: int = 0
 
 
 class _RunStore:
@@ -102,6 +114,11 @@ class _RunStore:
         max_runs: int = MCP_MAX_STORED_RUNS,
         max_results_per_run: int = MCP_MAX_RESULTS_PER_RUN,
         max_total_results: int = MCP_MAX_TOTAL_RESULTS,
+        max_cases_per_run: int = MCP_MAX_CASES_PER_RUN,
+        max_case_bytes: int = MCP_MAX_SERIALIZED_BYTES_PER_CASE,
+        max_bytes_per_run: int = MCP_MAX_BYTES_PER_RUN,
+        max_total_store_bytes: int = MCP_MAX_TOTAL_STORE_BYTES,
+        max_total_memory_bytes: int = MCP_MAX_TOTAL_MEMORY_BYTES,
     ) -> None:
         if not 1 <= max_runs <= MCP_MAX_STORED_RUNS:
             raise ValueError("max_runs is outside the reviewed bound")
@@ -113,14 +130,46 @@ class _RunStore:
             raise ValueError(
                 "max_total_results is outside the reviewed bound"
             )
+        if not 1 <= max_cases_per_run <= MCP_MAX_CASES_PER_RUN:
+            raise ValueError("max_cases_per_run is outside the reviewed bound")
+        if not 1 <= max_case_bytes <= MCP_MAX_SERIALIZED_BYTES_PER_CASE:
+            raise ValueError("max_case_bytes is outside the reviewed bound")
+        if not 1 <= max_bytes_per_run <= MCP_MAX_BYTES_PER_RUN:
+            raise ValueError("max_bytes_per_run is outside the reviewed bound")
+        if not 1 <= max_total_store_bytes <= MCP_MAX_TOTAL_STORE_BYTES:
+            raise ValueError(
+                "max_total_store_bytes is outside the reviewed bound"
+            )
+        if not 1 <= max_total_memory_bytes <= MCP_MAX_TOTAL_MEMORY_BYTES:
+            raise ValueError(
+                "max_total_memory_bytes is outside the reviewed bound"
+            )
+        if max_bytes_per_run > max_total_store_bytes:
+            raise ValueError(
+                "max_bytes_per_run cannot exceed max_total_store_bytes"
+            )
         self._max_runs = max_runs
         self._max_results_per_run = max_results_per_run
         self._max_total_results = max_total_results
+        self._max_cases_per_run = max_cases_per_run
+        self._max_case_bytes = max_case_bytes
+        self._max_bytes_per_run = max_bytes_per_run
+        self._max_total_store_bytes = max_total_store_bytes
+        self._max_total_memory_bytes = max_total_memory_bytes
         self._runs: OrderedDict[str, _StoredRun] = OrderedDict()
         self._result_order: OrderedDict[tuple[str, str], None] = (
             OrderedDict()
         )
+        self._total_bytes = 0
         self._lock = threading.RLock()
+        self._total_memory_bytes = _deep_memory_size({
+            "runs": self._runs,
+            "result_order": self._result_order,
+        })
+        if self._total_memory_bytes > self._max_total_memory_bytes:
+            raise ValueError(
+                "max_total_memory_bytes cannot hold the empty store"
+            )
 
     def put(self, analysis: Mapping[str, Any]) -> _StoredRun:
         snapshot = copy.deepcopy(dict(analysis))
@@ -144,6 +193,15 @@ class _RunStore:
                         raise BeliefMCPError(
                             f"scan produced duplicate audit case ID: {case_id}"
                         )
+                    if len(cases) >= self._max_cases_per_run:
+                        raise BeliefMCPError(
+                            "scan produced more audit cases than the configured "
+                            "per-run capacity"
+                        )
+                    if _serialized_size(raw_case) > self._max_case_bytes:
+                        raise BeliefMCPError(
+                            f"audit case exceeds serialized byte bound: {case_id}"
+                        )
                     cases[case_id] = copy.deepcopy(raw_case)
 
             raw_seeds = snapshot.get("validation_contract_seeds")
@@ -162,6 +220,11 @@ class _RunStore:
                         raise BeliefMCPError(
                             "preparation produced duplicate validation "
                             f"contract seed ID: {seed_id}"
+                        )
+                    if _serialized_size(raw_seed) > self._max_case_bytes:
+                        raise BeliefMCPError(
+                            "validation contract seed exceeds serialized byte "
+                            f"bound: {seed_id}"
                         )
                     validation_contract_seeds[seed_id] = copy.deepcopy(
                         raw_seed
@@ -184,10 +247,23 @@ class _RunStore:
                     snapshot.get("authorized_project_adapter_id") or ""
                 ),
             )
+            stored.serialized_bytes = _stored_run_size(stored)
+            if stored.serialized_bytes > self._max_bytes_per_run:
+                raise BeliefMCPError(
+                    "run exceeds the configured serialized byte capacity"
+                )
+            stored.memory_bytes = _stored_run_memory_size(stored)
+            if (
+                _single_run_store_memory_size(stored)
+                > self._max_total_memory_bytes
+            ):
+                raise BeliefMCPError(
+                    "run exceeds the configured in-memory byte capacity"
+            )
             self._runs[run_id] = stored
-            while len(self._runs) > self._max_runs:
-                evicted_id, evicted = self._runs.popitem(last=False)
-                self._discard_result_keys(evicted_id, evicted)
+            self._total_bytes += stored.serialized_bytes
+            self._recalculate_memory_usage()
+            self._evict_over_capacity()
             return copy.deepcopy(stored)
 
     def get(self, run_id: object) -> _StoredRun:
@@ -233,17 +309,19 @@ class _RunStore:
             else None
         )
         with self._lock:
-            stored = self._stored(normalized)
-            stored.plans[plan_id] = plan_snapshot
+            candidate = copy.deepcopy(self._stored(normalized))
+            candidate.plans[plan_id] = plan_snapshot
             if binding_snapshot is None:
-                stored.bindings.pop(plan_id, None)
+                candidate.bindings.pop(plan_id, None)
             else:
-                stored.bindings[plan_id] = binding_snapshot
+                candidate.bindings[plan_id] = binding_snapshot
             if project_binding_snapshot is None:
-                stored.project_bindings.pop(plan_id, None)
+                candidate.project_bindings.pop(plan_id, None)
             else:
-                stored.project_bindings[plan_id] = project_binding_snapshot
+                candidate.project_bindings[plan_id] = project_binding_snapshot
+            self._replace_run(candidate)
             self._runs.move_to_end(normalized)
+            self._evict_over_capacity()
 
     def store_result(
         self,
@@ -258,15 +336,18 @@ class _RunStore:
         )
         key = (normalized, result_id)
         with self._lock:
-            stored = self._stored(normalized)
-            if result_id in stored.results:
-                stored.results[result_id] = snapshot
-                return copy.deepcopy(snapshot)
-            stored.results[result_id] = snapshot
-            self._result_order[key] = None
-            while len(stored.results) > self._max_results_per_run:
-                evicted_id, _ = stored.results.popitem(last=False)
+            candidate = copy.deepcopy(self._stored(normalized))
+            is_new = result_id not in candidate.results
+            candidate.results[result_id] = snapshot
+            evicted_ids = []
+            while len(candidate.results) > self._max_results_per_run:
+                evicted_id, _ = candidate.results.popitem(last=False)
+                evicted_ids.append(evicted_id)
+            self._replace_run(candidate)
+            for evicted_id in evicted_ids:
                 self._result_order.pop((normalized, evicted_id), None)
+            if is_new:
+                self._result_order[key] = None
             while len(self._result_order) > self._max_total_results:
                 (evicted_run_id, evicted_result_id), _ = (
                     self._result_order.popitem(last=False)
@@ -274,12 +355,30 @@ class _RunStore:
                 evicted_run = self._runs.get(evicted_run_id)
                 if evicted_run is not None:
                     evicted_run.results.pop(evicted_result_id, None)
+                    self._resize_run(evicted_run)
             self._runs.move_to_end(normalized)
+            self._recalculate_memory_usage()
+            self._evict_over_capacity()
             return copy.deepcopy(snapshot)
 
     def values(self) -> list[_StoredRun]:
         with self._lock:
             return copy.deepcopy(list(self._runs.values()))
+
+    def capacities(self) -> dict[str, int]:
+        with self._lock:
+            return {
+                "max_runs": self._max_runs,
+                "max_results_per_run": self._max_results_per_run,
+                "max_total_results": self._max_total_results,
+                "max_cases_per_run": self._max_cases_per_run,
+                "max_serialized_bytes_per_case": self._max_case_bytes,
+                "max_serialized_bytes_per_run": self._max_bytes_per_run,
+                "max_total_store_bytes": self._max_total_store_bytes,
+                "current_total_store_bytes": self._total_bytes,
+                "max_total_memory_bytes": self._max_total_memory_bytes,
+                "current_total_memory_bytes": self._total_memory_bytes,
+            }
 
     def _stored(self, run_id: str) -> _StoredRun:
         try:
@@ -297,6 +396,51 @@ class _RunStore:
         for result_id in stored.results:
             self._result_order.pop((run_id, result_id), None)
 
+    def _replace_run(self, candidate: _StoredRun) -> None:
+        candidate.serialized_bytes = _stored_run_size(candidate)
+        if candidate.serialized_bytes > self._max_bytes_per_run:
+            raise BeliefMCPError(
+                "run exceeds the configured serialized byte capacity"
+            )
+        candidate.memory_bytes = _stored_run_memory_size(candidate)
+        if (
+            _single_run_store_memory_size(candidate)
+            > self._max_total_memory_bytes
+        ):
+            raise BeliefMCPError(
+                "run exceeds the configured in-memory byte capacity"
+            )
+        previous = self._stored(candidate.run_id)
+        self._runs[candidate.run_id] = candidate
+        self._total_bytes += (
+            candidate.serialized_bytes - previous.serialized_bytes
+        )
+        self._recalculate_memory_usage()
+
+    def _resize_run(self, stored: _StoredRun) -> None:
+        previous_size = stored.serialized_bytes
+        stored.serialized_bytes = _stored_run_size(stored)
+        stored.memory_bytes = _stored_run_memory_size(stored)
+        self._total_bytes += stored.serialized_bytes - previous_size
+        self._recalculate_memory_usage()
+
+    def _recalculate_memory_usage(self) -> None:
+        self._total_memory_bytes = _deep_memory_size({
+            "runs": self._runs,
+            "result_order": self._result_order,
+        })
+
+    def _evict_over_capacity(self) -> None:
+        while (
+            len(self._runs) > self._max_runs
+            or self._total_bytes > self._max_total_store_bytes
+            or self._total_memory_bytes > self._max_total_memory_bytes
+        ):
+            run_id, stored = self._runs.popitem(last=False)
+            self._discard_result_keys(run_id, stored)
+            self._total_bytes -= stored.serialized_bytes
+            self._recalculate_memory_usage()
+
 
 class BeliefMCPTools:
     """Closed MCP v0.2 facade over stable BELIEF services."""
@@ -308,6 +452,11 @@ class BeliefMCPTools:
         max_stored_runs: int = MCP_MAX_STORED_RUNS,
         max_results_per_run: int = MCP_MAX_RESULTS_PER_RUN,
         max_total_results: int = MCP_MAX_TOTAL_RESULTS,
+        max_cases_per_run: int = MCP_MAX_CASES_PER_RUN,
+        max_case_bytes: int = MCP_MAX_SERIALIZED_BYTES_PER_CASE,
+        max_bytes_per_run: int = MCP_MAX_BYTES_PER_RUN,
+        max_total_store_bytes: int = MCP_MAX_TOTAL_STORE_BYTES,
+        max_total_memory_bytes: int = MCP_MAX_TOTAL_MEMORY_BYTES,
         authorized_project_grant: AuthorizedProjectGrant | None = None,
     ) -> None:
         root = Path.cwd() if workspace_root is None else Path(workspace_root)
@@ -346,6 +495,11 @@ class BeliefMCPTools:
             max_runs=max_stored_runs,
             max_results_per_run=max_results_per_run,
             max_total_results=max_total_results,
+            max_cases_per_run=max_cases_per_run,
+            max_case_bytes=max_case_bytes,
+            max_bytes_per_run=max_bytes_per_run,
+            max_total_store_bytes=max_total_store_bytes,
+            max_total_memory_bytes=max_total_memory_bytes,
         )
         self._validation_capacity = threading.BoundedSemaphore(
             MCP_MAX_CONCURRENT_VALIDATIONS
@@ -411,14 +565,23 @@ class BeliefMCPTools:
         stored = self._runs.get(match.group("run_id"))
         kind = match.group("kind")
         if kind is None:
+            if match.group("query"):
+                raise BeliefMCPError(
+                    "pagination is available only for collection resources"
+                )
             return copy.deepcopy(stored.summary), "application/json"
+        cursor, limit = _resource_page(match.group("query"))
+        base_uri = f"belief://runs/{stored.run_id}/{kind}"
         if kind == "audit-cases":
-            payload = {
-                "schema_version": "belief.mcp_audit_case_collection.v1",
-                "run_id": stored.run_id,
-                "count": len(stored.cases),
-                "audit_cases": copy.deepcopy(list(stored.cases.values())),
-            }
+            payload = _paginated_collection(
+                list(stored.cases.values()),
+                schema_version="belief.mcp_audit_case_collection.v2",
+                run_id=stored.run_id,
+                field_name="audit_cases",
+                base_uri=base_uri,
+                cursor=cursor,
+                limit=limit,
+            )
             return payload, "application/json"
         if kind == "validation-plans":
             plans = []
@@ -435,11 +598,16 @@ class BeliefMCPTools:
                         project_binding
                     )
                 plans.append(plan)
-            payload = {
-                "schema_version": "belief.mcp_validation_plan_collection.v1",
-                "run_id": stored.run_id,
-                "count": len(stored.plans),
-                "validation_plans": plans,
+            payload = _paginated_collection(
+                plans,
+                schema_version="belief.mcp_validation_plan_collection.v2",
+                run_id=stored.run_id,
+                field_name="validation_plans",
+                base_uri=base_uri,
+                cursor=cursor,
+                limit=limit,
+            )
+            payload.update({
                 "execution_enabled": bool(stored.bindings),
                 "execution_scope": (
                     REGISTERED_FIXTURE_EXECUTION_SCOPE
@@ -452,37 +620,43 @@ class BeliefMCPTools:
                     else None
                 ),
                 "authorized_project_dynamic_execution_enabled": False,
-            }
+            })
             return payload, "application/json"
-        payload = {
-            "schema_version": "belief.mcp_validation_result_collection.v1",
-            "run_id": stored.run_id,
-            "count": len(stored.results),
-            "validation_results": copy.deepcopy(
-                list(stored.results.values())
-            ),
+        payload = _paginated_collection(
+            list(stored.results.values()),
+            schema_version="belief.mcp_validation_result_collection.v2",
+            run_id=stored.run_id,
+            field_name="validation_results",
+            base_uri=base_uri,
+            cursor=cursor,
+            limit=limit,
+        )
+        payload.update({
             "execution_enabled": bool(stored.bindings),
             "execution_scope": (
                 REGISTERED_FIXTURE_EXECUTION_SCOPE
                 if stored.bindings
                 else None
             ),
-        }
+        })
         return payload, "application/json"
 
     def status(self) -> dict[str, Any]:
+        storage_limits = self._runs.capacities()
         return status_payload(
             workspace_root=self.workspace_root.as_posix(),
             benchmark_available=self._benchmark_corpus is not None,
             authorized_project_pilot_available=(
                 self._authorized_project_grant is not None
             ),
+            storage_limits=storage_limits,
         )
 
     def capabilities(self) -> dict[str, Any]:
         tools = self.list_tools()
+        storage_limits = self._runs.capacities()
         return {
-            "schema_version": "belief.mcp_capabilities.v1",
+            "schema_version": "belief.mcp_capabilities.v2",
             "mode": "local_stdio_fixture_bound_validation",
             "tools": [item["name"] for item in tools],
             "resources": [
@@ -493,9 +667,9 @@ class BeliefMCPTools:
             ],
             "storage": {
                 "kind": "process_memory",
-                "max_runs": MCP_MAX_STORED_RUNS,
-                "max_results_per_run": MCP_MAX_RESULTS_PER_RUN,
-                "max_total_results": MCP_MAX_TOTAL_RESULTS,
+                **storage_limits,
+                "max_resource_page_size": MCP_MAX_RESOURCE_PAGE_SIZE,
+                "max_mcp_response_bytes": MCP_MAX_RESPONSE_BYTES,
                 "writes_artifacts_to_disk": False,
                 "retains_full_analysis": False,
                 "retains_source_text": False,
@@ -510,11 +684,15 @@ class BeliefMCPTools:
             },
             "boundaries": {
                 "workspace_confined": True,
-                "network": False,
-                "subprocess": False,
+                "live_network_target_allowed": False,
+                "worker_process_spawn": True,
+                "target_process_spawn": False,
                 "shell": False,
                 "docker": False,
-                "dynamic_import": False,
+                "allowlisted_framework_imports": True,
+                "caller_controlled_imports": False,
+                "temporary_fixture_writes": True,
+                "target_workspace_writes": False,
                 "dynamic_execution": True,
                 "dynamic_execution_scope": (
                     REGISTERED_FIXTURE_EXECUTION_SCOPE
@@ -522,8 +700,9 @@ class BeliefMCPTools:
                 "max_concurrent_validations": (
                     MCP_MAX_CONCURRENT_VALIDATIONS
                 ),
-                "target_writes": False,
                 "custom_adapters": False,
+                "active_cancellation_scope": "dynamic_validation_only",
+                "cancelled_non_worker_response_suppressed": True,
                 "authorized_project_pilot": True,
                 "authorized_project_pilot_configured": (
                     self._authorized_project_grant is not None
@@ -548,6 +727,11 @@ class BeliefMCPTools:
                 ),
                 "Only the transparent local_validation_v2 benchmark is callable.",
                 "Runs are evicted after the in-memory capacity is reached.",
+                (
+                    "Active cancellation terminates only the isolated dynamic "
+                    "validation worker; other tools may finish internally while "
+                    "their cancelled response is suppressed."
+                ),
             ],
         }
 
@@ -879,7 +1063,13 @@ class BeliefMCPTools:
                 raise BeliefMCPError("validation request was cancelled")
             result_payload = result.to_dict()
             worker_state = _worker_state(result_payload)
-            if worker_state != "completed":
+            if (
+                worker_state != "completed"
+                and not _storable_worker_abstention(
+                    result_payload,
+                    worker_state,
+                )
+            ):
                 raise BeliefMCPError(
                     _worker_tool_error(result_payload, worker_state)
                 )
@@ -1162,6 +1352,78 @@ def _run_summary(
     }
 
 
+def _stored_run_size(stored: _StoredRun) -> int:
+    return _serialized_size(_stored_run_payload(stored))
+
+
+def _stored_run_memory_size(stored: _StoredRun) -> int:
+    return _deep_memory_size(_stored_run_payload(stored))
+
+
+def _single_run_store_memory_size(stored: _StoredRun) -> int:
+    return _deep_memory_size({
+        "runs": OrderedDict(((stored.run_id, stored),)),
+        "result_order": OrderedDict(
+            ((stored.run_id, result_id), None)
+            for result_id in stored.results
+        ),
+    })
+
+
+def _stored_run_payload(stored: _StoredRun) -> dict[str, Any]:
+    return {
+        "run_id": stored.run_id,
+        "target": stored.target,
+        "cases": stored.cases,
+        "validation_contract_seeds": stored.validation_contract_seeds,
+        "summary": stored.summary,
+        "plans": stored.plans,
+        "bindings": stored.bindings,
+        "results": stored.results,
+        "origin": stored.origin,
+        "registered_fixture_id": stored.registered_fixture_id,
+        "authorized_project_adapter_id": stored.authorized_project_adapter_id,
+        "project_bindings": stored.project_bindings,
+    }
+
+
+def _serialized_size(value: object) -> int:
+    try:
+        rendered = json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        return len(rendered.encode("utf-8"))
+    except (RecursionError, TypeError, UnicodeError, ValueError) as exc:
+        raise BeliefMCPError(
+            "MCP store object is not bounded canonical JSON"
+        ) from exc
+
+
+def _deep_memory_size(value: object) -> int:
+    seen: set[int] = set()
+    stack = [value]
+    total = 0
+    while stack:
+        current = stack.pop()
+        identity = id(current)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        total += sys.getsizeof(current)
+        if isinstance(current, Mapping):
+            stack.extend(current.keys())
+            stack.extend(current.values())
+        elif isinstance(current, (list, tuple, set, frozenset)):
+            stack.extend(current)
+        elif isinstance(current, _StoredRun):
+            stack.append(vars(current))
+    return total
+
+
 def _run_resource_definitions(run_id: str) -> list[dict[str, Any]]:
     base = f"belief://runs/{run_id}"
     return [
@@ -1199,6 +1461,60 @@ def _run_resource_definitions(run_id: str) -> list[dict[str, Any]]:
             "mimeType": "application/json",
         },
     ]
+
+
+def _resource_page(query: str | None) -> tuple[int, int]:
+    if not query:
+        return 0, MCP_MAX_RESOURCE_PAGE_SIZE
+    fields: dict[str, str] = {}
+    for part in query.removeprefix("?").split("&"):
+        if not part or "=" not in part:
+            raise BeliefMCPError("resource pagination query is invalid")
+        name, value = part.split("=", 1)
+        if name not in {"cursor", "limit"} or name in fields:
+            raise BeliefMCPError("resource pagination query is invalid")
+        if re.fullmatch(r"[0-9]+", value) is None:
+            raise BeliefMCPError("resource pagination values must be integers")
+        fields[name] = value
+    cursor = int(fields.get("cursor", "0"))
+    limit = int(fields.get("limit", str(MCP_MAX_RESOURCE_PAGE_SIZE)))
+    if cursor > MCP_MAX_CASES_PER_RUN:
+        raise BeliefMCPError("resource cursor exceeds the reviewed bound")
+    if not 1 <= limit <= MCP_MAX_RESOURCE_PAGE_SIZE:
+        raise BeliefMCPError(
+            "resource page limit is outside the reviewed bound"
+        )
+    return cursor, limit
+
+
+def _paginated_collection(
+    items: list[dict[str, Any]],
+    *,
+    schema_version: str,
+    run_id: str,
+    field_name: str,
+    base_uri: str,
+    cursor: int,
+    limit: int,
+) -> dict[str, Any]:
+    total = len(items)
+    end = min(total, cursor + limit)
+    next_cursor = end if end < total else None
+    return {
+        "schema_version": schema_version,
+        "run_id": run_id,
+        "count": total,
+        "returned": max(0, end - cursor) if cursor <= total else 0,
+        "cursor": cursor,
+        "limit": limit,
+        "next_cursor": next_cursor,
+        "next_uri": (
+            f"{base_uri}?cursor={next_cursor}&limit={limit}"
+            if next_cursor is not None
+            else None
+        ),
+        field_name: copy.deepcopy(items[cursor:end]),
+    }
 
 
 def _compare_stored_runs(
@@ -1425,17 +1741,7 @@ def _worker_tool_error(
     result: Mapping[str, Any],
     worker_state: str,
 ) -> str:
-    metadata = result.get("metadata")
-    limitations: list[str] = []
-    if isinstance(metadata, Mapping):
-        execution = metadata.get("execution")
-        if isinstance(execution, Mapping):
-            limitations = _unique_strings(execution.get("limitations"))
-    codes = {
-        item.removeprefix("worker_error:")
-        for item in limitations
-        if item.startswith("worker_error:")
-    }
+    codes = _worker_error_codes(result)
     if "cancelled" in codes or worker_state == "cancelled":
         return "validation request was cancelled"
     if "timeout" in codes or worker_state == "timed_out":
@@ -1447,6 +1753,55 @@ def _worker_tool_error(
     if "binding_mismatch" in codes:
         return "worker evidence did not match the trusted fixture binding"
     return "registered fixture validation ended without valid worker evidence"
+
+
+def _worker_error_codes(result: Mapping[str, Any]) -> set[str]:
+    metadata = result.get("metadata")
+    limitations: list[str] = []
+    if isinstance(metadata, Mapping):
+        execution = metadata.get("execution")
+        if isinstance(execution, Mapping):
+            limitations = _unique_strings(execution.get("limitations"))
+    return {
+        item.removeprefix("worker_error:")
+        for item in limitations
+        if item.startswith("worker_error:")
+    }
+
+
+def _storable_worker_abstention(
+    result: Mapping[str, Any],
+    worker_state: str,
+) -> bool:
+    codes = _worker_error_codes(result)
+    if codes & {
+        "binding_mismatch",
+        "cancelled",
+        "invalid_request",
+        "unknown_fixture",
+        "unsupported_protocol",
+    }:
+        return False
+    return bool(
+        codes
+        & {
+            "child_crash",
+            "dependency_unavailable",
+            "internal_error",
+            "malformed_response",
+            "policy_violation",
+            "response_too_large",
+            "timeout",
+        }
+        or worker_state
+        in {
+            "crashed",
+            "inconclusive",
+            "policy_violation",
+            "timed_out",
+            "unsupported",
+        }
+    )
 
 
 def _node_projection(value: object) -> Any:
