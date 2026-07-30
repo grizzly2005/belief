@@ -46,15 +46,17 @@ from belief.validation.worker.process import (
     run_worker_request,
     start_worker_request,
 )
-from belief.validation.worker.registry import get_fixture_spec
-from belief.validation.web.flask_adapter import run_flask_fixture
+from belief.validation.worker.registry import (
+    get_fixture_spec,
+    load_fixture_runner,
+)
 
 
 pytestmark = pytest.mark.security
 
 
 def _request(
-    fixture_id: str = "flask_path_traversal_protected_v1",
+    fixture_id: str = "fx_18a4e9_v1",
     *,
     timeout_ms: int = 5_000,
 ) -> WorkerRequest:
@@ -500,23 +502,34 @@ def test_attestation_source_or_plan_binding_mismatch_is_rejected():
     assert error.value.code == "binding_mismatch"
 
 
-def test_fixture_id_and_posture_label_mutations_do_not_change_observations(
+def test_fixture_id_and_evaluator_label_swaps_do_not_change_observations(
     tmp_path,
 ):
-    original = get_fixture_spec("flask_path_traversal_vulnerable_v1")
+    original = get_fixture_spec("fx_01d7c2_v1")
     renamed = replace(
         original,
-        fixture_id="flask_path_neutral_alpha_v1",
+        fixture_id="fx_opaque_copy_v1",
     )
-    relabelled = replace(
+
+    def execute(spec, root, evaluator_label):
+        del evaluator_label
+        return load_fixture_runner(spec)(root, {})()
+
+    original_result = execute(
         original,
-        expected_security_posture="protected",
+        tmp_path / "original",
+        "bypassed",
     )
-
-    original_result = run_flask_fixture(original, tmp_path / "original", {})
-    renamed_result = run_flask_fixture(renamed, tmp_path / "renamed", {})
-    relabelled_result = run_flask_fixture(relabelled, tmp_path / "relabelled", {})
-
+    renamed_result = execute(
+        renamed,
+        tmp_path / "renamed",
+        "bypassed",
+    )
+    relabelled_result = execute(
+        original,
+        tmp_path / "relabelled",
+        "enforced",
+    )
     assert original_result.observations == renamed_result.observations
     assert original_result.observations == relabelled_result.observations
     failed = [
@@ -526,5 +539,5 @@ def test_fixture_id_and_posture_label_mutations_do_not_change_observations(
     ]
     assert failed
     executor_source = inspect.getsource(IsolatedWebValidationExecutor.execute)
-    assert "expected_security_posture" not in executor_source
+    assert "evaluator_label" not in executor_source
     assert '"vulnerable"' not in executor_source

@@ -44,6 +44,11 @@ AuthorizationRequester = Callable[
     ClientResponse,
 ]
 ResourceSnapshot = Callable[[], dict[str, dict[str, str]]]
+PathPolicy = Callable[
+    [PathFixtureLayout, str],
+    tuple[int, dict[str, Any]],
+]
+ResourcePolicy = Callable[..., tuple[int, dict[str, Any]]]
 
 
 def prepare_path_layout(
@@ -82,11 +87,9 @@ def prepare_path_layout(
     )
 
 
-def serve_path(
+def path_policy_alpha(
     layout: PathFixtureLayout,
     value: str,
-    *,
-    protected: bool,
 ) -> tuple[int, dict[str, Any]]:
     candidate = (layout.allowed / value).resolve()
     if not candidate.is_relative_to(layout.root):
@@ -96,12 +99,34 @@ def serve_path(
             "resolved_path": "outside_fixture_root",
         }
     logical = logical_path(candidate, layout)
-    if protected and not candidate.is_relative_to(layout.allowed):
+    return _read_path_candidate(candidate, logical)
+
+
+def path_policy_beta(
+    layout: PathFixtureLayout,
+    value: str,
+) -> tuple[int, dict[str, Any]]:
+    candidate = (layout.allowed / value).resolve()
+    if not candidate.is_relative_to(layout.root):
+        return 403, {
+            "decision": "fixture_boundary_blocked",
+            "marker": "none",
+            "resolved_path": "outside_fixture_root",
+        }
+    logical = logical_path(candidate, layout)
+    if not candidate.is_relative_to(layout.allowed):
         return 403, {
             "decision": "authorization_blocked",
             "marker": "none",
             "resolved_path": logical,
         }
+    return _read_path_candidate(candidate, logical)
+
+
+def _read_path_candidate(
+    candidate: Path,
+    logical: str,
+) -> tuple[int, dict[str, Any]]:
     try:
         content = candidate.read_text(encoding="utf-8")
     except (FileNotFoundError, IsADirectoryError):
@@ -248,7 +273,7 @@ def initial_resources() -> dict[str, dict[str, str]]:
     }
 
 
-def serve_resource(
+def resource_policy_alpha(
     resources: dict[str, dict[str, str]],
     *,
     method: str,
@@ -256,7 +281,6 @@ def serve_resource(
     user_id: str,
     tenant_id: str,
     value: str,
-    protected: bool,
 ) -> tuple[int, dict[str, Any]]:
     if not user_id:
         return 401, {
@@ -271,7 +295,36 @@ def serve_resource(
             "resource_exposed": False,
             "detail": "not_found",
         }
-    if protected and (
+    return _apply_resource_operation(
+        resource,
+        method=method,
+        value=value,
+    )
+
+
+def resource_policy_beta(
+    resources: dict[str, dict[str, str]],
+    *,
+    method: str,
+    resource_id: str,
+    user_id: str,
+    tenant_id: str,
+    value: str,
+) -> tuple[int, dict[str, Any]]:
+    if not user_id:
+        return 401, {
+            "allowed": False,
+            "resource_exposed": False,
+            "detail": "unauthenticated",
+        }
+    resource = resources.get(resource_id)
+    if resource is None:
+        return 404, {
+            "allowed": False,
+            "resource_exposed": False,
+            "detail": "not_found",
+        }
+    if (
         resource["owner_id"] != user_id
         or resource["tenant_id"] != tenant_id
     ):
@@ -280,6 +333,19 @@ def serve_resource(
             "resource_exposed": False,
             "detail": "authorization_denied",
         }
+    return _apply_resource_operation(
+        resource,
+        method=method,
+        value=value,
+    )
+
+
+def _apply_resource_operation(
+    resource: dict[str, str],
+    *,
+    method: str,
+    value: str,
+) -> tuple[int, dict[str, Any]]:
     if method == "GET":
         return 200, {
             "allowed": True,
@@ -683,11 +749,15 @@ __all__ = [
     "ClientResponse",
     "PUBLIC_MARKER",
     "PathFixtureLayout",
+    "PathPolicy",
+    "ResourcePolicy",
     "SENTINEL_MARKER",
     "idor_observations",
     "initial_resources",
     "path_observations",
     "prepare_path_layout",
-    "serve_path",
-    "serve_resource",
+    "path_policy_alpha",
+    "path_policy_beta",
+    "resource_policy_alpha",
+    "resource_policy_beta",
 ]

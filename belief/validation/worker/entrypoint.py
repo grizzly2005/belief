@@ -101,7 +101,6 @@ def execute_worker_message(
     try:
         prepare_fixture = load_fixture_runner(spec)
         prepared_fixture = prepare_fixture(
-            spec,
             temporary_root,
             request.test_parameters,
         )
@@ -374,7 +373,6 @@ def execute_registered_request(
     try:
         prepare_fixture = load_fixture_runner(spec)
         prepared_fixture = prepare_fixture(
-            spec,
             temporary_root,
             request.test_parameters,
         )

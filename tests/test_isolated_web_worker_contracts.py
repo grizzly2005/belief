@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import copy
+import inspect
 import json
+from pathlib import Path
 
 import pytest
 
@@ -30,7 +32,9 @@ from belief.validation.plan_models import canonical_digest
 from belief.validation.worker.registry import (
     fixture_registry_digest,
     fixture_source_digest,
+    fixture_source_documents,
     get_fixture_spec,
+    load_fixture_runner,
     registered_fixture_ids,
     registered_fixture_metadata,
 )
@@ -41,7 +45,7 @@ pytestmark = pytest.mark.security
 
 def _request(**overrides):
     values = {
-        "fixture_id": "flask_path_traversal_protected_v1",
+        "fixture_id": "fx_18a4e9_v1",
         "validation_plan_id": "vp_0123456789abcdef",
         "validation_plan_digest": "a" * 64,
         "source_revision": "fixture-source-v1",
@@ -223,14 +227,14 @@ def test_response_round_trip_verifies_oracles_and_evidence_digest():
 
 def test_registry_has_only_the_eight_stable_fixture_ids():
     assert registered_fixture_ids() == (
-        "fastapi_idor_protected_v1",
-        "fastapi_idor_vulnerable_v1",
-        "fastapi_path_traversal_protected_v1",
-        "fastapi_path_traversal_vulnerable_v1",
-        "flask_idor_protected_v1",
-        "flask_idor_vulnerable_v1",
-        "flask_path_traversal_protected_v1",
-        "flask_path_traversal_vulnerable_v1",
+        "fx_01d7c2_v1",
+        "fx_18a4e9_v1",
+        "fx_2f6b10_v1",
+        "fx_3c8d57_v1",
+        "fx_47e1a3_v1",
+        "fx_5b9c20_v1",
+        "fx_6d04f8_v1",
+        "fx_7a2e61_v1",
     )
 
 
@@ -242,7 +246,35 @@ def test_registry_metadata_is_a_defensive_callable_free_snapshot():
     assert second[0]["fixture_id"] != "tampered"
     assert all("runner" not in item for item in second)
     assert all("callable" not in item for item in second)
+    assert all("expected_security_posture" not in item for item in second)
     assert all(len(item["fixture_source_digest"]) == 64 for item in second)
+
+
+def test_opaque_fixture_sources_are_distinct_exact_and_label_free():
+    digests = {}
+    for fixture_id in registered_fixture_ids():
+        spec = get_fixture_spec(fixture_id)
+        documents = fixture_source_documents(spec)
+        runner = load_fixture_runner(spec)
+        implementation_name = f"web/fixtures/{spec.implementation_id}.py"
+        runner_path = inspect.getsourcefile(runner)
+
+        assert runner_path is not None
+        assert Path(runner_path).name == f"{spec.implementation_id}.py"
+        assert implementation_name in documents
+        assert "worker/contracts.py" in documents
+        assert f"web/{spec.framework}_adapter.py" in documents
+        scanned_source = "\n".join(documents.values()).casefold()
+        assert "vulnerable" not in scanned_source
+        assert "protected" not in scanned_source
+        assert documents[implementation_name] == (
+            Path(runner_path)
+            .read_text(encoding="utf-8")
+            .replace("\r\n", "\n")
+        )
+        digests[fixture_id] = fixture_source_digest(spec)
+
+    assert len(set(digests.values())) == len(digests)
 
 
 def _canonical_bytes(payload):

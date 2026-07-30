@@ -32,7 +32,7 @@ pytestmark = pytest.mark.security
 
 
 def _request(
-    fixture_id: str = "flask_path_traversal_protected_v1",
+    fixture_id: str = "fx_18a4e9_v1",
     *,
     timeout_ms: int = 5_000,
 ) -> WorkerRequest:
@@ -126,7 +126,7 @@ def test_hard_timeout_terminates_worker_and_remains_inconclusive():
 
     result = run_isolated_web_validation_plan(
         _plan(),
-        fixture_id="flask_path_traversal_protected_v1",
+        fixture_id="fx_18a4e9_v1",
         source_revision="fixture-source-v1",
         timeout_ms=100,
     )
@@ -224,7 +224,7 @@ def test_worker_crash_is_normalized_and_never_becomes_a_security_verdict(
 
     result = run_isolated_web_validation_plan(
         _plan(),
-        fixture_id="flask_path_traversal_protected_v1",
+        fixture_id="fx_18a4e9_v1",
         source_revision="fixture-source-v1",
     )
     assert result.outcome == "inconclusive"
@@ -262,8 +262,8 @@ def test_missing_framework_is_an_explicit_unsupported_result(
 @pytest.mark.parametrize(
     ("framework", "fixture_id"),
     (
-        ("flask", "flask_path_traversal_protected_v1"),
-        ("fastapi", "fastapi_path_traversal_protected_v1"),
+        ("flask", "fx_18a4e9_v1"),
+        ("fastapi", "fx_5b9c20_v1"),
     ),
 )
 def test_actually_absent_framework_is_a_spawned_abstention(

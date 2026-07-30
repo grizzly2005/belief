@@ -336,7 +336,7 @@ def test_pilot_binds_exact_source_and_always_abstains(
             {
                 "run_id": payload["run_id"],
                 "plan_id": first_plan["plan_id"],
-                "fixture_id": "flask_path_traversal_vulnerable_v1",
+                "fixture_id": "fx_01d7c2_v1",
                 "timeout_ms": 1000,
                 "acknowledge_local_execution": True,
             },

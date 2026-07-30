@@ -14,8 +14,8 @@ from typing import Any
 from .contracts import WorkerObservation, WorkerProtocolError
 
 
-FIXTURE_REGISTRY_SCHEMA_VERSION = "belief.validation_fixture_registry.v2"
-FIXTURE_SOURCE_MANIFEST_SCHEMA_VERSION = "belief.validation_fixture_source.v1"
+FIXTURE_REGISTRY_SCHEMA_VERSION = "belief.validation_fixture_registry.v3"
+FIXTURE_SOURCE_MANIFEST_SCHEMA_VERSION = "belief.validation_fixture_source.v2"
 
 
 class OptionalWebDependencyUnavailable(RuntimeError):
@@ -28,7 +28,7 @@ class OptionalWebDependencyUnavailable(RuntimeError):
 
 PreparedFixture = Callable[[], "RegisteredFixtureResult"]
 FixturePreparer = Callable[
-    ["FixtureSpec", Path, Mapping[str, Any]],
+    [Path, Mapping[str, Any]],
     PreparedFixture,
 ]
 
@@ -61,85 +61,71 @@ class FixtureSpec:
     fixture_id: str
     framework: str
     case_type: str
-    security_enforced: bool
-    expected_security_posture: str
+    implementation_id: str
 
     def public_dict(self) -> dict[str, Any]:
         return {
             "fixture_id": self.fixture_id,
             "framework": self.framework,
             "case_type": self.case_type,
-            "expected_security_posture": self.expected_security_posture,
             "fixture_source_digest": fixture_source_digest(self),
         }
 
     def registry_dict(self) -> dict[str, Any]:
         return {
             **self.public_dict(),
-            "security_behavior": (
-                "owner_tenant_or_path_boundary_enforced"
-                if self.security_enforced
-                else "authentication_or_fixture_boundary_only"
-            ),
+            "implementation_id": self.implementation_id,
         }
 
 
 _FIXTURES: Mapping[str, FixtureSpec] = MappingProxyType({
-    "flask_path_traversal_vulnerable_v1": FixtureSpec(
-        fixture_id="flask_path_traversal_vulnerable_v1",
+    "fx_01d7c2_v1": FixtureSpec(
+        fixture_id="fx_01d7c2_v1",
         framework="flask",
         case_type="path_traversal_possible",
-        security_enforced=False,
-        expected_security_posture="vulnerable",
+        implementation_id="f01",
     ),
-    "flask_path_traversal_protected_v1": FixtureSpec(
-        fixture_id="flask_path_traversal_protected_v1",
+    "fx_18a4e9_v1": FixtureSpec(
+        fixture_id="fx_18a4e9_v1",
         framework="flask",
         case_type="path_traversal_possible",
-        security_enforced=True,
-        expected_security_posture="protected",
+        implementation_id="f02",
     ),
-    "flask_idor_vulnerable_v1": FixtureSpec(
-        fixture_id="flask_idor_vulnerable_v1",
+    "fx_2f6b10_v1": FixtureSpec(
+        fixture_id="fx_2f6b10_v1",
         framework="flask",
         case_type="idor_bola_possible",
-        security_enforced=False,
-        expected_security_posture="vulnerable",
+        implementation_id="f03",
     ),
-    "flask_idor_protected_v1": FixtureSpec(
-        fixture_id="flask_idor_protected_v1",
+    "fx_3c8d57_v1": FixtureSpec(
+        fixture_id="fx_3c8d57_v1",
         framework="flask",
         case_type="idor_bola_possible",
-        security_enforced=True,
-        expected_security_posture="protected",
+        implementation_id="f04",
     ),
-    "fastapi_path_traversal_vulnerable_v1": FixtureSpec(
-        fixture_id="fastapi_path_traversal_vulnerable_v1",
+    "fx_47e1a3_v1": FixtureSpec(
+        fixture_id="fx_47e1a3_v1",
         framework="fastapi",
         case_type="path_traversal_possible",
-        security_enforced=False,
-        expected_security_posture="vulnerable",
+        implementation_id="f05",
     ),
-    "fastapi_path_traversal_protected_v1": FixtureSpec(
-        fixture_id="fastapi_path_traversal_protected_v1",
+    "fx_5b9c20_v1": FixtureSpec(
+        fixture_id="fx_5b9c20_v1",
         framework="fastapi",
         case_type="path_traversal_possible",
-        security_enforced=True,
-        expected_security_posture="protected",
+        implementation_id="f06",
     ),
-    "fastapi_idor_vulnerable_v1": FixtureSpec(
-        fixture_id="fastapi_idor_vulnerable_v1",
+    "fx_6d04f8_v1": FixtureSpec(
+        fixture_id="fx_6d04f8_v1",
         framework="fastapi",
         case_type="idor_bola_possible",
-        security_enforced=False,
-        expected_security_posture="vulnerable",
+        implementation_id="f07",
     ),
-    "fastapi_idor_protected_v1": FixtureSpec(
-        fixture_id="fastapi_idor_protected_v1",
+    "fx_7a2e61_v1": FixtureSpec(
+        fixture_id="fx_7a2e61_v1",
         framework="fastapi",
         case_type="idor_bola_possible",
-        security_enforced=True,
-        expected_security_posture="protected",
+        implementation_id="f08",
     ),
 })
 
@@ -157,15 +143,25 @@ def load_fixture_runner(spec: FixtureSpec) -> FixturePreparer:
 
     if not optional_framework_available(spec.framework):
         raise OptionalWebDependencyUnavailable(spec.framework)
-    if spec.framework == "flask":
-        from ..web.flask_adapter import prepare_flask_fixture
-
-        return prepare_flask_fixture
-    if spec.framework == "fastapi":
-        from ..web.fastapi_adapter import prepare_fastapi_fixture
-
-        return prepare_fastapi_fixture
-    raise OptionalWebDependencyUnavailable(spec.framework)
+    if spec.implementation_id == "f01":
+        from ..web.fixtures.f01 import prepare_fixture
+    elif spec.implementation_id == "f02":
+        from ..web.fixtures.f02 import prepare_fixture
+    elif spec.implementation_id == "f03":
+        from ..web.fixtures.f03 import prepare_fixture
+    elif spec.implementation_id == "f04":
+        from ..web.fixtures.f04 import prepare_fixture
+    elif spec.implementation_id == "f05":
+        from ..web.fixtures.f05 import prepare_fixture
+    elif spec.implementation_id == "f06":
+        from ..web.fixtures.f06 import prepare_fixture
+    elif spec.implementation_id == "f07":
+        from ..web.fixtures.f07 import prepare_fixture
+    elif spec.implementation_id == "f08":
+        from ..web.fixtures.f08 import prepare_fixture
+    else:
+        raise OptionalWebDependencyUnavailable(spec.framework)
+    return prepare_fixture
 
 
 def registered_fixture_metadata() -> tuple[dict[str, Any], ...]:
@@ -216,7 +212,12 @@ def fixture_source_documents(spec_or_id: FixtureSpec | str) -> dict[str, str]:
     """Return normalized first-party source documents for trusted preparation."""
 
     spec = _coerce_spec(spec_or_id)
-    return dict(_source_documents(spec.framework))
+    documents = (
+        _source_documents(spec.fixture_id)
+        if _FIXTURES.get(spec.fixture_id) == spec
+        else _source_documents_for_spec(spec)
+    )
+    return dict(documents)
 
 
 def _fixture_source_manifest(
@@ -224,7 +225,11 @@ def _fixture_source_manifest(
     *,
     include_source: bool,
 ) -> dict[str, Any]:
-    documents = _source_documents(spec.framework)
+    documents = (
+        _source_documents(spec.fixture_id)
+        if _FIXTURES.get(spec.fixture_id) == spec
+        else _source_documents_for_spec(spec)
+    )
     rows = []
     for logical_name, source in documents:
         row = {
@@ -240,21 +245,37 @@ def _fixture_source_manifest(
             "fixture_id": spec.fixture_id,
             "framework": spec.framework,
             "case_type": spec.case_type,
-            "security_enforced": spec.security_enforced,
         },
         "documents": rows,
     }
 
 
-@lru_cache(maxsize=2)
-def _source_documents(framework: str) -> tuple[tuple[str, str], ...]:
+@lru_cache(maxsize=8)
+def _source_documents(
+    fixture_id: str,
+) -> tuple[tuple[str, str], ...]:
+    return _source_documents_for_spec(_FIXTURES[fixture_id])
+
+
+def _source_documents_for_spec(
+    spec: FixtureSpec,
+) -> tuple[tuple[str, str], ...]:
     worker_dir = Path(__file__).resolve().parent
     web_dir = worker_dir.parent / "web"
+    fixture_path = web_dir / "fixtures" / f"{spec.implementation_id}.py"
     selected = (
         ("worker/registry.py", worker_dir / "registry.py"),
+        ("worker/contracts.py", worker_dir / "contracts.py"),
         ("web/__init__.py", web_dir / "__init__.py"),
         ("web/_shared.py", web_dir / "_shared.py"),
-        (f"web/{framework}_adapter.py", web_dir / f"{framework}_adapter.py"),
+        (
+            f"web/{spec.framework}_adapter.py",
+            web_dir / f"{spec.framework}_adapter.py",
+        ),
+        (
+            f"web/fixtures/{spec.implementation_id}.py",
+            fixture_path,
+        ),
     )
     documents: list[tuple[str, str]] = []
     for logical_name, path in selected:

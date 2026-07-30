@@ -9,60 +9,38 @@ from typing import Any
 
 from flask import Flask, jsonify, request
 
-from ..worker.registry import (
-    FixtureSpec,
-    RegisteredFixtureResult,
-)
+from ..worker.registry import RegisteredFixtureResult
 from ._shared import (
     ClientResponse,
+    PathPolicy,
+    ResourcePolicy,
     idor_observations,
     initial_resources,
     path_observations,
     prepare_path_layout,
-    serve_path,
-    serve_resource,
 )
 
 
-def run_flask_fixture(
-    spec: FixtureSpec,
+def prepare_flask_path_app(
     temporary_root: Path,
     parameters: Mapping[str, Any],
-) -> RegisteredFixtureResult:
-    return prepare_flask_fixture(spec, temporary_root, parameters)()
-
-
-def prepare_flask_fixture(
-    spec: FixtureSpec,
-    temporary_root: Path,
-    parameters: Mapping[str, Any],
-) -> Callable[[], RegisteredFixtureResult]:
-    if spec.case_type == "path_traversal_possible":
-        return _prepare_path_fixture(spec, temporary_root, parameters)
-    if spec.case_type == "idor_bola_possible":
-        return _prepare_idor_fixture(spec)
-    raise ValueError("unsupported Flask fixture case type")
-
-
-def _prepare_path_fixture(
-    spec: FixtureSpec,
-    temporary_root: Path,
-    parameters: Mapping[str, Any],
+    *,
+    application_id: str,
+    policy: PathPolicy,
 ) -> Callable[[], RegisteredFixtureResult]:
     include_symlink = parameters.get("include_symlink", True)
     layout = prepare_path_layout(
         temporary_root / "fixture",
         include_symlink=include_symlink,
     )
-    app = Flask(f"belief_{spec.fixture_id}")
+    app = Flask(f"belief_{application_id}")
     app.config.update(TESTING=True)
 
     @app.get("/files")
     def read_file():
-        status, body = serve_path(
+        status, body = policy(
             layout,
             request.args.get("path", ""),
-            protected=spec.security_enforced,
         )
         return jsonify(body), status
 
@@ -95,11 +73,13 @@ def _prepare_path_fixture(
     return execute
 
 
-def _prepare_idor_fixture(
-    spec: FixtureSpec,
+def prepare_flask_idor_app(
+    *,
+    application_id: str,
+    policy: ResourcePolicy,
 ) -> Callable[[], RegisteredFixtureResult]:
     resources = initial_resources()
-    app = Flask(f"belief_{spec.fixture_id}")
+    app = Flask(f"belief_{application_id}")
     app.config.update(TESTING=True)
 
     @app.route("/resources/<resource_id>", methods=["GET", "PATCH"])
@@ -110,14 +90,13 @@ def _prepare_idor_fixture(
             if isinstance(payload, dict)
             else ""
         )
-        status, body = serve_resource(
+        status, body = policy(
             resources,
             method=request.method,
             resource_id=resource_id,
             user_id=request.headers.get("X-User-ID", ""),
             tenant_id=request.headers.get("X-Tenant-ID", ""),
             value=value,
-            protected=spec.security_enforced,
         )
         return jsonify(body), status
 
@@ -169,4 +148,7 @@ def _prepare_idor_fixture(
     return execute
 
 
-__all__ = ["prepare_flask_fixture", "run_flask_fixture"]
+__all__ = [
+    "prepare_flask_idor_app",
+    "prepare_flask_path_app",
+]

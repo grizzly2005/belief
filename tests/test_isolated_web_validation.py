@@ -19,20 +19,21 @@ from belief.validation.worker import (
     run_worker_request,
 )
 from belief.validation.worker.contracts import WorkerRequest
+from belief.validation.worker.registry import get_fixture_spec
 from belief.validation.web import optional_framework_available
 
 
 pytestmark = pytest.mark.security
 
 _FIXTURES = (
-    ("flask_path_traversal_vulnerable_v1", "flask", "bypassed"),
-    ("flask_path_traversal_protected_v1", "flask", "enforced"),
-    ("flask_idor_vulnerable_v1", "flask", "bypassed"),
-    ("flask_idor_protected_v1", "flask", "enforced"),
-    ("fastapi_path_traversal_vulnerable_v1", "fastapi", "bypassed"),
-    ("fastapi_path_traversal_protected_v1", "fastapi", "enforced"),
-    ("fastapi_idor_vulnerable_v1", "fastapi", "bypassed"),
-    ("fastapi_idor_protected_v1", "fastapi", "enforced"),
+    ("fx_01d7c2_v1", "flask", "bypassed"),
+    ("fx_18a4e9_v1", "flask", "enforced"),
+    ("fx_2f6b10_v1", "flask", "bypassed"),
+    ("fx_3c8d57_v1", "flask", "enforced"),
+    ("fx_47e1a3_v1", "fastapi", "bypassed"),
+    ("fx_5b9c20_v1", "fastapi", "enforced"),
+    ("fx_6d04f8_v1", "fastapi", "bypassed"),
+    ("fx_7a2e61_v1", "fastapi", "enforced"),
 )
 
 
@@ -85,11 +86,9 @@ def _plan(case_type: str, *, identifier: str = ""):
 
 
 def _case_type(fixture_id: str) -> str:
-    return (
-        "path_traversal_possible"
-        if "path_traversal" in fixture_id
-        else "idor_bola_possible"
-    )
+    spec = get_fixture_spec(fixture_id)
+    assert spec is not None
+    return spec.case_type
 
 
 def _execution(result: ValidationResult) -> dict:
@@ -138,8 +137,8 @@ def test_registered_web_fixture_returns_existing_result_contract(
 @pytest.mark.parametrize(
     "fixture_id",
     (
-        "flask_path_traversal_vulnerable_v1",
-        "fastapi_path_traversal_vulnerable_v1",
+        "fx_01d7c2_v1",
+        "fx_47e1a3_v1",
     ),
 )
 def test_path_worker_covers_all_required_oracles(fixture_id):
@@ -187,8 +186,8 @@ def test_path_worker_covers_all_required_oracles(fixture_id):
 @pytest.mark.parametrize(
     "fixture_id",
     (
-        "flask_idor_vulnerable_v1",
-        "fastapi_idor_vulnerable_v1",
+        "fx_2f6b10_v1",
+        "fx_6d04f8_v1",
     ),
 )
 def test_idor_worker_distinguishes_authentication_owner_and_tenant(
@@ -239,12 +238,12 @@ def test_semantic_result_is_deterministic_across_spawned_runs():
     )
     first = run_isolated_web_validation_plan(
         plan,
-        fixture_id="flask_idor_protected_v1",
+        fixture_id="fx_3c8d57_v1",
         source_revision="fixture-source-v1",
     )
     second = run_isolated_web_validation_plan(
         plan,
-        fixture_id="flask_idor_protected_v1",
+        fixture_id="fx_3c8d57_v1",
         source_revision="fixture-source-v1",
     )
 
@@ -256,7 +255,7 @@ def test_raw_worker_response_attests_guards_without_claiming_os_sandbox():
     if not optional_framework_available("flask"):
         pytest.skip("optional dependency unavailable: flask")
     response = run_worker_request(WorkerRequest(
-        fixture_id="flask_path_traversal_protected_v1",
+        fixture_id="fx_18a4e9_v1",
         validation_plan_id="vp_0123456789abcdef",
         validation_plan_digest="a" * 64,
         source_revision="fixture-source-v1",
@@ -282,7 +281,7 @@ def test_fixture_case_type_mismatch_is_inconclusive():
     plan = _plan("path_traversal_possible", identifier="mismatch")
     result = run_isolated_web_validation_plan(
         plan,
-        fixture_id="flask_idor_protected_v1",
+        fixture_id="fx_3c8d57_v1",
         source_revision="fixture-source-v1",
     )
 
@@ -309,7 +308,7 @@ def test_runner_rejects_an_incorrect_plan_digest_before_spawn():
     plan = _plan("path_traversal_possible", identifier="wrong_digest")
     context = build_isolated_web_context(
         plan,
-        fixture_id="flask_path_traversal_protected_v1",
+        fixture_id="fx_18a4e9_v1",
         source_revision="fixture-source-v1",
     )
     tampered = replace(context, expected_plan_digest="f" * 64)
@@ -334,7 +333,7 @@ def test_existing_direct_executors_keep_their_original_semantics():
     )
     path_context = build_isolated_web_context(
         path_plan,
-        fixture_id="flask_path_traversal_protected_v1",
+        fixture_id="fx_18a4e9_v1",
         source_revision="fixture-source-v1",
     )
     assert path_context.adapter == "isolated_web_worker_v2"

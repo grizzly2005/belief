@@ -29,13 +29,17 @@ from belief.mcp.validation import (
     prepare_registered_fixture,
 )
 from belief.validation.execution_models import ValidationContractError
+from belief.validation.worker.registry import (
+    fixture_source_documents,
+    get_fixture_spec,
+)
 from belief.validation.web import optional_framework_available
 
 
 pytestmark = pytest.mark.security
 
-_FLASK_FIXTURE = "flask_path_traversal_vulnerable_v1"
-_FASTAPI_FIXTURE = "fastapi_idor_vulnerable_v1"
+_FLASK_FIXTURE = "fx_01d7c2_v1"
+_FASTAPI_FIXTURE = "fx_6d04f8_v1"
 
 
 def _prepare(
@@ -107,6 +111,20 @@ def test_fixture_contract_seed_never_impersonates_static_audit_case(
     assert prepared.plan.metadata["static_support"] is False
 
 
+def test_dynamic_fixture_evidence_does_not_rewrite_a_static_miss(tmp_path):
+    if not optional_framework_available("flask"):
+        pytest.skip("optional dependency unavailable: flask")
+    service = BeliefMCPTools(workspace_root=tmp_path)
+    prepared = _prepare(service, _FLASK_FIXTURE)
+
+    assert prepared["static_scan"]["matching_case_count"] == 0
+    result = _validate(service, prepared)
+    assert result["outcome"] == "bypassed"
+    assert result["maturity"] == "locally_evaluated"
+    assert result["static_support"] is False
+    assert result["static_case_provenance"] == []
+
+
 @pytest.mark.parametrize(
     "fixture_id",
     (_FLASK_FIXTURE, _FASTAPI_FIXTURE),
@@ -115,7 +133,9 @@ def test_registered_fixture_preparation_and_validation_succeeds(
     tmp_path,
     fixture_id,
 ):
-    framework = "flask" if fixture_id.startswith("flask_") else "fastapi"
+    spec = get_fixture_spec(fixture_id)
+    assert spec is not None
+    framework = spec.framework
     if not optional_framework_available(framework):
         pytest.skip(f"optional dependency unavailable: {framework}")
     service = BeliefMCPTools(workspace_root=tmp_path)
@@ -135,7 +155,9 @@ def test_registered_fixture_preparation_and_validation_succeeds(
     assert prepared["binding"]["execution_scope"] == (
         REGISTERED_FIXTURE_EXECUTION_SCOPE
     )
-    assert prepared["static_scan"]["files_scanned"] == 4
+    assert prepared["static_scan"]["files_scanned"] == len(
+        fixture_source_documents(spec)
+    )
     assert result["fixture_id"] == fixture_id
     assert result["evidence_scope"] == REGISTERED_FIXTURE_EXECUTION_SCOPE
     assert prepared["subject_kind"] == "validation_contract_seed"
@@ -312,7 +334,7 @@ def test_case_type_only_fixture_matching_is_rejected(tmp_path):
         _validate(
             service,
             prepared,
-            fixture_id="flask_path_traversal_protected_v1",
+            fixture_id="fx_18a4e9_v1",
         )
 
 
@@ -350,7 +372,7 @@ def test_run_and_plan_mismatch_are_rejected(tmp_path):
     first = _prepare(service, _FLASK_FIXTURE)
     second = _prepare(
         service,
-        "flask_path_traversal_protected_v1",
+        "fx_18a4e9_v1",
     )
 
     with pytest.raises(BeliefMCPError, match="does not exist"):
