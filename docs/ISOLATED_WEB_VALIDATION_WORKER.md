@@ -179,8 +179,9 @@ symlink, hardlink, enumeration, stat/lstat, readlink, truncate, chmod, and
 reviewed `shutil` copy/move/rmtree operations. Paths and both ends of two-path
 operations must remain below the fixed child root. Internal ancestor probes
 needed to resolve an allowed path do not make parent metadata directly
-available. This remains a Python-level policy and does not mediate native
-direct system calls.
+available. POSIX `rmtree` may use internal directory descriptors only after the
+subtree is validated; caller descriptors and callbacks remain denied. This
+remains a Python-level policy and does not mediate native direct system calls.
 
 Full threat-model details and residual limitations are in
 `docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md`.

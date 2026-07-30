@@ -204,6 +204,11 @@ ancestor probes while resolution is active, and then validates the resolved
 target. A fixture still cannot directly stat/lstat the temporary parent or use
 `..` to resolve outside the child root.
 
+On POSIX, the standard library's safe `shutil.rmtree()` implementation uses
+directory file descriptors internally. BELIEF permits those calls only after a
+subtree path has passed the outer guard and rejects caller-supplied rmtree
+options/callbacks. Direct caller `dir_fd` mutation remains denied.
+
 Framework and fixed adapter imports occur before this guard so trusted
 installed packages can be loaded. Preparation of the fixture application does
 not. The policy is Python-level and has the usual time-of-check/time-of-use and

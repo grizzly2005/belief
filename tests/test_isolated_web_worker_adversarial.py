@@ -383,6 +383,44 @@ def test_filesystem_policy_allows_a_complete_inside_lifecycle(tmp_path):
     assert list(root.iterdir()) == []
 
 
+def test_rmtree_internal_dir_fd_cannot_be_caller_controlled(tmp_path):
+    root = tmp_path / "worker"
+    child = root / "child"
+    child.mkdir(parents=True)
+    (child / "payload.txt").write_text("payload", encoding="utf-8")
+    state = WorkerPolicyState()
+
+    with filesystem_policy(root, state):
+        with pytest.raises(WorkerPolicyViolation, match="filesystem"):
+            shutil.rmtree(child, ignore_errors=True)
+
+    assert child.is_dir()
+    assert state.io_policy_violations == ["filesystem:rmtree_options"]
+
+
+@pytest.mark.skipif(
+    os.unlink not in os.supports_dir_fd,
+    reason="dir_fd unlink is unavailable on this platform",
+)
+def test_direct_unlink_dir_fd_remains_denied(tmp_path):
+    root = tmp_path / "worker"
+    root.mkdir()
+    target = root / "payload.txt"
+    target.write_text("payload", encoding="utf-8")
+    descriptor = os.open(root, os.O_RDONLY)
+    state = WorkerPolicyState()
+
+    try:
+        with filesystem_policy(root, state):
+            with pytest.raises(WorkerPolicyViolation, match="filesystem"):
+                os.unlink(target.name, dir_fd=descriptor)
+    finally:
+        os.close(descriptor)
+
+    assert target.is_file()
+    assert state.io_policy_violations == ["filesystem:unlink_dir_fd"]
+
+
 def test_pathlike_reentrancy_cannot_read_a_sibling(tmp_path):
     root = tmp_path / "worker"
     root.mkdir()

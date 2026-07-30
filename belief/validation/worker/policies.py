@@ -264,6 +264,10 @@ def filesystem_policy(
         *,
         dir_fd: int | None = None,
     ) -> int:
+        if getattr(guard_state, "active", False):
+            if dir_fd is None:
+                return original_os_open(path, flags, mode)
+            return original_os_open(path, flags, mode, dir_fd=dir_fd)
         reject_dir_fd("os_open", {"dir_fd": dir_fd})
         guard(path, action="os_open")
         return original_os_open(path, flags, mode)
@@ -361,6 +365,12 @@ def filesystem_policy(
         *,
         dir_fd: int | None = None,
     ) -> None:
+        if getattr(guard_state, "active", False):
+            if dir_fd is None:
+                original_unlink(path)
+            else:
+                original_unlink(path, dir_fd=dir_fd)
+            return
         reject_dir_fd("unlink", {"dir_fd": dir_fd})
         guard(path, action="unlink", forbid_root=True)
         original_unlink(path)
@@ -388,6 +398,12 @@ def filesystem_policy(
         *,
         dir_fd: int | None = None,
     ) -> None:
+        if getattr(guard_state, "active", False):
+            if dir_fd is None:
+                original_rmdir(path)
+            else:
+                original_rmdir(path, dir_fd=dir_fd)
+            return
         reject_dir_fd("rmdir", {"dir_fd": dir_fd})
         guard(path, action="rmdir", forbid_root=True)
         original_rmdir(path)
@@ -503,10 +519,14 @@ def filesystem_policy(
         return guarded
 
     def guarded_rmtree(path: Any, *args: Any, **kwargs: Any) -> None:
-        if kwargs.get("dir_fd") is not None:
-            state.deny("filesystem", "rmtree_dir_fd")
+        if args or kwargs:
+            state.deny("filesystem", "rmtree_options")
         guard(path, action="rmtree", forbid_root=True)
-        original_rmtree(path, *args, **kwargs)
+        guard_state.active = True
+        try:
+            original_rmtree(path)
+        finally:
+            guard_state.active = False
 
     try:
         patches.set(builtins, "open", guarded_builtin_open)
