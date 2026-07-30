@@ -55,7 +55,7 @@ adapter, host, port, or arbitrary plan.
 The versioned binding is:
 
 ```text
-belief.registered_fixture_binding.v1
+belief.registered_fixture_binding.v2
 ```
 
 It contains:
@@ -72,10 +72,18 @@ It contains:
 - fixed execution scope `registered_transparent_fixture_only`.
 
 Preparation reads the hardcoded source-document manifest, computes the exact
-digests, writes those documents only to a private temporary directory, runs the
-existing static analyzer on that directory, generates a deterministic matching
-case, and builds the canonical plan. Source text is not retained in the MCP run
-store.
+digests, writes those documents only to a private temporary directory, and runs
+the authoritative static analyzer on that directory. Real findings and
+`AuditCase` objects are preserved exactly as pipeline output.
+
+Preparation also creates a versioned `ValidationContractSeed` so the fixed
+fixture contract can be exercised when the scanner has no matching case. The
+seed is stored separately and is never inserted into `audit_cases`. A plan made
+from a seed carries `origin = explicit_fixture_contract` and
+`static_support = false`; it cannot reach `statically_supported`. That maturity
+requires at least one matching real pipeline case and explicit static-case
+provenance. Source text and complete analysis output are not retained in the
+MCP run store.
 
 Execution reconstructs the canonical plan and recomputes every binding field
 from the current registry. Any run, plan, case, fixture, registry, source,
@@ -111,12 +119,26 @@ The worker:
 - resolves only a hardcoded registry entry;
 - uses canonical bounded JSON bytes over one-way pipes;
 - sanitizes the child environment;
-- confines fixture filesystem access to a parent-owned temporary root;
+- applies resource limits before fixture preparation;
+- confines fixture preparation and execution to the fixed child root of a
+  parent-owned temporary container;
 - blocks network, shell, subprocess, and nested-process APIs;
 - captures and sanitizes bounded stdout/stderr;
 - enforces a hard timeout and best-effort optional POSIX resource limits;
 - terminates, joins, closes, and removes parent-owned temporary state on every
   terminal path.
+
+Public capabilities describe that boundary literally:
+
+```text
+worker_process_spawn = true
+target_process_spawn = false
+allowlisted_framework_imports = true
+caller_controlled_imports = false
+temporary_fixture_writes = true
+target_workspace_writes = false
+live_network_target_allowed = false
+```
 
 Exact controls and platform limitations are recorded in
 [`ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md`](ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md).
@@ -130,14 +152,24 @@ Process-local bounds are:
 - 32 stored runs;
 - 32 validation results per run;
 - 128 validation results in total.
+- 512 audit cases per run;
+- 64 KiB of canonical serialized data per case;
+- 4 MiB of canonical serialized data per run;
+- 16 MiB of canonical serialized store data in total;
+- 64 MiB of accounted deep Python store memory;
+- 32 entries per resource page;
+- 512 KiB per MCP response.
 
 The executor queue cannot grow beyond the in-flight request bound. A second
 validation while the capacity is occupied receives an actionable busy tool
 error. It is not silently queued.
 
-The run store holds deep copies. Repeated identical results replace the same
-content-derived ID. Per-run and global insertion order define deterministic
-eviction.
+The run store holds deep copies and accounts both canonical serialized bytes
+and recursively visited Python-object memory, including the result index.
+Repeated identical results replace the same content-derived ID. Per-run and
+global insertion order define deterministic eviction. Status and capabilities
+publish the effective configured limits, which may be lower than these reviewed
+maxima.
 
 ## Cancellation lifecycle
 
@@ -145,7 +177,7 @@ The stdio reader remains active while tool work runs in a bounded thread pool.
 Active JSON-RPC request IDs map to thread-safe execution contexts and, once
 created, to the worker handle.
 
-A valid `notifications/cancelled` notification:
+A valid `notifications/cancelled` notification for dynamic validation:
 
 1. marks the active request cancelled;
 2. cancels the current worker handle, or immediately cancels a handle registered
@@ -160,6 +192,11 @@ are ignored. `initialize` runs outside the cancellable executor. Completion and
 cancellation are serialized so only one wins. On EOF or shutdown, the server
 cancels all remaining execution contexts and waits for worker cleanup.
 
+The published cancellation scope is exactly
+`dynamic_validation_only`. Cancelling another tool suppresses its eventual
+response but may not stop its internal computation or release its worker thread
+early. BELIEF does not claim general active cancellation.
+
 The transport serializes stdout writes with one lock and emits one complete
 JSON object per line. Fixture output is captured in the child and never written
 to MCP stdout. Duplicate active request IDs are rejected. Protocol errors remain
@@ -168,11 +205,12 @@ remain safe tool errors.
 
 ## Stored result boundary
 
-The public MCP result contains only projected semantic evidence:
+The public MCP result contains only projected bounded evidence:
 
 - result, run, case, plan, and fixture identifiers;
 - trusted binding and plan/source digests;
-- worker semantic digest;
+- worker evidence and attestation digests (`semantic_digest` remains a
+  compatibility alias);
 - outcome and functional baseline;
 - bounded observation projections;
 - bounded limitations;
@@ -193,17 +231,26 @@ report_ready = false
 confirmed_vulnerability = false
 ```
 
-Allowed maturity is limited to:
+Normal fixture projections use these maturity values:
 
+- `contract_prepared`;
 - `candidate`;
 - `statically_supported`;
-- `locally_reproduced_on_registered_fixture`.
+- `locally_evaluated`.
 
-`locally_reproduced_on_registered_fixture` means that the registered fixture
-ran with a valid functional baseline and evaluated local oracles. A `bypassed`
-outcome describes that fixture's behavior only. An `enforced` outcome also
-describes only that fixture. Neither establishes the behavior, reachability,
-impact, deployment state, or reportability of an arbitrary target.
+`contract_prepared` means only that an explicit fixture contract produced a
+plan. `statically_supported` requires a real matching `AuditCase` from the
+authoritative static pipeline. `locally_evaluated` requires a completed fixture
+run, a passing required functional baseline, and at least one evaluated primary
+security oracle; an unevaluated required security oracle prevents a safe
+conclusion. A `bypassed` or `enforced` outcome describes that fixture only.
+None of these states establishes the behavior, reachability, impact,
+deployment state, or reportability of an arbitrary target.
+
+Timeout, dependency-unavailable, policy-violation, child-crash, and malformed
+child-response outcomes are retained as projected `inconclusive` abstentions
+with worker status/error codes. Explicit cancellation, binding failure, and a
+malformed caller request do not store a normal result.
 
 Target confirmation remains deferred to an explicitly authorized,
 target-specific workflow and a human reviewer.

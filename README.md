@@ -100,8 +100,10 @@ validation-plan generation, run comparison, the transparent local benchmark,
 and local execution only for plans prepared from and exactly bound to
 first-party registered fixtures. Arbitrary project plans remain non-executable.
 Runs and bounded projected results remain in memory. The MCP surface has no
-external network, arbitrary subprocess, shell, Docker, arbitrary adapter,
-target-write, target-confirmation, or SusVibes holdout capability.
+live network target, target process, shell, Docker, caller-controlled import,
+arbitrary adapter, target-workspace write, target-confirmation, or SusVibes
+holdout capability. It does spawn one bounded worker process, performs
+allowlisted framework imports, and writes temporary fixture state.
 
 See [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md) for the Codex configuration,
 resources, exact tool contracts, and security boundary, and
@@ -598,24 +600,30 @@ FastAPI path-traversal and IDOR/BOLA fixtures. It uses Flask `test_client()` or
 a direct local ASGI transport; it never starts a real server or accepts a URL,
 port, module, callable, command, or fixture path from the caller.
 
-The v2 worker requires canonical duplicate-free JSON, owns a private temporary
-root from the parent, replaces the child environment with an allowlist,
-confines ordinary fixture file access, blocks network/process APIs, captures
-bounded stdout/stderr, supports cancellation, and binds results to registry
-and fixture-source digests. Crashes, timeouts, cancellations, policy
-violations, and missing optional frameworks remain explicit `inconclusive`
-results. It reuses the existing `ValidationExecutionSummary` and
-`ValidationResult` semantics. This is an isolated process with Python-level
-controls, not a secure operating-system sandbox.
+The v3 worker requires canonical duplicate-free bounded JSON. The parent owns
+an outer temporary container and fixed child root, replaces the child
+environment with an allowlist, applies resource limits before preparation, and
+confines both fixture preparation and execution. It blocks reviewed
+network/process and filesystem escape APIs, captures bounded stdout/stderr,
+supports cancellation, and separately binds evidence, runtime attestation, and
+the full response. Crashes, timeouts, cancellations, policy violations, and
+missing optional frameworks remain explicit `inconclusive` results. This is an
+isolated process with Python-level controls, not a secure operating-system
+sandbox.
 
 See
 [`docs/ISOLATED_WEB_VALIDATION_WORKER.md`](docs/ISOLATED_WEB_VALIDATION_WORKER.md)
 for the protocol, registry, platform boundary, Python API, and limitations, and
 [`docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md`](docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md)
 for the independent threat model and confirmed defects.
-The stacked MCP v0.2 surface may execute only an exact registered-fixture plan.
-Its results are always scoped to `registered_transparent_fixture_only`, set
-`target_vulnerability_confirmed=false`, and require human confirmation. It
+The MCP v0.2 surface may execute only an exact registered-fixture plan. Fixture
+IDs are opaque, each behavior has a distinct fixed source module, and
+evaluator-only outcome labels are excluded from scanned/executed sources. MCP
+keeps synthetic `ValidationContractSeed` objects separate from real
+`AuditCase` objects: a seed alone can reach only `contract_prepared`, never
+`statically_supported`. Results are scoped to
+`registered_transparent_fixture_only`, set
+`target_vulnerability_confirmed=false`, and require human confirmation. MCP
 does not validate arbitrary Flask or FastAPI projects.
 
 Run the separate eight-case local experiment:

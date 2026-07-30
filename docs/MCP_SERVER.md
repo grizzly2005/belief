@@ -92,15 +92,20 @@ to the dynamic validator.
 
 ```json
 {
-  "fixture_id": "flask_path_traversal_vulnerable_v1"
+  "fixture_id": "fx_01d7c2_v1"
 }
 ```
 
 It resolves that ID through the immutable first-party registry, copies the
 registry's inspectable source documents into a private temporary directory,
-statically scans exactly those documents, generates a matching `AuditCase`,
-builds a canonical `ValidationPlan`, and attaches
-`belief.registered_fixture_binding.v1`.
+and statically scans exactly those documents. Actual findings and `AuditCase`
+objects from the authoritative pipeline are preserved.
+
+An explicit `ValidationContractSeed` is stored separately from `audit_cases`
+and may generate a canonical plan when no matching static case exists. Such a
+plan has `static_support = false` and maturity `contract_prepared`; it cannot
+become `statically_supported`. The preparation attaches
+`belief.registered_fixture_binding.v2`.
 
 It accepts no source, path, module, callable, URL, expression, adapter, plan
 JSON, host, or port.
@@ -117,8 +122,11 @@ source_digest = 4e42c82b7d0a210350cc99fcc698e478f1b62b76785a413d40525b0555b70c52
 
 It requires a separate startup grant, the same authorization ID in the tool
 request, the exact revision and digest, and a literal access acknowledgement.
-It reads only the configured workspace root, verifies the complete 79-file
-source inventory before and after static analysis, and creates
+The grant is an explicit local-operator opt-in, not cryptographic authorization
+or proof of project authority. The adapter reads and attests every source byte,
+creates a private immutable snapshot from those bytes, verifies the snapshot,
+analyzes the snapshot instead of the live workspace, and re-attests the live
+workspace afterward. It creates
 `belief.authorized_project_binding.v1` bindings with
 `dynamic_execution_authorized = false`.
 
@@ -135,7 +143,7 @@ projection is `inconclusive` with `execution_status = abstained`. See
 {
   "run_id": "run_...",
   "plan_id": "vp_...",
-  "fixture_id": "flask_path_traversal_vulnerable_v1",
+  "fixture_id": "fx_01d7c2_v1",
   "timeout_ms": 5000,
   "acknowledge_local_execution": true
 }
@@ -180,25 +188,51 @@ belief://runs/{run_id}/validation-plans
 belief://runs/{run_id}/validation-results
 ```
 
+Collection resources are paginated:
+
+```text
+belief://runs/{run_id}/audit-cases?cursor=0&limit=32
+```
+
+`cursor` is a zero-based integer and `limit` is at most 32. Responses include
+`next_cursor` and `next_uri` when another page exists.
+
 The process-memory store retains defensive copies of summaries, normalized
 audit cases, generated plans, trusted fixture bindings, non-executable
 authorized-project bindings, and projected validation results. It does not
 retain fixture source text, the complete static analysis, the complete
 environment, raw child output, tracebacks, or temporary paths.
 
-Limits are fixed:
+Reviewed maxima are:
 
 - 32 stored runs;
 - 32 validation results per run;
 - 128 validation results across the server;
+- 512 cases per run;
+- 64 KiB of canonical serialized data per case;
+- 4 MiB of canonical serialized data per run;
+- 16 MiB of canonical serialized store data;
+- 64 MiB of accounted deep Python store memory;
+- 32 collection entries per resource page;
+- 512 KiB per MCP response;
 - one concurrent local validation;
 - four in-flight JSON-RPC requests;
 - no unbounded execution queue.
+
+Constructor configuration may lower storage limits. `belief_status` and
+`belief://capabilities` publish the effective values rather than only global
+maxima.
 
 Repeated semantically identical validation produces the same content-derived
 result ID and replaces the existing entry. Validation results use deterministic
 insertion-order eviction; runs use deterministic least-recently-accessed
 eviction.
+
+At the JSON-RPC boundary, each input line is limited to 1 MiB in both
+characters and UTF-8 bytes. JSON is rejected above depth 12, 4,096 nodes, 128
+items per collection, 4,096 characters per string, or 256 characters for a
+string request ID. Duplicate keys, non-finite numbers, malformed Unicode,
+excess recursion, and oversized responses are rejected.
 
 ## Concurrency and cancellation
 
@@ -206,16 +240,17 @@ The stdio reader is separate from tool execution. A bounded executor handles
 requests, a lock serializes complete JSON-RPC response lines, and duplicate
 active request IDs are rejected.
 
-`notifications/cancelled` maps its `requestId` to an active execution. A valid
-cancellation marks the request, cancels the worker handle, releases pipes and
-temporary state through the worker lifecycle, stores no normal result, and
-suppresses the normal response. Unknown, malformed, completed, or late
-cancellations are ignored. `initialize` is handled synchronously and cannot be
-cancelled. Server shutdown cancels every remaining active worker and waits for
-cleanup.
+`notifications/cancelled` maps its `requestId` to an active execution. For
+`belief_validate_plan`, a valid cancellation marks the request, cancels the
+worker handle, releases pipes and temporary state through the worker lifecycle,
+stores no normal result, and suppresses the normal response. Unknown,
+malformed, completed, or late cancellations are ignored. `initialize` is
+handled synchronously and cannot be cancelled. Server shutdown cancels every
+remaining active worker and waits for cleanup.
 
-Cancellation is best effort at the JSON-RPC boundary. It does not implement the
-MCP tasks extension.
+The active cancellation scope is `dynamic_validation_only`. For non-worker
+tools, cancellation suppresses the eventual response but may not stop internal
+computation. It does not implement the MCP tasks extension.
 
 ## Evidence boundary
 
@@ -227,16 +262,24 @@ target_vulnerability_confirmed = false
 human_confirmation_required = true
 ```
 
-Allowed maturity values are `candidate`, `statically_supported`, and
-`locally_reproduced_on_registered_fixture`. BELIEF never promotes an MCP result
-to `human_confirmed`, `report_ready`, or `confirmed_vulnerability`.
+Fixture results use `contract_prepared`, `candidate`,
+`statically_supported`, and `locally_evaluated`. BELIEF never promotes an MCP
+result to `human_confirmed`, `report_ready`, or
+`confirmed_vulnerability`.
 
-`locally_reproduced_on_registered_fixture` means the built-in fixture completed
-with a valid functional baseline and evaluated local security oracles. It says
-nothing about whether an arbitrary Flask or FastAPI project has the same
-behavior. See
+`statically_supported` requires a real matching `AuditCase` produced by the
+authoritative pipeline; a synthetic contract seed is insufficient.
+`locally_evaluated` requires a completed built-in fixture, a passing required
+functional baseline, and at least one evaluated primary security oracle.
+Required unevaluated security evidence forces abstention. It says nothing about
+whether an arbitrary Flask or FastAPI project has the same behavior. See
 [`MCP_DYNAMIC_VALIDATION_SECURITY.md`](MCP_DYNAMIC_VALIDATION_SECURITY.md) for
 the threat model and lifecycle.
+
+Timeout, missing dependency, policy violation, child crash, and malformed child
+response are stored as `inconclusive` abstentions with worker status and error
+codes. Explicit cancellation, binding errors, and malformed caller requests do
+not store a normal result.
 
 The real-project pilot has a different, non-executable evidence scope:
 
@@ -265,6 +308,18 @@ MCP v0.2 does not expose:
 - arbitrary fixture definitions;
 - SusVibes holdout access;
 - a confirmed-vulnerability verdict.
+
+Capability resources state the actual behavior explicitly:
+
+```text
+worker_process_spawn = true
+target_process_spawn = false
+allowlisted_framework_imports = true
+caller_controlled_imports = false
+temporary_fixture_writes = true
+target_workspace_writes = false
+live_network_target_allowed = false
+```
 
 Directories named `benchmark_susvibes` are excluded by the common Python parser
 and rejected as direct scan targets. The benchmark tool binds to the

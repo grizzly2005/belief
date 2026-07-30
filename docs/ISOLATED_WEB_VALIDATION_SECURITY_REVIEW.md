@@ -76,16 +76,18 @@ The review confirmed these concrete defects:
 
 ## Corrected architecture
 
-The parent creates a unique private temporary root and two one-way
-`multiprocessing.Connection` pipes. It starts an explicit `spawn` daemon child
-using the inert `belief.validation.worker.bootstrap` target. Caller-controlled
-data crosses only as canonical UTF-8 JSON through `send_bytes` and
-`recv_bytes`; no caller object graph is unpickled.
+The parent creates a unique private outer container, a fixed `child` root
+inside it, and two one-way `multiprocessing.Connection` pipes. It starts an
+explicit `spawn` daemon child using the inert
+`belief.validation.worker.bootstrap` target. Caller-controlled data crosses
+only as canonical UTF-8 JSON through `send_bytes` and `recv_bytes`; no caller
+object graph is unpickled.
 
 The bootstrap module has only top-level standard-library imports. Before
 loading BELIEF adapters or a framework, it:
 
-1. validates and enters the parent-owned private root;
+1. validates the outer container and fixed child relationship, then enters the
+   child root;
 2. creates private home, profile, app-data, XDG, cache, and temp directories;
 3. replaces the environment with the allowlist below;
 4. redirects native stdout/stderr file descriptors to the null device;
@@ -95,9 +97,9 @@ loading BELIEF adapters or a framework, it:
    hardcoded registry.
 
 The selected adapter and framework are then imported from fixed code paths.
-Required framework initialization and metadata reads complete before the
-filesystem policy is installed. Only the prepared local request/oracle
-execution runs under the filesystem guard.
+Required lazy framework metadata is preloaded, resource limits are applied, and
+the filesystem policy is installed around both fixture preparation and
+execution. The fixture application itself is therefore created under policy.
 
 ## Protocol controls
 
@@ -105,9 +107,12 @@ Request and response schemas are:
 
 ```text
 belief.validation_worker_request.v2
-belief.validation_worker_response.v2
-belief.validation_worker_attestation.v2
+belief.validation_worker_response.v3
+belief.validation_worker_attestation.v3
 ```
+
+The reader verifies canonical v2 responses and migrates them in memory. Writers
+emit only v3.
 
 The decoder enforces:
 
@@ -180,17 +185,23 @@ startup.
 
 ## Filesystem policy
 
-Fixture request/oracle execution permits ordinary file operations only when
-the resolved target remains below the worker root. Relative paths are resolved
-from that root. Absolute paths, `..` escapes, symlink escapes, custom openers,
-and `dir_fd` opens outside the model are denied.
+Fixture preparation and request/oracle execution permit ordinary file
+operations only when the resolved target remains below the fixed child root.
+Relative paths are resolved from that root. Absolute escapes, `..` escapes,
+symlink escapes, custom openers, and unsupported `dir_fd` operations are
+denied.
 
 The guard covers `builtins.open`, `io.open`, `os.open`,
-`pathlib.Path.open/read_text/read_bytes/write_text/write_bytes`, and `chdir`.
-Framework imports and required initialization are intentionally completed
-before this guard so trusted installed packages can be loaded. The policy is
-Python-level and has the usual time-of-check/time-of-use and native-code
-limitations.
+`pathlib.Path.open/read_text/read_bytes/write_text/write_bytes`, `chdir`,
+rename, replace, remove, unlink, directory creation/removal, symlink, hardlink,
+listdir/scandir, stat/lstat, readlink, truncate, chmod, and reviewed `shutil`
+copy/move/rmtree operations. Both paths of a two-path operation are checked;
+renaming, replacing, or removing the child root itself is rejected.
+
+Framework and fixed adapter imports occur before this guard so trusted
+installed packages can be loaded. Preparation of the fixture application does
+not. The policy is Python-level and has the usual time-of-check/time-of-use and
+native-code limitations.
 
 The path-traversal fixture still models two application boundaries below the
 worker root: `allowed/` is the application authorization root, while
@@ -215,9 +226,33 @@ Every observed denial becomes a bounded `category:action` event. A policy
 violation produces an inconclusive result; it can never become `bypassed` or
 `enforced`.
 
+## Evidence conclusion policy
+
+One shared evidence policy is used by the worker, runner, benchmark, MCP
+projection, and metrics. Every observation declares one role:
+
+```text
+functional_baseline
+primary_security
+secondary_security
+optional
+```
+
+It also declares whether it is required for a conclusion. A completed process
+is not sufficient: a conclusion requires a passing required baseline and at
+least one evaluated primary-security oracle. An unevaluated required security
+oracle forces abstention; a failed evaluated security oracle produces
+`bypassed`; only passing required security evidence can produce `enforced`.
+Missing optional evidence remains an explicit limitation.
+
+Cross-field response validation rejects completed responses with protocol
+errors, failed responses with observations or a baseline, and any
+cancelled/timed-out/invalid/policy-violating response that attempts a conclusive
+outcome.
+
 ## Lifecycle, cancellation, and output
 
-The parent owns the temporary root and all handles. Normal completion,
+The parent owns the outer container, child root, and all handles. Normal completion,
 timeout, cancellation, crash, malformed output, oversized output, start
 failure, and send failure converge on the same release path:
 
@@ -227,12 +262,12 @@ failure, and send failure converge on the same release path:
 4. join;
 5. call `kill()` and join again if still alive;
 6. close every pipe endpoint and process handle;
-7. remove the verified temp-root path;
-8. attest the cleanup result.
+7. remove the verified outer-container path, independently of the child path;
+8. attest cleanup only when the complete outer container is absent.
 
 `WorkerRunHandle` permits cancellation before start and during execution.
 Runtime child exit codes are retained only in diagnostics and are excluded
-from semantic digests.
+from evidence digests.
 
 Python stdout and stderr are captured in separate bounded 4 KiB sinks. ANSI
 escapes and unsafe controls are removed; token-shaped and assignment-shaped
@@ -244,7 +279,7 @@ not included in validation semantics.
 
 The hard wall-clock timeout is enforced by the parent on Windows and POSIX.
 On POSIX, the child also attempts limits for CPU time, open descriptors, file
-size, and child process count after framework preparation. Each control is
+size, and child process count before fixture preparation. Each control is
 attested independently as `true`, `false`, or `null`.
 
 Windows reports these POSIX controls as unavailable. BELIEF does not claim an
@@ -252,10 +287,17 @@ unreliable Windows equivalent.
 
 ## Determinism and attribution
 
-The semantic digest includes observations, normalized errors, limitations,
-and the versioned attestation. It excludes correlation ID, duration, child exit
-code, stdout/stderr, cancellation text, temporary paths, process IDs,
-timestamps, memory addresses, and unrestricted exception strings.
+The v3 protocol separates three hashes:
+
+- `evidence_digest` covers observations, baseline, normalized errors, and
+  stable limitations, but excludes runtime/platform attestation;
+- `attestation_digest` covers the complete versioned runtime attestation;
+- `response_digest` covers the full response envelope.
+
+`semantic_digest` is a deprecated compatibility alias for
+`evidence_digest`. Correlation ID, duration, child exit code, stdout/stderr,
+cancellation text, temporary paths, and runtime versions cannot perturb the
+evidence digest.
 
 The attestation binds:
 
@@ -269,10 +311,13 @@ The attestation binds:
 - per-control resource-limit state;
 - observed policy violations and stable limitations.
 
-Fixture behavior now uses an independent `security_enforced` field. The public
-expected-posture label and fixture ID do not drive an oracle or verdict.
-Mutation tests rename IDs and swap posture labels while retaining behavior and
-prove that observations remain unchanged.
+Each fixture behavior now lives in a separate fixed application module behind
+an opaque public ID. There is no runtime `security_enforced` switch and no
+expected-posture label in scanner, worker, MCP, or plan-generation input.
+Ground truth exists only in evaluator-side metadata. Tests prove that changing
+evaluator labels or fixture IDs cannot change execution, that paired
+applications have different source digests, and that a static miss remains a
+static miss.
 
 Evidence still concerns the registered transparent fixture. It must not be
 attributed to an arbitrary scanned target. The stacked MCP v0.2 implementation
@@ -287,8 +332,9 @@ See [`MCP_DYNAMIC_VALIDATION_SECURITY.md`](MCP_DYNAMIC_VALIDATION_SECURITY.md).
 - Native extensions, direct system calls, `ctypes`, interpreter compromise,
   and kernel compromise are outside scope.
 - Installed third-party framework code is trusted for this boundary.
-- Framework imports and explicit preparation read installed package/source
-  files before the fixture filesystem guard.
+- Allowlisted framework/fixed-adapter imports and lazy framework metadata reads
+  occur before the fixture filesystem guard; fixture application preparation
+  occurs under it.
 - POSIX resource-limit availability varies by kernel and invocation authority.
 - Symlink testing can be unavailable on Windows without suitable privileges.
 - A killed child cannot supply trustworthy child-side policy state; the parent
