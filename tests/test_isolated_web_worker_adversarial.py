@@ -70,6 +70,28 @@ def test_platform_attestation_label_never_requires_a_subprocess() -> None:
     assert state.io_policy_violations == []
 
 
+def test_path_resolve_allows_inside_without_exposing_parent_metadata(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "worker"
+    inside = root / "nested" / "item.txt"
+    inside.parent.mkdir(parents=True)
+    inside.write_text("inside", encoding="utf-8")
+    state = WorkerPolicyState()
+
+    with filesystem_policy(root, state):
+        assert inside.resolve() == inside
+        with pytest.raises(WorkerPolicyViolation, match="filesystem"):
+            os.lstat(root.parent)
+        with pytest.raises(WorkerPolicyViolation, match="filesystem"):
+            (root / "..").resolve()
+
+    assert state.io_policy_violations == [
+        "filesystem:lstat",
+        "filesystem:path_resolve",
+    ]
+
+
 def _request(
     fixture_id: str = "fx_18a4e9_v1",
     *,

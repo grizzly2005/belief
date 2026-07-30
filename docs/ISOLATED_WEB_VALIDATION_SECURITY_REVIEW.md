@@ -192,11 +192,17 @@ symlink escapes, custom openers, and unsupported `dir_fd` operations are
 denied.
 
 The guard covers `builtins.open`, `io.open`, `os.open`,
-`pathlib.Path.open/read_text/read_bytes/write_text/write_bytes`, `chdir`,
+`pathlib.Path.open/read_text/read_bytes/write_text/write_bytes/resolve`,
+`chdir`,
 rename, replace, remove, unlink, directory creation/removal, symlink, hardlink,
 listdir/scandir, stat/lstat, readlink, truncate, chmod, and reviewed `shutil`
 copy/move/rmtree operations. Both paths of a two-path operation are checked;
 renaming, replacing, or removing the child root itself is rejected.
+
+`Path.resolve()` validates the lexical candidate, permits only its internal
+ancestor probes while resolution is active, and then validates the resolved
+target. A fixture still cannot directly stat/lstat the temporary parent or use
+`..` to resolve outside the child root.
 
 Framework and fixed adapter imports occur before this guard so trusted
 installed packages can be loaded. Preparation of the fixture application does

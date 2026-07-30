@@ -174,11 +174,13 @@ CPU, descriptor, file-size, and child-count limits; Windows reports those
 controls as unavailable.
 
 Filesystem policy guards ordinary opens and `Path` reads/writes as well as
-rename, replace, remove, unlink, directory creation/removal, symlink, hardlink,
-enumeration, stat/lstat, readlink, truncate, chmod, and reviewed `shutil`
-copy/move/rmtree operations. Paths and both ends of two-path operations must
-remain below the fixed child root. This remains a Python-level policy and does
-not mediate native direct system calls.
+path resolution, rename, replace, remove, unlink, directory creation/removal,
+symlink, hardlink, enumeration, stat/lstat, readlink, truncate, chmod, and
+reviewed `shutil` copy/move/rmtree operations. Paths and both ends of two-path
+operations must remain below the fixed child root. Internal ancestor probes
+needed to resolve an allowed path do not make parent metadata directly
+available. This remains a Python-level policy and does not mediate native
+direct system calls.
 
 Full threat-model details and residual limitations are in
 `docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md`.

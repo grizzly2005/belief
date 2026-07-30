@@ -122,6 +122,7 @@ def filesystem_policy(
     original_path_read_bytes = Path.read_bytes
     original_path_write_text = Path.write_text
     original_path_write_bytes = Path.write_bytes
+    original_path_resolve = Path.resolve
     original_chdir = os.chdir
     original_rename = os.rename
     original_replace = os.replace
@@ -286,6 +287,31 @@ def filesystem_policy(
     def guarded_write_bytes(path: Path, *args: Any, **kwargs: Any) -> int:
         guard(path, action="write_bytes")
         return original_path_write_bytes(path, *args, **kwargs)
+
+    def guarded_path_resolve(
+        path: Path,
+        strict: bool = False,
+    ) -> Path:
+        if getattr(guard_state, "active", False):
+            return original_path_resolve(path, strict=strict)
+        try:
+            raw = os.fsdecode(os.fspath(path))
+            if "\x00" in raw:
+                raise ValueError
+            lexical = Path(os.path.abspath(os.path.normpath(raw)))
+            lexical.relative_to(allowed_root)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            state.deny("filesystem", "path_resolve")
+        guard_state.active = True
+        try:
+            resolved = original_path_resolve(path, strict=strict)
+        finally:
+            guard_state.active = False
+        try:
+            resolved.relative_to(allowed_root)
+        except ValueError:
+            state.deny("filesystem", "path_resolve")
+        return resolved
 
     def guarded_chdir(path: Any) -> None:
         guard(path, action="chdir")
@@ -491,6 +517,7 @@ def filesystem_policy(
         patches.set(Path, "read_bytes", guarded_read_bytes)
         patches.set(Path, "write_text", guarded_write_text)
         patches.set(Path, "write_bytes", guarded_write_bytes)
+        patches.set(Path, "resolve", guarded_path_resolve)
         patches.set(os, "chdir", guarded_chdir)
         patches.set(os, "rename", guarded_rename)
         patches.set(os, "replace", guarded_replace)
