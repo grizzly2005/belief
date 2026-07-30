@@ -80,6 +80,7 @@ class _StoredRun:
     run_id: str
     target: str
     cases: dict[str, dict[str, Any]]
+    validation_contract_seeds: dict[str, dict[str, Any]]
     summary: dict[str, Any]
     plans: dict[str, dict[str, Any]] = field(default_factory=dict)
     bindings: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -145,11 +146,35 @@ class _RunStore:
                         )
                     cases[case_id] = copy.deepcopy(raw_case)
 
+            raw_seeds = snapshot.get("validation_contract_seeds")
+            validation_contract_seeds: dict[
+                str,
+                dict[str, Any],
+            ] = {}
+            if isinstance(raw_seeds, list):
+                for raw_seed in raw_seeds:
+                    if not isinstance(raw_seed, dict):
+                        continue
+                    seed_id = str(raw_seed.get("seed_id") or "")
+                    if not seed_id:
+                        continue
+                    if seed_id in validation_contract_seeds:
+                        raise BeliefMCPError(
+                            "preparation produced duplicate validation "
+                            f"contract seed ID: {seed_id}"
+                        )
+                    validation_contract_seeds[seed_id] = copy.deepcopy(
+                        raw_seed
+                    )
+
             summary = _run_summary(run_id, snapshot, len(cases))
             stored = _StoredRun(
                 run_id=run_id,
                 target=str(snapshot.get("target") or ""),
                 cases=dict(sorted(cases.items())),
+                validation_contract_seeds=dict(
+                    sorted(validation_contract_seeds.items())
+                ),
                 summary=summary,
                 origin=str(snapshot.get("mcp_origin") or "static_scan"),
                 registered_fixture_id=str(
@@ -687,7 +712,8 @@ class BeliefMCPTools:
         return {
             "schema_version": MCP_FIXTURE_PREPARATION_SCHEMA_VERSION,
             "run_id": stored.run_id,
-            "case_id": prepared.plan.subject_id,
+            "validation_contract_seed_id": prepared.plan.subject_id,
+            "subject_kind": prepared.plan.subject_kind,
             "plan_id": prepared.plan.plan_id,
             "fixture_id": prepared.fixture_id,
             "binding": binding.to_dict(),
@@ -796,17 +822,19 @@ class BeliefMCPTools:
                 raise FixtureBindingError(
                     "stored validation plan is not canonical"
                 )
-            case = stored.cases[plan.subject_id]
+            contract_seed = stored.validation_contract_seeds[
+                plan.subject_id
+            ]
             binding = validate_registered_fixture_binding(
                 binding_payload,
                 run_id=stored.run_id,
                 plan=plan,
-                case=case,
+                contract_seed=contract_seed,
                 fixture_id=fixture_id,
             )
         except KeyError as exc:
             raise BeliefMCPError(
-                "validation plan subject is missing from its run"
+                "validation plan contract seed is missing from its run"
             ) from exc
         except (FixtureBindingError, ValueError) as exc:
             raise BeliefMCPError(str(exc)) from exc

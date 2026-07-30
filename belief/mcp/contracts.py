@@ -186,7 +186,13 @@ VALIDATION_PLAN_SCHEMA: dict[str, Any] = {
             "schema_version": {"const": VALIDATION_PLAN_SCHEMA_VERSION},
             "plan_id": _string(min_length=1),
             "subject_id": _string(min_length=1),
-            "subject_kind": {"const": "audit_case"},
+            "subject_kind": {
+                "type": "string",
+                "enum": [
+                    "audit_case",
+                    "validation_contract_seed",
+                ],
+            },
             "case_type": _string(min_length=1),
             "case_status": _string(min_length=1),
             "strategy": _string(enum=sorted(VALIDATION_STRATEGIES)),
@@ -235,14 +241,14 @@ VALIDATION_PLAN_SCHEMA: dict[str, Any] = {
 REGISTERED_FIXTURE_BINDING_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "belief://schemas/registered-fixture-binding",
-    "title": "BELIEF registered fixture binding v1",
+    "title": "BELIEF registered fixture binding v2",
     **_object(
         {
             "binding_kind": {
                 "const": REGISTERED_FIXTURE_BINDING_SCHEMA_VERSION
             },
             "run_id": _string(min_length=5),
-            "audit_case_id": _string(min_length=1),
+            "validation_contract_seed_id": _string(min_length=1),
             "fixture_id": _string(min_length=1),
             "fixture_registry_digest": {
                 "type": "string",
@@ -275,7 +281,7 @@ REGISTERED_FIXTURE_BINDING_SCHEMA: dict[str, Any] = {
         required=(
             "binding_kind",
             "run_id",
-            "audit_case_id",
+            "validation_contract_seed_id",
             "fixture_id",
             "fixture_registry_digest",
             "fixture_source_digest",
@@ -360,14 +366,17 @@ AUTHORIZED_PROJECT_BINDING_SCHEMA: dict[str, Any] = {
 VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "belief://schemas/validation-result",
-    "title": "BELIEF MCP fixture validation result v1",
+    "title": "BELIEF MCP fixture validation result v2",
     **_object(
         {
             "schema_version": {"const": MCP_VALIDATION_RESULT_SCHEMA_VERSION},
             "result_id": _string(min_length=1),
             "run_id": _string(min_length=5),
             "plan_id": _string(min_length=1),
-            "case_id": _string(min_length=1),
+            "validation_contract_seed_id": _string(min_length=1),
+            "subject_kind": {
+                "const": "validation_contract_seed",
+            },
             "fixture_id": _string(min_length=1),
             "binding_digest": {
                 "type": "string",
@@ -390,6 +399,14 @@ VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
                 "pattern": "^[0-9a-f]{64}$",
             },
             "source_revision": _string(min_length=1),
+            "evidence_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "attestation_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
             "semantic_digest": {
                 "type": "string",
                 "pattern": "^[0-9a-f]{64}$",
@@ -404,11 +421,19 @@ VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
             },
             "maturity": _string(
                 enum=[
+                    "contract_prepared",
                     "candidate",
                     "statically_supported",
-                    "locally_reproduced_on_registered_fixture",
+                    "locally_evaluated",
+                    "human_confirmed",
+                    "report_ready",
                 ]
             ),
+            "static_support": {"type": "boolean"},
+            "static_case_provenance": {
+                "type": "array",
+                "items": {"type": "object"},
+            },
             "target_vulnerability_confirmed": {"const": False},
             "human_confirmation_required": {"const": True},
             "human_confirmed": {"const": False},
@@ -420,7 +445,8 @@ VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
             "result_id",
             "run_id",
             "plan_id",
-            "case_id",
+            "validation_contract_seed_id",
+            "subject_kind",
             "fixture_id",
             "binding_digest",
             "validation_plan_digest",
@@ -428,6 +454,8 @@ VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
             "fixture_source_digest",
             "source_target_digest",
             "source_revision",
+            "evidence_digest",
+            "attestation_digest",
             "semantic_digest",
             "outcome",
             "baseline",
@@ -436,6 +464,8 @@ VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
             "execution_boundaries",
             "evidence_scope",
             "maturity",
+            "static_support",
+            "static_case_provenance",
             "target_vulnerability_confirmed",
             "human_confirmation_required",
         ),

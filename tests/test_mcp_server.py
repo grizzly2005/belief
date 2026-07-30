@@ -125,7 +125,7 @@ def test_status_capabilities_and_schema_resources_are_explicit(tmp_path):
     assert capabilities["boundaries"]["dynamic_execution"] is True
     assert mime_type == "application/schema+json"
     assert plan_schema["properties"]["schema_version"]["const"] == (
-        "belief.validation_plan.v1"
+        "belief.validation_plan.v2"
     )
 
 
@@ -162,7 +162,7 @@ def test_scan_case_explanation_and_plan_use_existing_services(tmp_path):
     assert explanation["path"]
     assert "does not confirm" in explanation["interpretation_boundary"]
     assert plan["subject_id"] == case_id
-    assert plan["schema_version"] == "belief.validation_plan.v1"
+    assert plan["schema_version"] == "belief.validation_plan.v2"
     assert plan["safety"]["network_mode"] == "forbidden"
     assert plan["safety"]["destructive_actions_allowed"] is False
     assert plans["validation_plans"] == [plan]

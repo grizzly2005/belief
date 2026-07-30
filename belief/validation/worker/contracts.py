@@ -8,12 +8,23 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
+from ..evidence_policy import (
+    FUNCTIONAL_BASELINE,
+    ORACLE_ROLES,
+    baseline_verdict as evidence_baseline_verdict,
+    evaluate_evidence,
+    infer_legacy_oracle_role,
+)
 from ..plan_models import canonical_digest, clean_text, unique_strings
 
 
 WORKER_REQUEST_SCHEMA_VERSION = "belief.validation_worker_request.v2"
-WORKER_RESPONSE_SCHEMA_VERSION = "belief.validation_worker_response.v2"
-WORKER_ATTESTATION_SCHEMA_VERSION = "belief.validation_worker_attestation.v2"
+WORKER_RESPONSE_V2_SCHEMA_VERSION = "belief.validation_worker_response.v2"
+WORKER_RESPONSE_SCHEMA_VERSION = "belief.validation_worker_response.v3"
+WORKER_ATTESTATION_V2_SCHEMA_VERSION = (
+    "belief.validation_worker_attestation.v2"
+)
+WORKER_ATTESTATION_SCHEMA_VERSION = "belief.validation_worker_attestation.v3"
 WORKER_DIAGNOSTICS_SCHEMA_VERSION = "belief.validation_worker_diagnostics.v1"
 
 MAX_WORKER_REQUEST_BYTES = 16 * 1024
@@ -77,11 +88,17 @@ _OBSERVATION_FIELDS = {
     "expected",
     "actual",
     "baseline",
+    "oracle_role",
+    "required_for_conclusion",
     "oracle_evaluated",
     "oracle_passed",
     "evidence",
     "limitations",
     "cost_units",
+}
+_OBSERVATION_V2_FIELDS = _OBSERVATION_FIELDS - {
+    "oracle_role",
+    "required_for_conclusion",
 }
 _ERROR_FIELDS = {"code", "message"}
 _RESOURCE_LIMIT_FIELDS = {
@@ -139,7 +156,15 @@ _RESPONSE_FIELDS = {
     "duration_ms",
     "attestation",
     "diagnostics",
+    "evidence_digest",
+    "attestation_digest",
+    "response_digest",
     "semantic_digest",
+}
+_RESPONSE_V2_FIELDS = _RESPONSE_FIELDS - {
+    "evidence_digest",
+    "attestation_digest",
+    "response_digest",
 }
 _ORACLE_FIELDS = {"evaluated", "passed", "failed", "unevaluated"}
 
@@ -279,6 +304,8 @@ class WorkerObservation:
     expected: str
     actual: dict[str, Any]
     baseline: bool
+    oracle_role: str
+    required_for_conclusion: bool
     oracle_evaluated: bool
     oracle_passed: bool | None
     evidence: tuple[str, ...] = ()
@@ -298,6 +325,31 @@ class WorkerObservation:
             raise WorkerProtocolError(
                 "malformed_response",
                 "worker observation baseline must be boolean",
+            )
+        oracle_role = clean_text(self.oracle_role)
+        if oracle_role not in ORACLE_ROLES:
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker observation oracle_role is invalid",
+            )
+        object.__setattr__(self, "oracle_role", oracle_role)
+        if not isinstance(self.required_for_conclusion, bool):
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker observation required_for_conclusion must be boolean",
+            )
+        if (oracle_role == FUNCTIONAL_BASELINE) != self.baseline:
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker observation baseline contradicts oracle_role",
+            )
+        if (
+            oracle_role == FUNCTIONAL_BASELINE
+            and not self.required_for_conclusion
+        ):
+            raise WorkerProtocolError(
+                "malformed_response",
+                "functional baseline must be required for conclusion",
             )
         if not isinstance(self.oracle_evaluated, bool):
             raise WorkerProtocolError(
@@ -344,6 +396,8 @@ class WorkerObservation:
             "expected": self.expected,
             "actual": copy.deepcopy(self.actual),
             "baseline": self.baseline,
+            "oracle_role": self.oracle_role,
+            "required_for_conclusion": self.required_for_conclusion,
             "oracle_evaluated": self.oracle_evaluated,
             "oracle_passed": self.oracle_passed,
             "evidence": list(self.evidence),
@@ -366,6 +420,13 @@ class WorkerObservation:
             expected=_strict_string(payload["expected"], "expected"),
             actual=payload["actual"],
             baseline=payload["baseline"],
+            oracle_role=_strict_string(
+                payload["oracle_role"],
+                "oracle role",
+            ),
+            required_for_conclusion=payload[
+                "required_for_conclusion"
+            ],
             oracle_evaluated=payload["oracle_evaluated"],
             oracle_passed=payload["oracle_passed"],
             evidence=_strict_string_sequence(payload["evidence"], "evidence"),
@@ -373,6 +434,60 @@ class WorkerObservation:
             cost_units=payload["cost_units"],
         )
         if observation.to_dict() != dict(payload):
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker observation is not canonical",
+            )
+        return observation
+
+    @classmethod
+    def from_v2_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "WorkerObservation":
+        """Verify and migrate one v2 observation."""
+
+        _require_exact_fields(
+            payload,
+            _OBSERVATION_V2_FIELDS,
+            "worker observation",
+            "malformed_response",
+        )
+        baseline = payload["baseline"]
+        if not isinstance(baseline, bool):
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker observation baseline must be boolean",
+            )
+        oracle = _strict_string(payload["oracle"], "oracle")
+        scenario = _strict_string(payload["scenario"], "scenario")
+        oracle_role, required = infer_legacy_oracle_role(
+            baseline=baseline,
+            oracle=oracle,
+            scenario=scenario,
+        )
+        observation = cls(
+            scenario=scenario,
+            stimulus=_strict_string(payload["stimulus"], "stimulus"),
+            oracle=oracle,
+            expected=_strict_string(payload["expected"], "expected"),
+            actual=payload["actual"],
+            baseline=baseline,
+            oracle_role=oracle_role,
+            required_for_conclusion=required,
+            oracle_evaluated=payload["oracle_evaluated"],
+            oracle_passed=payload["oracle_passed"],
+            evidence=_strict_string_sequence(payload["evidence"], "evidence"),
+            limitations=_strict_string_sequence(
+                payload["limitations"],
+                "limitations",
+            ),
+            cost_units=payload["cost_units"],
+        )
+        legacy = observation.to_dict()
+        legacy.pop("oracle_role")
+        legacy.pop("required_for_conclusion")
+        if legacy != dict(payload):
             raise WorkerProtocolError(
                 "malformed_response",
                 "worker observation is not canonical",
@@ -622,6 +737,43 @@ class WorkerAttestation:
             ),
         )
 
+    @classmethod
+    def from_v2_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "WorkerAttestation":
+        """Verify the old attestation and return its v3 representation."""
+
+        _require_exact_fields(
+            payload,
+            _ATTESTATION_FIELDS,
+            "worker attestation",
+            "malformed_response",
+        )
+        if (
+            payload.get("schema_version")
+            != WORKER_ATTESTATION_V2_SCHEMA_VERSION
+            or payload.get("protocol_version")
+            != WORKER_RESPONSE_V2_SCHEMA_VERSION
+        ):
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker v2 attestation version mismatch",
+            )
+        migrated = dict(payload)
+        migrated["schema_version"] = WORKER_ATTESTATION_SCHEMA_VERSION
+        migrated["protocol_version"] = WORKER_RESPONSE_SCHEMA_VERSION
+        attestation = cls.from_dict(migrated)
+        legacy = attestation.to_dict()
+        legacy["schema_version"] = WORKER_ATTESTATION_V2_SCHEMA_VERSION
+        legacy["protocol_version"] = WORKER_RESPONSE_V2_SCHEMA_VERSION
+        if legacy != dict(payload):
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker v2 attestation is not canonical",
+            )
+        return attestation
+
 
 # Compatibility name for the pre-hardening public import.
 WorkerCapabilityAttestation = WorkerAttestation
@@ -764,6 +916,9 @@ class WorkerResponse:
     duration_ms: int = 0
     attestation: WorkerAttestation | None = None
     diagnostics: WorkerDiagnostics = field(default_factory=WorkerDiagnostics)
+    evidence_digest: str = ""
+    attestation_digest: str = ""
+    response_digest: str = ""
     semantic_digest: str = ""
     schema_version: str = WORKER_RESPONSE_SCHEMA_VERSION
 
@@ -818,7 +973,7 @@ class WorkerResponse:
                     "malformed_response",
                     "worker baseline is invalid",
                 )
-        if self.baseline != _baseline_verdict(observations):
+        if self.baseline != evidence_baseline_verdict(observations):
             raise WorkerProtocolError(
                 "malformed_response",
                 "worker baseline does not match observations",
@@ -854,14 +1009,87 @@ class WorkerResponse:
                 "malformed_response",
                 "worker diagnostics are invalid",
             )
-        expected_digest = canonical_digest(self._semantic_payload())
-        supplied_digest = clean_text(self.semantic_digest)
-        if supplied_digest and supplied_digest != expected_digest:
+        if (
+            self.attestation.fixture_id != self.fixture_id
+            or self.attestation.validation_plan_id
+            != self.validation_plan_id
+            or self.attestation.validation_plan_digest
+            != self.validation_plan_digest
+        ):
             raise WorkerProtocolError(
                 "malformed_response",
-                "worker semantic digest mismatch",
+                "worker response and attestation bindings differ",
             )
-        object.__setattr__(self, "semantic_digest", expected_digest)
+        if self.worker_status == "completed" and errors:
+            raise WorkerProtocolError(
+                "malformed_response",
+                "completed worker response cannot contain errors",
+            )
+        if self.worker_status != "completed" and (
+            observations or self.baseline is not None
+        ):
+            raise WorkerProtocolError(
+                "malformed_response",
+                "noncompleted worker response cannot claim observations",
+            )
+        evaluate_evidence(
+            observations,
+            completed=self.worker_status == "completed",
+        )
+
+        expected_evidence_digest = canonical_digest(
+            self._evidence_payload()
+        )
+        _verify_optional_digest(
+            self.evidence_digest,
+            expected_evidence_digest,
+            "worker evidence digest mismatch",
+        )
+        expected_attestation_digest = canonical_digest(
+            self.attestation.to_dict()
+        )
+        _verify_optional_digest(
+            self.attestation_digest,
+            expected_attestation_digest,
+            "worker attestation digest mismatch",
+        )
+        supplied_semantic_digest = clean_text(self.semantic_digest)
+        if (
+            supplied_semantic_digest
+            and supplied_semantic_digest != expected_evidence_digest
+        ):
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker semantic digest alias mismatch",
+            )
+        object.__setattr__(
+            self,
+            "evidence_digest",
+            expected_evidence_digest,
+        )
+        object.__setattr__(
+            self,
+            "attestation_digest",
+            expected_attestation_digest,
+        )
+        object.__setattr__(
+            self,
+            "semantic_digest",
+            expected_evidence_digest,
+        )
+        expected_response_digest = canonical_digest(
+            self._response_payload()
+        )
+        _verify_optional_digest(
+            self.response_digest,
+            expected_response_digest,
+            "worker response digest mismatch",
+        )
+        object.__setattr__(
+            self,
+            "response_digest",
+            expected_response_digest,
+        )
 
     @property
     def capabilities(self) -> WorkerAttestation:
@@ -869,12 +1097,6 @@ class WorkerResponse:
 
         assert self.attestation is not None
         return self.attestation
-
-    @property
-    def evidence_digest(self) -> str:
-        """Compatibility alias for the semantic digest."""
-
-        return self.semantic_digest
 
     @property
     def oracle_counts(self) -> dict[str, int]:
@@ -888,7 +1110,7 @@ class WorkerResponse:
             "unevaluated": len(self.observations) - evaluated,
         }
 
-    def _semantic_payload(self) -> dict[str, Any]:
+    def _evidence_payload(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
             "fixture_id": self.fixture_id,
@@ -900,16 +1122,24 @@ class WorkerResponse:
             "oracles": self.oracle_counts,
             "limitations": list(self.limitations),
             "errors": [error.to_dict() for error in self.errors],
+        }
+
+    def _response_payload(self) -> dict[str, Any]:
+        return {
+            **self._evidence_payload(),
+            "correlation_id": self.correlation_id,
+            "duration_ms": self.duration_ms,
             "attestation": self.attestation.to_dict(),
+            "diagnostics": self.diagnostics.to_dict(),
+            "evidence_digest": self.evidence_digest,
+            "attestation_digest": self.attestation_digest,
+            "semantic_digest": self.semantic_digest,
         }
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            **self._semantic_payload(),
-            "correlation_id": self.correlation_id,
-            "duration_ms": self.duration_ms,
-            "diagnostics": self.diagnostics.to_dict(),
-            "semantic_digest": self.semantic_digest,
+            **self._response_payload(),
+            "response_digest": self.response_digest,
         }
 
     @classmethod
@@ -958,6 +1188,18 @@ class WorkerResponse:
             duration_ms=payload["duration_ms"],
             attestation=WorkerAttestation.from_dict(payload["attestation"]),
             diagnostics=WorkerDiagnostics.from_dict(payload["diagnostics"]),
+            evidence_digest=_strict_string(
+                payload["evidence_digest"],
+                "evidence digest",
+            ),
+            attestation_digest=_strict_string(
+                payload["attestation_digest"],
+                "attestation digest",
+            ),
+            response_digest=_strict_string(
+                payload["response_digest"],
+                "response digest",
+            ),
             semantic_digest=_strict_string(
                 payload["semantic_digest"],
                 "semantic digest",
@@ -972,6 +1214,111 @@ class WorkerResponse:
             raise WorkerProtocolError(
                 "malformed_response",
                 "worker response is not canonical",
+            )
+        return response
+
+    @classmethod
+    def from_v2_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "WorkerResponse":
+        """Verify a canonical v2 response and migrate it in memory."""
+
+        _require_exact_fields(
+            payload,
+            _RESPONSE_V2_FIELDS,
+            "worker response",
+            "malformed_response",
+        )
+        if payload.get("schema_version") != WORKER_RESPONSE_V2_SCHEMA_VERSION:
+            raise WorkerProtocolError(
+                "unsupported_protocol",
+                "unsupported worker response schema",
+            )
+        _require_exact_fields(
+            payload["oracles"],
+            _ORACLE_FIELDS,
+            "worker oracle counts",
+            "malformed_response",
+        )
+        observations = tuple(
+            WorkerObservation.from_v2_dict(item)
+            for item in _strict_object_sequence(
+                payload["observations"],
+                "observations",
+            )
+        )
+        attestation = WorkerAttestation.from_v2_dict(
+            payload["attestation"]
+        )
+        legacy_semantic_payload = {
+            "schema_version": payload["schema_version"],
+            "fixture_id": payload["fixture_id"],
+            "validation_plan_id": payload["validation_plan_id"],
+            "validation_plan_digest": payload["validation_plan_digest"],
+            "worker_status": payload["worker_status"],
+            "observations": payload["observations"],
+            "baseline": payload["baseline"],
+            "oracles": payload["oracles"],
+            "limitations": payload["limitations"],
+            "errors": payload["errors"],
+            "attestation": payload["attestation"],
+        }
+        supplied_legacy_digest = _strict_string(
+            payload["semantic_digest"],
+            "semantic digest",
+        )
+        if canonical_digest(legacy_semantic_payload) != supplied_legacy_digest:
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker v2 semantic digest mismatch",
+            )
+        response = cls(
+            correlation_id=_strict_string(
+                payload["correlation_id"],
+                "correlation ID",
+            ),
+            fixture_id=_strict_string(payload["fixture_id"], "fixture ID"),
+            validation_plan_id=_strict_string(
+                payload["validation_plan_id"],
+                "validation plan ID",
+            ),
+            validation_plan_digest=_strict_string(
+                payload["validation_plan_digest"],
+                "validation plan digest",
+            ),
+            worker_status=_strict_string(
+                payload["worker_status"],
+                "worker status",
+            ),
+            observations=observations,
+            baseline=payload["baseline"],
+            limitations=_strict_string_sequence(
+                payload["limitations"],
+                "limitations",
+            ),
+            errors=tuple(
+                WorkerError.from_dict(item)
+                for item in _strict_object_sequence(
+                    payload["errors"],
+                    "errors",
+                )
+            ),
+            duration_ms=payload["duration_ms"],
+            attestation=attestation,
+            diagnostics=WorkerDiagnostics.from_dict(
+                payload["diagnostics"]
+            ),
+        )
+        if response.oracle_counts != dict(payload["oracles"]):
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker oracle counts do not match observations",
+            )
+        if response.baseline != payload["baseline"]:
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker baseline does not match observations",
             )
         return response
 
@@ -1017,13 +1364,21 @@ def decode_worker_response(message: bytes) -> WorkerResponse:
         limit=MAX_WORKER_RESPONSE_BYTES,
         kind="response",
     )
-    return WorkerResponse.from_dict(payload)
+    schema_version = payload.get("schema_version")
+    if schema_version == WORKER_RESPONSE_SCHEMA_VERSION:
+        return WorkerResponse.from_dict(payload)
+    if schema_version == WORKER_RESPONSE_V2_SCHEMA_VERSION:
+        return WorkerResponse.from_v2_dict(payload)
+    raise WorkerProtocolError(
+        "unsupported_protocol",
+        "unsupported worker response schema",
+    )
 
 
 def baseline_for_observations(
     observations: Sequence[WorkerObservation],
 ) -> bool | None:
-    return _baseline_verdict(tuple(observations))
+    return evidence_baseline_verdict(tuple(observations))
 
 
 def _strict_test_parameters(value: Any) -> dict[str, Any]:
@@ -1051,18 +1406,19 @@ def _strict_test_parameters(value: Any) -> dict[str, Any]:
 def _baseline_verdict(
     observations: tuple[WorkerObservation, ...],
 ) -> bool | None:
-    baseline = tuple(item for item in observations if item.baseline)
-    if any(
-        item.oracle_evaluated and item.oracle_passed is False
-        for item in baseline
-    ):
-        return False
-    if baseline and all(
-        item.oracle_evaluated and item.oracle_passed is True
-        for item in baseline
-    ):
-        return True
-    return None
+    """Compatibility wrapper for callers predating evidence_policy."""
+
+    return evidence_baseline_verdict(observations)
+
+
+def _verify_optional_digest(
+    supplied: Any,
+    expected: str,
+    message: str,
+) -> None:
+    normalized = clean_text(supplied)
+    if normalized and normalized != expected:
+        raise WorkerProtocolError("malformed_response", message)
 
 
 def _require_exact_fields(
@@ -1354,10 +1710,12 @@ __all__ = [
     "MAX_WORKER_TIMEOUT_MS",
     "MIN_WORKER_TIMEOUT_MS",
     "WORKER_ATTESTATION_SCHEMA_VERSION",
+    "WORKER_ATTESTATION_V2_SCHEMA_VERSION",
     "WORKER_DIAGNOSTICS_SCHEMA_VERSION",
     "WORKER_ERROR_CODES",
     "WORKER_REQUEST_SCHEMA_VERSION",
     "WORKER_RESPONSE_SCHEMA_VERSION",
+    "WORKER_RESPONSE_V2_SCHEMA_VERSION",
     "WORKER_STATUSES",
     "WorkerAttestation",
     "WorkerCapabilityAttestation",

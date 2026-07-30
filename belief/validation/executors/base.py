@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 
+from ..evidence_policy import baseline_verdict as evidence_baseline_verdict
 from ..execution_models import (
     ValidationExecutionContext,
     ValidationExecutionSummary,
@@ -77,32 +78,9 @@ def conclusive_safe_outcome(plan: ValidationPlan) -> str:
 def baseline_verdict(
     observations: Iterable[ValidationObservation],
 ) -> bool | None:
-    """Return a tri-state verdict for the complete functional baseline.
+    """Compatibility wrapper for the shared evidence policy."""
 
-    A demonstrated failure remains ``False``. A baseline is ``True`` only
-    when every baseline oracle was evaluated and passed. Missing or partially
-    unavailable baseline evidence remains ``None`` instead of being
-    misclassified as a functional regression.
-    """
-
-    baseline = tuple(
-        observation
-        for observation in observations
-        if observation.baseline
-    )
-    if any(
-        observation.oracle_evaluated
-        and observation.oracle_passed is False
-        for observation in baseline
-    ):
-        return False
-    if baseline and all(
-        observation.oracle_evaluated
-        and observation.oracle_passed is True
-        for observation in baseline
-    ):
-        return True
-    return None
+    return evidence_baseline_verdict(observations)
 
 
 def stable_limitations(values: Iterable[str]) -> tuple[str, ...]:

@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from .evidence_policy import evaluate_evidence
 from .execution_models import (
     ValidationContractError,
     ValidationExecutionContext,
@@ -425,7 +426,7 @@ def _result_from_summary(
             "remained valid; human confirmation is still required."
         ),
         "enforced": (
-            "The functional baseline passed and every evaluated local "
+            "The functional baseline passed and every required local "
             "security oracle remained enforced."
         ),
         "false_positive": (
@@ -443,6 +444,15 @@ def _result_from_summary(
         "false_positive": 0.9,
         "inconclusive": 0.2,
     }[summary.outcome]
+    decision = evaluate_evidence(
+        summary.observations,
+        completed=summary.executed,
+        safe_outcome=(
+            "false_positive"
+            if summary.outcome == "false_positive"
+            else "enforced"
+        ),
+    )
     evidence = [
         f"execution_summary:{summary.summary_id}",
         f"fixture:{summary.fixture_id}",
@@ -465,10 +475,7 @@ def _result_from_summary(
         source="belief.local_validation_executor.v1",
         outcome=summary.outcome,
         confidence=confidence,
-        tested=(
-            summary.executed
-            and summary.oracle_evaluated_count > 0
-        ),
+        tested=decision.conclusive,
         human_validated=False,
         method=(
             f"local_fixture/{summary.validation_type}/{summary.adapter}"
@@ -492,6 +499,15 @@ def _result_from_summary(
             ),
             "oracle_evaluated_count": (
                 summary.oracle_evaluated_count
+            ),
+            "primary_oracle_evaluated_count": (
+                decision.evaluated_primary_count
+            ),
+            "required_security_oracle_count": (
+                decision.required_security_count
+            ),
+            "required_unevaluated_oracles": list(
+                decision.required_unevaluated_oracles
             ),
             "proof_collected": [
                 observation.observation_id

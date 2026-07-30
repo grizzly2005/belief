@@ -489,6 +489,9 @@ def test_attestation_source_or_plan_binding_mismatch_is_rejected():
             response.attestation,
             fixture_source_digest="b" * 64,
         ),
+        evidence_digest="",
+        attestation_digest="",
+        response_digest="",
         semantic_digest="",
     )
 

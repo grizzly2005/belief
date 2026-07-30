@@ -16,6 +16,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
+from ..evidence_policy import evaluate_evidence
 from ..execution_models import (
     ValidationContractError,
     ValidationExecutionContext,
@@ -24,7 +25,6 @@ from ..execution_models import (
 )
 from ..executors.base import (
     LocalValidationExecutor,
-    baseline_verdict,
     conclusive_safe_outcome,
     resolved_runtime_gaps,
     stable_limitations,
@@ -313,6 +313,9 @@ class WorkerRunHandle:
                 response.diagnostics,
                 child_exit_code=exit_code,
             ),
+            evidence_digest="",
+            attestation_digest="",
+            response_digest="",
             semantic_digest="",
         )
         with self._state_lock:
@@ -465,6 +468,8 @@ def run_isolated_web_validation_plan(
     metadata = dict(result.metadata)
     metadata["isolated_worker"] = {
         "worker_status": executor.last_response.worker_status,
+        "evidence_digest": executor.last_response.evidence_digest,
+        "attestation_digest": executor.last_response.attestation_digest,
         "semantic_digest": executor.last_response.semantic_digest,
         "attestation": executor.last_response.attestation.to_dict(),
     }
@@ -534,6 +539,8 @@ class IsolatedWebValidationExecutor(LocalValidationExecutor):
                 expected=item.expected,
                 actual=item.actual,
                 baseline=item.baseline,
+                oracle_role=item.oracle_role,
+                required_for_conclusion=item.required_for_conclusion,
                 oracle_evaluated=item.oracle_evaluated,
                 oracle_passed=item.oracle_passed,
                 evidence=item.evidence,
@@ -542,27 +549,16 @@ class IsolatedWebValidationExecutor(LocalValidationExecutor):
             )
             for item in response.observations
         )
-        baseline_passed = baseline_verdict(observations)
         executed = response.worker_status == "completed"
-        security = tuple(item for item in observations if not item.baseline)
-        failed_security = tuple(
-            item
-            for item in security
-            if item.oracle_evaluated and item.oracle_passed is False
+        decision = evaluate_evidence(
+            observations,
+            completed=executed,
+            safe_outcome=conclusive_safe_outcome(plan),
         )
-        mandatory_unevaluated = tuple(
-            item
-            for item in security
-            if item.scenario != "symlink_boundary" and not item.oracle_evaluated
-        )
-        if executed and baseline_passed and failed_security:
-            outcome = "bypassed"
-        elif executed and baseline_passed and security and not mandatory_unevaluated:
-            outcome = conclusive_safe_outcome(plan)
-        else:
-            outcome = "inconclusive"
+        outcome = decision.outcome
         limitations = stable_limitations((
             *response.limitations,
+            *decision.limitations,
             *(f"worker_error:{error.code}" for error in response.errors),
             *(
                 ()
@@ -589,11 +585,11 @@ class IsolatedWebValidationExecutor(LocalValidationExecutor):
             supported=supported,
             executed=executed,
             outcome=outcome,
-            baseline_passed=baseline_passed,
+            baseline_passed=decision.baseline_passed,
             observations=observations,
             resolved_evidence_gaps=resolved_runtime_gaps(
                 plan,
-                conclusive=outcome != "inconclusive",
+                conclusive=decision.conclusive,
             ),
             limitations=limitations,
             protected_regression=(

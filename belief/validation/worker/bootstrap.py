@@ -213,6 +213,9 @@ def _send_single_response(
         ),
         attestation=attestation,
         diagnostics=diagnostics,
+        evidence_digest="",
+        attestation_digest="",
+        response_digest="",
         semantic_digest="",
     )
     try:
@@ -243,6 +246,9 @@ def _send_single_response(
                 diagnostics,
                 summary="child response serialization failed",
             ),
+            evidence_digest="",
+            attestation_digest="",
+            response_digest="",
             semantic_digest="",
         )
         try:

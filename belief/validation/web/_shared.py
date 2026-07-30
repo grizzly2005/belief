@@ -8,6 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..evidence_policy import (
+    FUNCTIONAL_BASELINE,
+    OPTIONAL,
+    PRIMARY_SECURITY,
+    SECONDARY_SECURITY,
+)
 from ..worker.contracts import WorkerObservation
 
 
@@ -185,6 +191,8 @@ def path_observations(
                 "symlink_supported": layout.symlink_supported,
             },
             baseline=False,
+            oracle_role=OPTIONAL,
+            required_for_conclusion=False,
             oracle_evaluated=False,
             oracle_passed=None,
             limitations=(limitation,),
@@ -207,6 +215,8 @@ def path_observations(
             "sentinel_unchanged": sentinel_unchanged,
         },
         baseline=False,
+        oracle_role=SECONDARY_SECURITY,
+        required_for_conclusion=True,
         oracle_evaluated=True,
         oracle_passed=public_unchanged and sentinel_unchanged,
         evidence=(
@@ -416,6 +426,8 @@ def idor_observations(
                 "state_unchanged": unchanged,
             },
             baseline=False,
+            oracle_role=SECONDARY_SECURITY,
+            required_for_conclusion=True,
             oracle_evaluated=True,
             oracle_passed=unchanged,
             evidence=(
@@ -505,6 +517,16 @@ def _path_observation(
             expected=expected,
             actual=actual,
             baseline=baseline,
+            oracle_role=(
+                FUNCTIONAL_BASELINE
+                if baseline
+                else (
+                    OPTIONAL
+                    if scenario == "symlink_boundary"
+                    else PRIMARY_SECURITY
+                )
+            ),
+            required_for_conclusion=scenario != "symlink_boundary",
             oracle_evaluated=evaluated,
             oracle_passed=passed,
             evidence=evidence,
@@ -630,6 +652,12 @@ def _idor_observation(
             expected=expected,
             actual=actual,
             baseline=baseline,
+            oracle_role=(
+                FUNCTIONAL_BASELINE
+                if baseline
+                else PRIMARY_SECURITY
+            ),
+            required_for_conclusion=True,
             oracle_evaluated=evaluated,
             oracle_passed=passed,
             evidence=evidence,

@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from .evidence_policy import evaluate_evidence, infer_legacy_oracle_role
 from .execution_models import (
     ValidationContractError,
     ValidationExecutionContext,
@@ -411,6 +412,32 @@ def _case_results(
     output = []
     for case in cases:
         result = results[case["benchmark_case_id"]]
+        execution = result["metadata"]["execution"]
+        observations = []
+        for item in execution["observations"]:
+            observation = dict(item)
+            if "oracle_role" not in observation:
+                role, required = infer_legacy_oracle_role(
+                    baseline=observation["baseline"],
+                    oracle=observation["oracle"],
+                    scenario=observation["scenario"],
+                )
+                observation["oracle_role"] = role
+                observation["required_for_conclusion"] = required
+            observations.append(observation)
+        decision = evaluate_evidence(
+            observations,
+            completed=execution["executed"] is True,
+            safe_outcome=(
+                "false_positive"
+                if result["outcome"] == "false_positive"
+                else "enforced"
+            ),
+        )
+        if decision.outcome != result["outcome"]:
+            raise ValidationContractError(
+                "benchmark result contradicts the evidence policy"
+            )
         output.append({
             "benchmark_case_id": case["benchmark_case_id"],
             "case_type": case["case_type"],
@@ -427,6 +454,9 @@ def _case_results(
             "oracle_evaluated_count": result["metadata"]["execution"][
                 "oracle_evaluated_count"
             ],
+            "primary_oracle_evaluated_count": (
+                decision.evaluated_primary_count
+            ),
             "limitations": result["metadata"]["limitations"],
         })
     return output

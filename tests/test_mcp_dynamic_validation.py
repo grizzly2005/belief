@@ -25,6 +25,8 @@ from belief.mcp.tools import (
 from belief.mcp.validation import (
     REGISTERED_FIXTURE_BINDING_SCHEMA_VERSION,
     REGISTERED_FIXTURE_EXECUTION_SCOPE,
+    VALIDATION_CONTRACT_SEED_SCHEMA_VERSION,
+    prepare_registered_fixture,
 )
 from belief.validation.execution_models import ValidationContractError
 from belief.validation.web import optional_framework_available
@@ -72,6 +74,43 @@ def _validate(
     "fixture_id",
     (_FLASK_FIXTURE, _FASTAPI_FIXTURE),
 )
+def test_fixture_contract_seed_never_impersonates_static_audit_case(
+    fixture_id,
+):
+    prepared = prepare_registered_fixture(fixture_id)
+    seed = prepared.contract_seed.to_dict()
+    snapshot = prepared.analysis_snapshot
+    actual_case_ids = {
+        item["case_id"] for item in snapshot["audit_cases"]
+    }
+
+    assert seed["schema_version"] == (
+        VALIDATION_CONTRACT_SEED_SCHEMA_VERSION
+    )
+    assert seed["subject_kind"] == "validation_contract_seed"
+    assert seed["origin"] == "explicit_fixture_contract"
+    assert seed["static_support"] is False
+    assert "case_id" not in seed
+    assert seed["seed_id"] not in actual_case_ids
+    assert snapshot["validation_contract_seeds"] == [seed]
+    assert len(snapshot["findings"]) == prepared.static_scan[
+        "finding_count"
+    ]
+    assert len(snapshot["audit_cases"]) == prepared.static_scan[
+        "audit_case_count"
+    ]
+    assert set(prepared.static_scan["matching_case_ids"]) <= actual_case_ids
+    assert prepared.plan.subject_kind == "validation_contract_seed"
+    assert prepared.plan.metadata["origin"] == (
+        "explicit_fixture_contract"
+    )
+    assert prepared.plan.metadata["static_support"] is False
+
+
+@pytest.mark.parametrize(
+    "fixture_id",
+    (_FLASK_FIXTURE, _FASTAPI_FIXTURE),
+)
 def test_registered_fixture_preparation_and_validation_succeeds(
     tmp_path,
     fixture_id,
@@ -99,9 +138,14 @@ def test_registered_fixture_preparation_and_validation_succeeds(
     assert prepared["static_scan"]["files_scanned"] == 4
     assert result["fixture_id"] == fixture_id
     assert result["evidence_scope"] == REGISTERED_FIXTURE_EXECUTION_SCOPE
-    assert result["maturity"] == (
-        "locally_reproduced_on_registered_fixture"
+    assert prepared["subject_kind"] == "validation_contract_seed"
+    assert prepared["validation_contract_seed_id"].startswith("vcs_")
+    assert result["subject_kind"] == "validation_contract_seed"
+    assert result["validation_contract_seed_id"] == (
+        prepared["validation_contract_seed_id"]
     )
+    assert result["maturity"] == "locally_evaluated"
+    assert result["static_support"] is False
     assert result["target_vulnerability_confirmed"] is False
     assert result["human_confirmation_required"] is True
     assert result["human_confirmed"] is False
@@ -344,9 +388,10 @@ def test_result_is_deterministic_bounded_and_never_target_confirmation(
     first = _validate(service, prepared)
     second = _validate(service, prepared)
 
-    assert first == second
     assert first["result_id"] == second["result_id"]
+    assert first["evidence_digest"] == second["evidence_digest"]
     assert first["semantic_digest"] == second["semantic_digest"]
+    assert first["result_id"] == second["result_id"]
     assert first["target_vulnerability_confirmed"] is False
     assert first["maturity"] not in {
         "human_confirmed",

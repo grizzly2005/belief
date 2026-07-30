@@ -13,6 +13,8 @@ from belief.validation.worker.contracts import (
     MAX_JSON_STRING_CHARS,
     MAX_WORKER_REQUEST_BYTES,
     WORKER_REQUEST_SCHEMA_VERSION,
+    WORKER_RESPONSE_SCHEMA_VERSION,
+    WORKER_RESPONSE_V2_SCHEMA_VERSION,
     WorkerAttestation,
     WorkerDiagnostics,
     WorkerObservation,
@@ -24,6 +26,7 @@ from belief.validation.worker.contracts import (
     encode_worker_request,
     encode_worker_response,
 )
+from belief.validation.plan_models import canonical_digest
 from belief.validation.worker.registry import (
     fixture_registry_digest,
     fixture_source_digest,
@@ -59,6 +62,8 @@ def _response(request: WorkerRequest) -> WorkerResponse:
             expected="The legitimate file is readable.",
             actual={"response_status": 200, "marker": "public"},
             baseline=True,
+            oracle_role="functional_baseline",
+            required_for_conclusion=True,
             oracle_evaluated=True,
             oracle_passed=True,
             evidence=("response_status:200",),
@@ -70,6 +75,8 @@ def _response(request: WorkerRequest) -> WorkerResponse:
             expected="The outside sentinel is not readable.",
             actual={"response_status": 403, "marker": "none"},
             baseline=False,
+            oracle_role="primary_security",
+            required_for_conclusion=True,
             oracle_evaluated=True,
             oracle_passed=True,
             evidence=("response_status:403",),
@@ -204,6 +211,9 @@ def test_response_round_trip_verifies_oracles_and_evidence_digest():
         "unevaluated": 0,
     }
     assert len(restored.semantic_digest) == 64
+    assert restored.semantic_digest == restored.evidence_digest
+    assert len(restored.attestation_digest) == 64
+    assert len(restored.response_digest) == 64
 
     tampered = copy.deepcopy(restored.to_dict())
     tampered["oracles"]["failed"] = 1
@@ -334,8 +344,69 @@ def test_semantic_digest_excludes_correlation_and_runtime_diagnostics():
                 summary="different runtime",
                 child_exit_code=23,
             ),
+            "evidence_digest": "",
+            "attestation_digest": "",
+            "response_digest": "",
             "semantic_digest": "",
         }
     )
 
     assert first.semantic_digest == second.semantic_digest
+    assert first.attestation_digest == second.attestation_digest
+    assert first.response_digest != second.response_digest
+
+
+def test_v2_response_is_verified_then_migrated_and_never_rewritten_as_v2():
+    current = _response(_request()).to_dict()
+    legacy_observations = []
+    for item in current["observations"]:
+        legacy = dict(item)
+        legacy.pop("oracle_role")
+        legacy.pop("required_for_conclusion")
+        legacy_observations.append(legacy)
+    legacy_attestation = dict(current["attestation"])
+    legacy_attestation["schema_version"] = (
+        "belief.validation_worker_attestation.v2"
+    )
+    legacy_attestation["protocol_version"] = (
+        WORKER_RESPONSE_V2_SCHEMA_VERSION
+    )
+    legacy = {
+        key: value
+        for key, value in current.items()
+        if key not in {
+            "evidence_digest",
+            "attestation_digest",
+            "response_digest",
+        }
+    }
+    legacy["schema_version"] = WORKER_RESPONSE_V2_SCHEMA_VERSION
+    legacy["observations"] = legacy_observations
+    legacy["attestation"] = legacy_attestation
+    legacy_semantic = {
+        key: legacy[key]
+        for key in (
+            "schema_version",
+            "fixture_id",
+            "validation_plan_id",
+            "validation_plan_digest",
+            "worker_status",
+            "observations",
+            "baseline",
+            "oracles",
+            "limitations",
+            "errors",
+            "attestation",
+        )
+    }
+    legacy["semantic_digest"] = canonical_digest(legacy_semantic)
+
+    restored = decode_worker_response(_canonical_bytes(legacy))
+
+    assert restored.schema_version == WORKER_RESPONSE_SCHEMA_VERSION
+    assert restored.observations[0].oracle_role == "functional_baseline"
+    assert restored.observations[1].oracle_role == "primary_security"
+    assert (
+        json.loads(encode_worker_response(restored))["schema_version"]
+        == WORKER_RESPONSE_SCHEMA_VERSION
+    )

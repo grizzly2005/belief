@@ -19,7 +19,15 @@ from belief.static_analysis_pipeline import (
     StaticAnalysisOptions,
     analyze_static_target,
 )
-from belief.validation.plan_models import ValidationPlan, canonical_digest
+from belief.validation.evidence_policy import (
+    evaluate_evidence,
+    infer_legacy_oracle_role,
+)
+from belief.validation.plan_models import (
+    ValidationPlan,
+    canonical_digest,
+    clean_text,
+)
 from belief.validation.plans import build_validation_plan
 from belief.validation.worker.registry import (
     FixtureSpec,
@@ -31,12 +39,15 @@ from belief.validation.worker.registry import (
 
 
 REGISTERED_FIXTURE_BINDING_SCHEMA_VERSION = (
-    "belief.registered_fixture_binding.v1"
+    "belief.registered_fixture_binding.v2"
 )
 MCP_FIXTURE_PREPARATION_SCHEMA_VERSION = (
-    "belief.mcp_fixture_preparation.v1"
+    "belief.mcp_fixture_preparation.v2"
 )
-MCP_VALIDATION_RESULT_SCHEMA_VERSION = "belief.mcp_validation_result.v1"
+MCP_VALIDATION_RESULT_SCHEMA_VERSION = "belief.mcp_validation_result.v2"
+VALIDATION_CONTRACT_SEED_SCHEMA_VERSION = (
+    "belief.validation_contract_seed.v1"
+)
 REGISTERED_FIXTURE_EXECUTION_SCOPE = (
     "registered_transparent_fixture_only"
 )
@@ -52,16 +63,179 @@ MCP_MIN_VALIDATION_TIMEOUT_MS = 100
 MCP_MAX_VALIDATION_TIMEOUT_MS = 10_000
 
 _SOURCE_TARGET_SCHEMA_VERSION = "belief.registered_fixture_source_target.v1"
-_STATIC_SCAN_SCHEMA_VERSION = "belief.registered_fixture_static_scan.v1"
+_STATIC_SCAN_SCHEMA_VERSION = "belief.registered_fixture_static_scan.v2"
 _ALLOWED_MATURITY = {
+    "contract_prepared",
     "candidate",
     "statically_supported",
-    "locally_reproduced_on_registered_fixture",
+    "locally_evaluated",
+    "human_confirmed",
+    "report_ready",
 }
 
 
 class FixtureBindingError(ValueError):
     """A trusted fixture preparation or binding invariant failed."""
+
+
+@dataclass(frozen=True)
+class ValidationContractSeed:
+    """Explicit non-finding contract used to prepare one fixture plan."""
+
+    seed_id: str
+    fixture_id: str
+    fixture_registry_digest: str
+    fixture_source_digest: str
+    source_target_digest: str
+    source_revision: str
+    case_type: str
+    framework: str
+    file: str
+    cwe: str
+    source: str
+    sink: str
+    missing_guarantees: tuple[str, ...]
+    static_case_provenance: tuple[dict[str, Any], ...] = ()
+    origin: str = "explicit_fixture_contract"
+    static_support: bool = False
+    schema_version: str = VALIDATION_CONTRACT_SEED_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != VALIDATION_CONTRACT_SEED_SCHEMA_VERSION:
+            raise FixtureBindingError(
+                "unsupported validation contract seed schema"
+            )
+        if self.origin != "explicit_fixture_contract":
+            raise FixtureBindingError(
+                "validation contract seed origin is invalid"
+            )
+        if self.static_support is not False:
+            raise FixtureBindingError(
+                "explicit fixture contract cannot claim static support"
+            )
+        if not self.seed_id.startswith("vcs_"):
+            raise FixtureBindingError(
+                "validation contract seed ID is invalid"
+            )
+        if self.case_type not in {
+            "path_traversal_possible",
+            "idor_bola_possible",
+        }:
+            raise FixtureBindingError(
+                "validation contract seed case type is unsupported"
+            )
+        for field_name in (
+            "fixture_id",
+            "source_revision",
+            "framework",
+            "file",
+            "cwe",
+            "source",
+            "sink",
+        ):
+            if not clean_text(getattr(self, field_name)):
+                raise FixtureBindingError(
+                    f"validation contract seed {field_name} is required"
+                )
+        for field_name in (
+            "fixture_registry_digest",
+            "fixture_source_digest",
+            "source_target_digest",
+        ):
+            value = str(getattr(self, field_name))
+            if len(value) != 64 or any(
+                character not in "0123456789abcdef"
+                for character in value
+            ):
+                raise FixtureBindingError(
+                    f"validation contract seed {field_name} is invalid"
+                )
+        provenance = tuple(
+            copy.deepcopy(dict(item))
+            for item in self.static_case_provenance
+            if isinstance(item, Mapping)
+        )
+        if len(provenance) != len(self.static_case_provenance):
+            raise FixtureBindingError(
+                "validation contract seed provenance is invalid"
+            )
+        for item in provenance:
+            if (
+                not clean_text(item.get("case_id"))
+                or item.get("pipeline")
+                != "belief.static_analysis_pipeline"
+                or item.get("source_target_digest")
+                != self.source_target_digest
+            ):
+                raise FixtureBindingError(
+                    "validation contract seed provenance is incomplete"
+                )
+        object.__setattr__(self, "static_case_provenance", provenance)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "seed_id": self.seed_id,
+            "subject_kind": "validation_contract_seed",
+            "origin": self.origin,
+            "static_support": self.static_support,
+            "static_case_provenance": [
+                copy.deepcopy(item)
+                for item in self.static_case_provenance
+            ],
+            "fixture_id": self.fixture_id,
+            "fixture_registry_digest": self.fixture_registry_digest,
+            "fixture_source_digest": self.fixture_source_digest,
+            "source_target_digest": self.source_target_digest,
+            "source_revision": self.source_revision,
+            "case_type": self.case_type,
+            "status": "needs_review",
+            "review_priority": "high",
+            "confidence": 0.0,
+            "severity": "informational",
+            "file": self.file,
+            "line": None,
+            "rule_id": "explicit_registered_fixture_contract",
+            "cwe": self.cwe,
+            "source": self.source,
+            "sink": self.sink,
+            "dataflow_path": [self.source, self.sink],
+            "sanitizers": [],
+            "guarantees": [],
+            "missing_guarantees": list(self.missing_guarantees),
+            "z3_status": "not_applicable",
+            "unsat_core": [],
+            "human_next_steps": [
+                "Execute only the exactly bound transparent fixture locally.",
+                "Do not attribute fixture behavior to an arbitrary target.",
+                "Require separate human confirmation before reporting.",
+            ],
+            "related_finding_fingerprint": canonical_digest(
+                {
+                    "seed_id": self.seed_id,
+                    "source_target_digest": self.source_target_digest,
+                }
+            )[:16],
+            "reason": (
+                "This is an explicit fixture validation contract, not a "
+                "finding or a statically supported AuditCase."
+            ),
+            "route_context": {
+                "framework": self.framework,
+                "scope": REGISTERED_FIXTURE_EXECUTION_SCOPE,
+            },
+            "structured_dataflow": {
+                "source": {"symbol": self.source},
+                "sink": {"symbol": self.sink},
+                "ordered_nodes": [
+                    {"symbol": self.source},
+                    {"symbol": self.sink},
+                ],
+                "ordered_edges": [
+                    {"source": self.source, "sink": self.sink},
+                ],
+            },
+        }
 
 
 @dataclass(frozen=True)
@@ -74,7 +248,7 @@ class PreparedFixtureValidation:
     fixture_source_digest: str
     source_target_digest: str
     source_revision: str
-    case: dict[str, Any]
+    contract_seed: ValidationContractSeed
     plan: ValidationPlan
     analysis_snapshot: dict[str, Any]
     static_scan: dict[str, Any]
@@ -86,7 +260,7 @@ class RegisteredFixtureBinding:
     """Exact executable binding between a run, plan, and first-party fixture."""
 
     run_id: str
-    audit_case_id: str
+    validation_contract_seed_id: str
     fixture_id: str
     fixture_registry_digest: str
     fixture_source_digest: str
@@ -103,7 +277,9 @@ class RegisteredFixtureBinding:
         return {
             "binding_kind": self.binding_kind,
             "run_id": self.run_id,
-            "audit_case_id": self.audit_case_id,
+            "validation_contract_seed_id": (
+                self.validation_contract_seed_id
+            ),
             "fixture_id": self.fixture_id,
             "fixture_registry_digest": self.fixture_registry_digest,
             "fixture_source_digest": self.fixture_source_digest,
@@ -140,38 +316,24 @@ def prepare_registered_fixture(
         source_target_digest=target_digest,
         fixture_case_type=spec.case_type,
     )
-    case = _registered_fixture_case(
+    source_revision = f"fixture-{source_digest[:24]}"
+    contract_seed = _registered_fixture_contract_seed(
         spec,
         registry_digest=registry_digest,
         source_digest=source_digest,
         source_target_digest=target_digest,
+        source_revision=source_revision,
         static_scan=static_scan,
     )
-    plan = build_validation_plan(case)
-    source_revision = f"fixture-{source_digest[:24]}"
+    plan = build_validation_plan(contract_seed)
     limitations = (
         "Evidence is scoped to one transparent first-party registered fixture.",
         "The static scan and local worker do not execute or confirm an arbitrary project.",
         "A human must separately confirm any real target before reporting.",
     )
-    snapshot = {
-        "schema_version": _STATIC_SCAN_SCHEMA_VERSION,
+    snapshot = copy.deepcopy(analysis)
+    snapshot.update({
         "target": f"registered-fixture:{spec.fixture_id}",
-        "files": [
-            {"logical_name": name}
-            for name in sorted(documents)
-        ],
-        "findings": [],
-        "audit_cases": [copy.deepcopy(case)],
-        "diagnostics": [],
-        "totals": {
-            "registered_source_files": len(documents),
-            "static_findings": static_scan["finding_count"],
-            "static_audit_cases": static_scan["audit_case_count"],
-            "matching_static_audit_cases": static_scan[
-                "matching_case_count"
-            ],
-        },
         "mcp_origin": "registered_fixture_preparation",
         "registered_fixture_id": spec.fixture_id,
         "fixture_registry_digest": registry_digest,
@@ -179,7 +341,8 @@ def prepare_registered_fixture(
         "source_target_digest": target_digest,
         "source_revision": source_revision,
         "static_scan": copy.deepcopy(static_scan),
-    }
+        "validation_contract_seeds": [contract_seed.to_dict()],
+    })
     return PreparedFixtureValidation(
         fixture_id=spec.fixture_id,
         fixture_case_type=spec.case_type,
@@ -187,7 +350,7 @@ def prepare_registered_fixture(
         fixture_source_digest=source_digest,
         source_target_digest=target_digest,
         source_revision=source_revision,
-        case=case,
+        contract_seed=contract_seed,
         plan=plan,
         analysis_snapshot=snapshot,
         static_scan=static_scan,
@@ -204,7 +367,7 @@ def build_registered_fixture_binding(
 
     return RegisteredFixtureBinding(
         run_id=run_id,
-        audit_case_id=str(prepared.case["case_id"]),
+        validation_contract_seed_id=prepared.contract_seed.seed_id,
         fixture_id=prepared.fixture_id,
         fixture_registry_digest=prepared.fixture_registry_digest,
         fixture_source_digest=prepared.fixture_source_digest,
@@ -223,7 +386,7 @@ def validate_registered_fixture_binding(
     *,
     run_id: str,
     plan: ValidationPlan,
-    case: Mapping[str, Any],
+    contract_seed: Mapping[str, Any],
     fixture_id: str,
 ) -> RegisteredFixtureBinding:
     """Recompute and verify every executable binding component."""
@@ -232,7 +395,7 @@ def validate_registered_fixture_binding(
         raise FixtureBindingError("validation plan is not fixture-bound")
     expected_fields = set(RegisteredFixtureBinding(
         run_id="",
-        audit_case_id="",
+        validation_contract_seed_id="",
         fixture_id="",
         fixture_registry_digest="",
         fixture_source_digest="",
@@ -257,7 +420,9 @@ def validate_registered_fixture_binding(
     current_registry_digest = fixture_registry_digest()
     expected = RegisteredFixtureBinding(
         run_id=run_id,
-        audit_case_id=str(case.get("case_id") or ""),
+        validation_contract_seed_id=str(
+            contract_seed.get("seed_id") or ""
+        ),
         fixture_id=spec.fixture_id,
         fixture_registry_digest=current_registry_digest,
         fixture_source_digest=current_source_digest,
@@ -271,8 +436,13 @@ def validate_registered_fixture_binding(
         raise FixtureBindingError(
             "registered fixture binding does not match the run, plan, or source"
         )
-    if plan.subject_id != expected.audit_case_id:
-        raise FixtureBindingError("validation plan subject does not match its bound case")
+    if (
+        plan.subject_id != expected.validation_contract_seed_id
+        or plan.subject_kind != "validation_contract_seed"
+    ):
+        raise FixtureBindingError(
+            "validation plan subject does not match its bound contract seed"
+        )
     if plan.case_type != expected.fixture_case_type:
         raise FixtureBindingError("fixture does not support the validation plan type")
     return expected
@@ -318,7 +488,7 @@ def project_validation_result(
         raise FixtureBindingError("isolated worker evidence is unavailable")
     result_expected = {
         "subject_id": plan.subject_id,
-        "subject_kind": "audit_case",
+        "subject_kind": plan.subject_kind,
     }
     if any(
         result.get(field_name) != expected
@@ -330,7 +500,7 @@ def project_validation_result(
     execution_expected = {
         "validation_plan_id": binding.validation_plan_id,
         "validation_plan_digest": binding.validation_plan_digest,
-        "subject_id": binding.audit_case_id,
+        "subject_id": binding.validation_contract_seed_id,
         "source_revision": binding.source_revision,
         "fixture_id": binding.fixture_id,
     }
@@ -362,16 +532,33 @@ def project_validation_result(
 
     raw_observations = execution.get("observations")
     observations = []
+    policy_observations = []
     if isinstance(raw_observations, list):
         for raw in raw_observations[:32]:
             if not isinstance(raw, Mapping):
                 continue
+            policy_observation = dict(raw)
+            if "oracle_role" not in policy_observation:
+                role, required = infer_legacy_oracle_role(
+                    baseline=policy_observation["baseline"],
+                    oracle=policy_observation["oracle"],
+                    scenario=policy_observation["scenario"],
+                )
+                policy_observation["oracle_role"] = role
+                policy_observation["required_for_conclusion"] = required
+            policy_observations.append(policy_observation)
             observations.append(
                 {
                     "observation_id": str(raw.get("observation_id") or ""),
                     "scenario": str(raw.get("scenario") or ""),
                     "baseline": raw.get("baseline"),
                     "oracle": str(raw.get("oracle") or ""),
+                    "oracle_role": str(
+                        policy_observation.get("oracle_role") or ""
+                    ),
+                    "required_for_conclusion": policy_observation.get(
+                        "required_for_conclusion"
+                    ),
                     "oracle_evaluated": raw.get("oracle_evaluated"),
                     "oracle_passed": raw.get("oracle_passed"),
                     "evidence": _bounded_strings(raw.get("evidence"), limit=16),
@@ -389,15 +576,26 @@ def project_validation_result(
         if item not in limitations
     )
     outcome = str(result.get("outcome") or "inconclusive")
-    locally_reproduced = bool(
-        result.get("tested")
-        and execution.get("executed")
-        and execution.get("baseline_passed") is True
+    decision = evaluate_evidence(
+        policy_observations,
+        completed=execution.get("executed") is True,
+        safe_outcome=(
+            "false_positive"
+            if outcome == "false_positive"
+            else "enforced"
+        ),
     )
-    maturity = (
-        "locally_reproduced_on_registered_fixture"
-        if locally_reproduced
-        else "statically_supported"
+    if (
+        decision.outcome != outcome
+        or decision.baseline_passed != execution.get("baseline_passed")
+    ):
+        raise FixtureBindingError(
+            "validation result contradicts the shared evidence policy"
+        )
+    maturity = _validation_maturity(
+        plan,
+        execution=execution,
+        decision=decision,
     )
     if maturity not in _ALLOWED_MATURITY:
         raise FixtureBindingError("validation result maturity is invalid")
@@ -406,7 +604,8 @@ def project_validation_result(
         "schema_version": MCP_VALIDATION_RESULT_SCHEMA_VERSION,
         "run_id": run_id,
         "plan_id": plan.plan_id,
-        "case_id": plan.subject_id,
+        "validation_contract_seed_id": plan.subject_id,
+        "subject_kind": plan.subject_kind,
         "fixture_id": binding.fixture_id,
         "binding_digest": binding.digest,
         "validation_plan_digest": binding.validation_plan_digest,
@@ -414,6 +613,10 @@ def project_validation_result(
         "fixture_source_digest": binding.fixture_source_digest,
         "source_target_digest": binding.source_target_digest,
         "source_revision": binding.source_revision,
+        "evidence_digest": str(worker.get("evidence_digest") or ""),
+        "attestation_digest": str(
+            worker.get("attestation_digest") or ""
+        ),
         "semantic_digest": str(worker.get("semantic_digest") or ""),
         "outcome": outcome,
         "baseline": execution.get("baseline_passed"),
@@ -445,16 +648,73 @@ def project_validation_result(
         },
         "evidence_scope": REGISTERED_FIXTURE_EXECUTION_SCOPE,
         "maturity": maturity,
+        "static_support": plan.metadata.get("static_support") is True,
+        "static_case_provenance": copy.deepcopy(
+            plan.metadata.get("static_case_provenance") or []
+        ),
         "target_vulnerability_confirmed": False,
         "human_confirmation_required": True,
         "human_confirmed": False,
         "report_ready": False,
         "confirmed_vulnerability": False,
     }
+    stable_identity = {
+        key: value
+        for key, value in unsigned.items()
+        if key != "attestation_digest"
+    }
     return {
-        "result_id": "mvr_" + canonical_digest(unsigned)[:24],
+        "result_id": "mvr_" + canonical_digest(stable_identity)[:24],
         **unsigned,
     }
+
+
+def _validation_maturity(
+    plan: ValidationPlan,
+    *,
+    execution: Mapping[str, Any],
+    decision: Any,
+) -> str:
+    observations = execution.get("observations")
+    if (
+        execution.get("executed") is True
+        and isinstance(observations, list)
+        and any(
+            isinstance(item, Mapping)
+            and item.get("oracle_evaluated") is True
+            for item in observations
+        )
+    ):
+        return "locally_evaluated"
+
+    if plan.metadata.get("static_support") is True:
+        provenance = plan.metadata.get("static_case_provenance")
+        if (
+            not isinstance(provenance, list)
+            or not provenance
+            or any(
+                not isinstance(item, Mapping)
+                or not clean_text(item.get("case_id"))
+                or item.get("pipeline")
+                != "belief.static_analysis_pipeline"
+                or not clean_text(item.get("source_target_digest"))
+                for item in provenance
+            )
+        ):
+            raise FixtureBindingError(
+                "static maturity requires real pipeline case provenance"
+            )
+        return "statically_supported"
+
+    if decision.conclusive:
+        raise FixtureBindingError(
+            "conclusive evidence cannot remain below local evaluation"
+        )
+    return (
+        "contract_prepared"
+        if plan.subject_kind == "validation_contract_seed"
+        else "candidate"
+    )
 
 
 def _scan_registered_source(
@@ -505,12 +765,29 @@ def _static_scan_projection(
     findings = analysis.get("findings")
     cases = analysis.get("audit_cases")
     rows = cases if isinstance(cases, list) else []
-    matching = sorted(
-        str(item.get("case_id") or "")
-        for item in rows
-        if isinstance(item, Mapping)
-        and item.get("case_type") == fixture_case_type
-        and item.get("case_id")
+    matching_cases = sorted(
+        (
+            {
+                "case_id": str(item.get("case_id") or ""),
+                "case_type": str(item.get("case_type") or ""),
+                "related_finding_fingerprint": str(
+                    item.get("related_finding_fingerprint") or ""
+                ),
+                "file": str(item.get("file") or ""),
+                "line": item.get("line"),
+                "rule_id": str(item.get("rule_id") or ""),
+                "pipeline": "belief.static_analysis_pipeline",
+                "analysis_schema_version": str(
+                    analysis.get("schema_version") or ""
+                ),
+                "source_target_digest": source_target_digest,
+            }
+            for item in rows
+            if isinstance(item, Mapping)
+            and item.get("case_type") == fixture_case_type
+            and item.get("case_id")
+        ),
+        key=lambda item: item["case_id"],
     )
     payload = {
         "schema_version": _STATIC_SCAN_SCHEMA_VERSION,
@@ -518,95 +795,67 @@ def _static_scan_projection(
         "files_scanned": len(files) if isinstance(files, list) else 0,
         "finding_count": len(findings) if isinstance(findings, list) else 0,
         "audit_case_count": len(rows),
-        "matching_case_count": len(matching),
-        "matching_case_ids": matching,
+        "matching_case_count": len(matching_cases),
+        "matching_case_ids": [
+            item["case_id"] for item in matching_cases
+        ],
+        "matching_case_provenance": matching_cases,
     }
     payload["static_scan_digest"] = canonical_digest(payload)
     return payload
 
 
-def _registered_fixture_case(
+def _registered_fixture_contract_seed(
     spec: FixtureSpec,
     *,
     registry_digest: str,
     source_digest: str,
     source_target_digest: str,
+    source_revision: str,
     static_scan: Mapping[str, Any],
-) -> dict[str, Any]:
+) -> ValidationContractSeed:
     if spec.case_type == "path_traversal_possible":
         source = "registered_fixture.requested_path"
         sink = "registered_fixture.path_boundary"
         cwe = "CWE-22"
-        missing = ["runtime path boundary behavior"]
+        missing = ("runtime path boundary behavior",)
     elif spec.case_type == "idor_bola_possible":
         source = "registered_fixture.principal_and_resource_id"
         sink = "registered_fixture.authorization_boundary"
         cwe = "CWE-639"
-        missing = ["runtime ownership and tenant enforcement"]
+        missing = ("runtime ownership and tenant enforcement",)
     else:
         raise FixtureBindingError("fixture case type is not supported")
 
-    seed = {
+    seed_material = {
         "fixture_id": spec.fixture_id,
         "fixture_registry_digest": registry_digest,
         "fixture_source_digest": source_digest,
         "source_target_digest": source_target_digest,
+        "source_revision": source_revision,
         "case_type": spec.case_type,
         "static_scan_digest": static_scan["static_scan_digest"],
     }
-    case_id = "case_" + canonical_digest(seed)[:16]
-    adapter_file = f"web/{spec.framework}_adapter.py"
-    return {
-        "case_id": case_id,
-        "case_type": spec.case_type,
-        "status": "needs_review",
-        "review_priority": "high",
-        "confidence": 0.5,
-        "severity": "medium",
-        "file": adapter_file,
-        "line": None,
-        "rule_id": "registered_transparent_fixture",
-        "cwe": cwe,
-        "source": source,
-        "sink": sink,
-        "dataflow_path": [source, sink],
-        "sanitizers": [],
-        "guarantees": [],
-        "missing_guarantees": missing,
-        "z3_status": "not_applicable",
-        "unsat_core": [],
-        "human_next_steps": [
-            "Execute only the exactly bound transparent fixture locally.",
-            "Do not attribute fixture behavior to an arbitrary scanned target.",
-            "Require separate human confirmation for any real target.",
-        ],
-        "related_finding_fingerprint": canonical_digest(seed)[:16],
-        "reason": (
-            "Generated from an exact static scan of the registered transparent "
-            "fixture source; runtime behavior remains unconfirmed."
+    return ValidationContractSeed(
+        seed_id="vcs_" + canonical_digest(seed_material)[:20],
+        fixture_id=spec.fixture_id,
+        fixture_registry_digest=registry_digest,
+        fixture_source_digest=source_digest,
+        source_target_digest=source_target_digest,
+        source_revision=source_revision,
+        case_type=spec.case_type,
+        framework=spec.framework,
+        file=f"web/{spec.framework}_adapter.py",
+        cwe=cwe,
+        source=source,
+        sink=sink,
+        missing_guarantees=missing,
+        static_case_provenance=tuple(
+            copy.deepcopy(
+                static_scan.get("matching_case_provenance") or ()
+            )
         ),
-        "route_context": {
-            "framework": spec.framework,
-            "scope": REGISTERED_FIXTURE_EXECUTION_SCOPE,
-        },
-        "structured_dataflow": {
-            "source": {"symbol": source},
-            "sink": {"symbol": sink},
-            "ordered_nodes": [
-                {"symbol": source},
-                {"symbol": sink},
-            ],
-            "ordered_edges": [
-                {"source": source, "sink": sink},
-            ],
-        },
-        "metadata": {
-            "registered_fixture_preparation": {
-                **copy.deepcopy(dict(seed)),
-                "static_scan": copy.deepcopy(dict(static_scan)),
-            }
-        },
-    }
+    )
 
 
 def _bounded_strings(value: object, *, limit: int) -> list[str]:
@@ -638,6 +887,8 @@ __all__ = [
     "REGISTERED_FIXTURE_BINDING_SCHEMA_VERSION",
     "REGISTERED_FIXTURE_EXECUTION_SCOPE",
     "RegisteredFixtureBinding",
+    "VALIDATION_CONTRACT_SEED_SCHEMA_VERSION",
+    "ValidationContractSeed",
     "build_registered_fixture_binding",
     "prepare_registered_fixture",
     "project_validation_result",

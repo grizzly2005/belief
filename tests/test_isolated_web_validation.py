@@ -126,7 +126,7 @@ def test_registered_web_fixture_returns_existing_result_contract(
     assert result.metadata["proof_collected"]
     execution = _execution(result)
     assert execution["schema_version"] == (
-        "belief.validation_execution_summary.v1"
+        "belief.validation_execution_summary.v2"
     )
     assert execution["fixture_id"] == fixture_id
     assert execution["executed"] is True

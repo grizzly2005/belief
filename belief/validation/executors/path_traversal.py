@@ -7,6 +7,12 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from ..evidence_policy import (
+    FUNCTIONAL_BASELINE,
+    OPTIONAL,
+    PRIMARY_SECURITY,
+    evaluate_evidence,
+)
 from ..execution_models import (
     ValidationExecutionContext,
     ValidationExecutionSummary,
@@ -17,7 +23,6 @@ from .base import (
     LocalValidationExecutor,
     ValidationAccessDenied,
     ValidationEntrypointUnavailable,
-    baseline_verdict,
     conclusive_safe_outcome,
     resolved_runtime_gaps,
     stable_limitations,
@@ -174,6 +179,8 @@ class PathTraversalValidationExecutor(LocalValidationExecutor):
                             "symlink_supported": False,
                         },
                         baseline=False,
+                        oracle_role=OPTIONAL,
+                        required_for_conclusion=False,
                         oracle_evaluated=False,
                         oracle_passed=None,
                         limitations=("symlink_unavailable",),
@@ -193,31 +200,14 @@ class PathTraversalValidationExecutor(LocalValidationExecutor):
                 observations.append(observation)
                 limitations.extend(scenario_limitations)
 
-        baseline_passed = baseline_verdict(observations)
-        security = [
-            item
-            for item in observations
-            if not item.baseline
-        ]
-        failed_security = [
-            item
-            for item in security
-            if item.oracle_evaluated and item.oracle_passed is False
-        ]
-        mandatory_unevaluated = [
-            item
-            for item in security
-            if item.scenario != "symlink_boundary"
-            and not item.oracle_evaluated
-        ]
-
-        if baseline_passed and failed_security:
-            outcome = "bypassed"
-        elif baseline_passed and not mandatory_unevaluated:
-            outcome = conclusive_safe_outcome(plan)
-        else:
-            outcome = "inconclusive"
-        conclusive = outcome != "inconclusive"
+        decision = evaluate_evidence(
+            observations,
+            completed=True,
+            safe_outcome=conclusive_safe_outcome(plan),
+        )
+        limitations.extend(decision.limitations)
+        outcome = decision.outcome
+        conclusive = decision.conclusive
         return ValidationExecutionSummary(
             validation_plan_id=plan.plan_id,
             validation_plan_digest=plan_digest,
@@ -230,7 +220,7 @@ class PathTraversalValidationExecutor(LocalValidationExecutor):
             supported=True,
             executed=True,
             outcome=outcome,
-            baseline_passed=baseline_passed,
+            baseline_passed=decision.baseline_passed,
             observations=tuple(observations),
             resolved_evidence_gaps=resolved_runtime_gaps(
                 plan,
@@ -355,6 +345,16 @@ def _observe_path(
             expected=expected,
             actual=actual,
             baseline=baseline,
+            oracle_role=(
+                FUNCTIONAL_BASELINE
+                if baseline
+                else (
+                    OPTIONAL
+                    if scenario == "symlink_boundary"
+                    else PRIMARY_SECURITY
+                )
+            ),
+            required_for_conclusion=scenario != "symlink_boundary",
             oracle_evaluated=evaluated,
             oracle_passed=passed,
             evidence=tuple(evidence),
