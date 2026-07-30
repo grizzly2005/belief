@@ -16,6 +16,10 @@ registered_transparent_fixture_only
 The feature does not dynamically validate an arbitrary Flask or FastAPI
 project.
 
+The separate flask-jwt-extended pilot is outside this dynamic execution scope.
+It performs exact-source static preparation only and always abstains from
+target execution. Its binding cannot be consumed by `belief_validate_plan`.
+
 ## Trusted components
 
 - BELIEF first-party MCP and validation-worker code;
@@ -204,9 +208,17 @@ impact, deployment state, or reportability of an arbitrary target.
 Target confirmation remains deferred to an explicitly authorized,
 target-specific workflow and a human reviewer.
 
+The first authorized-project pilot now provides the static half of that
+workflow for one exact flask-jwt-extended revision. It requires an independent
+startup grant and binds its plans to the complete source digest, but it
+deliberately does not add a target execution harness. See
+[`AUTHORIZED_PROJECT_PILOT.md`](AUTHORIZED_PROJECT_PILOT.md).
+
 ## Holdout and external-world exclusions
 
 Fixture preparation reads only the fixed first-party registry documents.
 SusVibes paths are neither accepted nor traversed. The feature opens no network
 connection, arbitrary subprocess, shell, Docker session, public RPC, custom
-adapter, or target server. It does not write target files.
+adapter, or target server. It does not write target files. The one built-in
+authorized-project pilot accepts no path, module, callable, or adapter
+implementation and does not alter these dynamic-worker exclusions.

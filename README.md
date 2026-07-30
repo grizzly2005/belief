@@ -741,7 +741,8 @@ belief/validation/
 
 belief/mcp/
   Experimental local stdio MCP facade, trusted fixture bindings, bounded
-  cancellation-aware execution, public contracts, and in-memory resources.
+  cancellation-aware execution, one exact-source abstaining real-project
+  pilot, public contracts, and in-memory resources.
 
 belief/reasoning/
   Deterministic offline reasoning models, router, and rule-based engine.
@@ -812,6 +813,7 @@ pyproject.toml
 - [`docs/TOOL_BRIDGES.md`](docs/TOOL_BRIDGES.md)
 - [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md)
 - [`docs/MCP_DYNAMIC_VALIDATION_SECURITY.md`](docs/MCP_DYNAMIC_VALIDATION_SECURITY.md)
+- [`docs/AUTHORIZED_PROJECT_PILOT.md`](docs/AUTHORIZED_PROJECT_PILOT.md)
 - [`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md)
 - [`docs/PYTHON_SOURCE_CLASSIFICATION.md`](docs/PYTHON_SOURCE_CLASSIFICATION.md)
 - [`docs/ISOLATED_WEB_VALIDATION_WORKER.md`](docs/ISOLATED_WEB_VALIDATION_WORKER.md)

@@ -16,6 +16,10 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from io import TextIOBase
 from typing import Any
 
+from .authorized_project import (
+    AuthorizedProjectError,
+    authorized_project_grant_from_environment,
+)
 from .contracts import (
     MCP_PROTOCOL_VERSION,
     MCP_SERVER_NAME,
@@ -44,8 +48,18 @@ class BeliefMCPServer:
     """MCP request dispatcher with transport-independent domain behavior."""
 
     def __init__(self, tools: BeliefMCPTools | None = None) -> None:
-        self.tools = tools or BeliefMCPTools(
-            workspace_root=os.environ.get("BELIEF_MCP_WORKSPACE_ROOT")
+        if tools is not None:
+            self.tools = tools
+            return
+        try:
+            grant = authorized_project_grant_from_environment(os.environ)
+        except AuthorizedProjectError as exc:
+            raise BeliefMCPError(
+                "authorized project startup configuration is invalid"
+            ) from exc
+        self.tools = BeliefMCPTools(
+            workspace_root=os.environ.get("BELIEF_MCP_WORKSPACE_ROOT"),
+            authorized_project_grant=grant,
         )
 
     def handle(

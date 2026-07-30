@@ -13,9 +13,10 @@ dependency on an MCP SDK, so the repository's offline installation contract is
 unchanged. Domain operations delegate to BELIEF's existing static-analysis,
 validation-planning, transparent-benchmark, and isolated-worker services.
 
-This is a local, fixture-bound integration surface. It is not a public remote
-MCP service. Static findings and registered-fixture observations are not
-confirmed vulnerabilities.
+This is a local, fixture-bound integration surface with one separately
+authorized, static-only real-project pilot. It is not a public remote MCP
+service. Static findings and registered-fixture observations are not confirmed
+vulnerabilities.
 
 ## Codex configuration
 
@@ -38,6 +39,11 @@ under this fixed root; resolved paths outside it are rejected.
 Codex loads MCP configuration at startup. Restart the Codex session after
 adding or changing the server entry.
 
+The flask-jwt-extended pilot additionally requires the two exact,
+project-specific startup authorization variables documented in
+[`AUTHORIZED_PROJECT_PILOT.md`](AUTHORIZED_PROJECT_PILOT.md). The pilot tool
+does not accept a workspace path and cannot broaden the configured root.
+
 ## Tools
 
 The v0.2 surface is closed:
@@ -50,6 +56,7 @@ The v0.2 surface is closed:
 | `belief_explain_case` | Project candidate evidence into deterministic explanation fields. |
 | `belief_build_validation_plan` | Build an unbound canonical plan without executing it. |
 | `belief_prepare_validation_fixture` | Scan one exact registered fixture source and create a trusted bound plan. |
+| `belief_prepare_authorized_project_pilot` | Verify and statically analyze the exact separately authorized flask-jwt-extended snapshot, then abstain from execution. |
 | `belief_validate_plan` | Execute only a previously bound plan in the hardened local worker. |
 | `belief_compare_runs` | Compare audit cases from two runs of the same resolved target. |
 | `belief_run_local_benchmark` | Run only the transparent `local_validation_v2` corpus. |
@@ -98,6 +105,28 @@ builds a canonical `ValidationPlan`, and attaches
 It accepts no source, path, module, callable, URL, expression, adapter, plan
 JSON, host, or port.
 
+### Authorized real-project pilot
+
+`belief_prepare_authorized_project_pilot` is bound in code to exactly:
+
+```text
+project = github.com/vimalloc/flask-jwt-extended
+revision = 1910726f152016c3e48d61792983eebe11f54ac2
+source_digest = 4e42c82b7d0a210350cc99fcc698e478f1b62b76785a413d40525b0555b70c52
+```
+
+It requires a separate startup grant, the same authorization ID in the tool
+request, the exact revision and digest, and a literal access acknowledgement.
+It reads only the configured workspace root, verifies the complete 79-file
+source inventory before and after static analysis, and creates
+`belief.authorized_project_binding.v1` bindings with
+`dynamic_execution_authorized = false`.
+
+It accepts no path, module, callable, source, command, URL, host, port, or
+adapter implementation. It never imports or executes the project. Every pilot
+projection is `inconclusive` with `execution_status = abstained`. See
+[`AUTHORIZED_PROJECT_PILOT.md`](AUTHORIZED_PROJECT_PILOT.md).
+
 ### Bound local validation
 
 `belief_validate_plan` accepts exactly:
@@ -139,6 +168,7 @@ belief://schemas/audit-case
 belief://schemas/validation-plan
 belief://schemas/validation-result
 belief://schemas/registered-fixture-binding
+belief://schemas/authorized-project-binding
 ```
 
 Resources created for each run:
@@ -151,9 +181,10 @@ belief://runs/{run_id}/validation-results
 ```
 
 The process-memory store retains defensive copies of summaries, normalized
-audit cases, generated plans, trusted bindings, and projected validation
-results. It does not retain fixture source text, the complete static analysis,
-the complete environment, raw child output, tracebacks, or temporary paths.
+audit cases, generated plans, trusted fixture bindings, non-executable
+authorized-project bindings, and projected validation results. It does not
+retain fixture source text, the complete static analysis, the complete
+environment, raw child output, tracebacks, or temporary paths.
 
 Limits are fixed:
 
@@ -207,6 +238,19 @@ behavior. See
 [`MCP_DYNAMIC_VALIDATION_SECURITY.md`](MCP_DYNAMIC_VALIDATION_SECURITY.md) for
 the threat model and lifecycle.
 
+The real-project pilot has a different, non-executable evidence scope:
+
+```text
+evidence_scope = authorized_real_project_static_only
+outcome = inconclusive
+execution_status = abstained
+target_vulnerability_confirmed = false
+human_confirmation_required = true
+```
+
+Its plans cannot enter the hardened worker. The ordinary fixture-only dynamic
+scope remains unchanged.
+
 ## Enforced exclusions
 
 MCP v0.2 does not expose:
@@ -227,6 +271,10 @@ and rejected as direct scan targets. The benchmark tool binds to the
 repository's exact `benchmark_validation/cases.json` and accepts no path
 argument. Fixture preparation reads only hardcoded first-party source
 documents.
+
+The one real-project pilot is a hardcoded first-party adapter, not a custom
+adapter surface. It checks the exact revision and complete source digest twice,
+uses no Git subprocess, and never grants dynamic execution.
 
 An `AuditCase` remains candidate evidence. A case reported as resolved by
 `belief_compare_runs` is absent from the later static case set; that alone does

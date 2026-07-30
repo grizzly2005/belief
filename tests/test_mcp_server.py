@@ -72,6 +72,7 @@ def test_mcp_tool_surface_is_closed_and_fixture_bound(tmp_path):
         "belief_explain_case",
         "belief_build_validation_plan",
         "belief_prepare_validation_fixture",
+        "belief_prepare_authorized_project_pilot",
         "belief_validate_plan",
         "belief_compare_runs",
         "belief_run_local_benchmark",

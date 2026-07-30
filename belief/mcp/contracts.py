@@ -16,6 +16,16 @@ from belief.validation.plan_models import (
     VALIDATION_STRATEGIES,
 )
 
+from .authorized_project import (
+    AUTHORIZED_PROJECT_BINDING_SCHEMA_VERSION,
+    AUTHORIZED_PROJECT_EXECUTION_SCOPE,
+    FLASKJWT_PILOT_ADAPTER_ID,
+    FLASKJWT_PILOT_PROJECT_ID,
+    FLASKJWT_PILOT_SOURCE_DIGEST,
+    FLASKJWT_PILOT_SOURCE_FILE_COUNT,
+    FLASKJWT_PILOT_SOURCE_REVISION,
+    FLASKJWT_PILOT_SOURCE_TOTAL_BYTES,
+)
 from .validation import (
     MCP_MAX_CONCURRENT_VALIDATIONS,
     MCP_MAX_IN_FLIGHT_REQUESTS,
@@ -54,8 +64,10 @@ SERVER_INSTRUCTIONS = (
     "are never executable. Local dynamic validation is limited to plans prepared "
     "from and cryptographically bound to transparent first-party registered "
     "fixtures. Fixture evidence never confirms the scanned target. This server "
-    "has no network, shell, target-write, custom-import, Docker, or SusVibes "
-    "holdout capability."
+    "also exposes one separately authorized, exact-source flask-jwt-extended "
+    "static pilot that always abstains from target execution. This server has "
+    "no network, shell, target-write, custom-import, Docker, or SusVibes holdout "
+    "capability."
 )
 
 _READ_ONLY_ANNOTATIONS = {
@@ -278,6 +290,73 @@ REGISTERED_FIXTURE_BINDING_SCHEMA: dict[str, Any] = {
     ),
 }
 
+AUTHORIZED_PROJECT_BINDING_SCHEMA: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "belief://schemas/authorized-project-binding",
+    "title": "BELIEF authorized project static binding v1",
+    **_object(
+        {
+            "binding_kind": {
+                "const": AUTHORIZED_PROJECT_BINDING_SCHEMA_VERSION
+            },
+            "adapter_id": {"const": FLASKJWT_PILOT_ADAPTER_ID},
+            "project_id": {"const": FLASKJWT_PILOT_PROJECT_ID},
+            "run_id": _string(min_length=5),
+            "audit_case_id": _string(min_length=1),
+            "validation_plan_id": _string(min_length=1),
+            "validation_plan_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "source_revision": {
+                "const": FLASKJWT_PILOT_SOURCE_REVISION
+            },
+            "source_digest": {"const": FLASKJWT_PILOT_SOURCE_DIGEST},
+            "source_file_count": {
+                "type": "integer",
+                "const": FLASKJWT_PILOT_SOURCE_FILE_COUNT,
+            },
+            "source_total_bytes": {
+                "type": "integer",
+                "const": FLASKJWT_PILOT_SOURCE_TOTAL_BYTES,
+            },
+            "authorization_id": {
+                "type": "string",
+                "pattern": "^auth_[0-9a-f]{64}$",
+            },
+            "authorization_grant_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "created_by": {
+                "const": "belief_prepare_authorized_project_pilot"
+            },
+            "execution_scope": {
+                "const": AUTHORIZED_PROJECT_EXECUTION_SCOPE
+            },
+            "dynamic_execution_authorized": {"const": False},
+        },
+        required=(
+            "binding_kind",
+            "adapter_id",
+            "project_id",
+            "run_id",
+            "audit_case_id",
+            "validation_plan_id",
+            "validation_plan_digest",
+            "source_revision",
+            "source_digest",
+            "source_file_count",
+            "source_total_bytes",
+            "authorization_id",
+            "authorization_grant_digest",
+            "created_by",
+            "execution_scope",
+            "dynamic_execution_authorized",
+        ),
+    ),
+}
+
 VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "belief://schemas/validation-result",
@@ -369,6 +448,9 @@ PUBLIC_SCHEMAS = {
     "belief://schemas/validation-result": VALIDATION_RESULT_SCHEMA,
     "belief://schemas/registered-fixture-binding": (
         REGISTERED_FIXTURE_BINDING_SCHEMA
+    ),
+    "belief://schemas/authorized-project-binding": (
+        AUTHORIZED_PROJECT_BINDING_SCHEMA
     ),
 }
 
@@ -464,6 +546,50 @@ def tool_definitions() -> list[dict[str, Any]]:
             "inputSchema": _object(
                 {"fixture_id": _string(min_length=1)},
                 required=("fixture_id",),
+            ),
+            "outputSchema": _GENERIC_OUTPUT,
+        },
+        {
+            "name": "belief_prepare_authorized_project_pilot",
+            "title": "Prepare the authorized flask-jwt-extended pilot",
+            "description": (
+                "Verify the configured workspace against the one pinned "
+                "flask-jwt-extended revision and canonical source digest, then "
+                "perform static analysis and create non-executable bindings. "
+                "A separate startup authorization is mandatory. This tool "
+                "accepts no path, module, callable, or source and always "
+                "abstains from dynamic target execution."
+            ),
+            "inputSchema": _object(
+                {
+                    "adapter_id": {
+                        "type": "string",
+                        "const": FLASKJWT_PILOT_ADAPTER_ID,
+                    },
+                    "authorization_id": {
+                        "type": "string",
+                        "pattern": "^auth_[0-9a-f]{64}$",
+                    },
+                    "source_revision": {
+                        "type": "string",
+                        "const": FLASKJWT_PILOT_SOURCE_REVISION,
+                    },
+                    "source_digest": {
+                        "type": "string",
+                        "const": FLASKJWT_PILOT_SOURCE_DIGEST,
+                    },
+                    "acknowledge_authorized_project_access": {
+                        "type": "boolean",
+                        "const": True,
+                    },
+                },
+                required=(
+                    "adapter_id",
+                    "authorization_id",
+                    "source_revision",
+                    "source_digest",
+                    "acknowledge_authorized_project_access",
+                ),
             ),
             "outputSchema": _GENERIC_OUTPUT,
         },
@@ -609,7 +735,12 @@ def resource_template_definitions() -> list[dict[str, Any]]:
     ]
 
 
-def status_payload(*, workspace_root: str, benchmark_available: bool) -> dict[str, Any]:
+def status_payload(
+    *,
+    workspace_root: str,
+    benchmark_available: bool,
+    authorized_project_pilot_available: bool,
+) -> dict[str, Any]:
     return {
         "version": MCP_SERVER_VERSION,
         "protocol_version": MCP_PROTOCOL_VERSION,
@@ -624,6 +755,14 @@ def status_payload(*, workspace_root: str, benchmark_available: bool) -> dict[st
         ),
         "metrics_schema": VALIDATION_METRICS_SCHEMA_VERSION,
         "transparent_benchmark_available": benchmark_available,
+        "authorized_project_pilot_available": (
+            authorized_project_pilot_available
+        ),
+        "authorized_project_pilot_adapter_id": FLASKJWT_PILOT_ADAPTER_ID,
+        "authorized_project_pilot_execution_scope": (
+            AUTHORIZED_PROJECT_EXECUTION_SCOPE
+        ),
+        "authorized_project_dynamic_execution_enabled": False,
         "network_enabled": False,
         "subprocess_enabled": False,
         "shell_enabled": False,

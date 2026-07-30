@@ -22,6 +22,17 @@ from belief.validation.plan_models import ValidationPlan, canonical_digest
 from belief.validation.plans import build_validation_plan
 from belief.validation.worker import run_isolated_web_validation_plan
 
+from .authorized_project import (
+    AUTHORIZED_PROJECT_EXECUTION_SCOPE,
+    AUTHORIZED_PROJECT_PREPARATION_SCHEMA_VERSION,
+    AuthorizedProjectError,
+    AuthorizedProjectGrant,
+    build_authorized_project_binding,
+    make_authorized_project_grant,
+    prepare_authorized_project,
+    project_authorized_project_abstention,
+    validate_authorized_project_request,
+)
 from .contracts import (
     MCP_COMPARISON_SCHEMA_VERSION,
     MCP_EXPLANATION_SCHEMA_VERSION,
@@ -77,6 +88,8 @@ class _StoredRun:
     )
     origin: str = "static_scan"
     registered_fixture_id: str = ""
+    authorized_project_adapter_id: str = ""
+    project_bindings: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 class _RunStore:
@@ -142,6 +155,9 @@ class _RunStore:
                 registered_fixture_id=str(
                     snapshot.get("registered_fixture_id") or ""
                 ),
+                authorized_project_adapter_id=str(
+                    snapshot.get("authorized_project_adapter_id") or ""
+                ),
             )
             self._runs[run_id] = stored
             while len(self._runs) > self._max_runs:
@@ -169,7 +185,12 @@ class _RunStore:
         plan: Mapping[str, Any],
         *,
         binding: Mapping[str, Any] | None = None,
+        project_binding: Mapping[str, Any] | None = None,
     ) -> None:
+        if binding is not None and project_binding is not None:
+            raise BeliefMCPError(
+                "a plan cannot have both fixture and authorized-project bindings"
+            )
         normalized = _identifier(run_id, field_name="run_id")
         plan_snapshot = copy.deepcopy(dict(plan))
         plan_id = _identifier(
@@ -181,6 +202,11 @@ class _RunStore:
             if binding is not None
             else None
         )
+        project_binding_snapshot = (
+            copy.deepcopy(dict(project_binding))
+            if project_binding is not None
+            else None
+        )
         with self._lock:
             stored = self._stored(normalized)
             stored.plans[plan_id] = plan_snapshot
@@ -188,6 +214,10 @@ class _RunStore:
                 stored.bindings.pop(plan_id, None)
             else:
                 stored.bindings[plan_id] = binding_snapshot
+            if project_binding_snapshot is None:
+                stored.project_bindings.pop(plan_id, None)
+            else:
+                stored.project_bindings[plan_id] = project_binding_snapshot
             self._runs.move_to_end(normalized)
 
     def store_result(
@@ -253,6 +283,7 @@ class BeliefMCPTools:
         max_stored_runs: int = MCP_MAX_STORED_RUNS,
         max_results_per_run: int = MCP_MAX_RESULTS_PER_RUN,
         max_total_results: int = MCP_MAX_TOTAL_RESULTS,
+        authorized_project_grant: AuthorizedProjectGrant | None = None,
     ) -> None:
         root = Path.cwd() if workspace_root is None else Path(workspace_root)
         try:
@@ -270,6 +301,20 @@ class BeliefMCPTools:
             raise BeliefMCPError(
                 "MCP workspace root cannot be inside a reserved holdout location"
             )
+        if authorized_project_grant is not None:
+            try:
+                expected_grant = make_authorized_project_grant(
+                    authorized_project_grant.authorization_id
+                )
+            except AuthorizedProjectError as exc:
+                raise BeliefMCPError(
+                    "authorized project grant is invalid"
+                ) from exc
+            if authorized_project_grant.to_dict() != expected_grant.to_dict():
+                raise BeliefMCPError(
+                    "authorized project grant is not bound to the built-in pilot"
+                )
+        self._authorized_project_grant = authorized_project_grant
 
         self._benchmark_corpus = self._resolve_benchmark_corpus()
         self._runs = _RunStore(
@@ -288,6 +333,9 @@ class BeliefMCPTools:
             "belief_build_validation_plan": self._build_validation_plan,
             "belief_prepare_validation_fixture": (
                 self._prepare_validation_fixture
+            ),
+            "belief_prepare_authorized_project_pilot": (
+                self._prepare_authorized_project_pilot
             ),
             "belief_compare_runs": self._compare_runs,
             "belief_run_local_benchmark": self._run_local_benchmark,
@@ -356,6 +404,11 @@ class BeliefMCPTools:
                     plan["registered_fixture_binding"] = copy.deepcopy(
                         binding
                     )
+                project_binding = stored.project_bindings.get(plan_id)
+                if project_binding is not None:
+                    plan["authorized_project_binding"] = copy.deepcopy(
+                        project_binding
+                    )
                 plans.append(plan)
             payload = {
                 "schema_version": "belief.mcp_validation_plan_collection.v1",
@@ -368,6 +421,12 @@ class BeliefMCPTools:
                     if stored.bindings
                     else None
                 ),
+                "authorized_project_scope": (
+                    AUTHORIZED_PROJECT_EXECUTION_SCOPE
+                    if stored.project_bindings
+                    else None
+                ),
+                "authorized_project_dynamic_execution_enabled": False,
             }
             return payload, "application/json"
         payload = {
@@ -390,6 +449,9 @@ class BeliefMCPTools:
         return status_payload(
             workspace_root=self.workspace_root.as_posix(),
             benchmark_available=self._benchmark_corpus is not None,
+            authorized_project_pilot_available=(
+                self._authorized_project_grant is not None
+            ),
         )
 
     def capabilities(self) -> dict[str, Any]:
@@ -417,6 +479,7 @@ class BeliefMCPTools:
                     "audit_cases",
                     "generated_validation_plans",
                     "registered_fixture_bindings",
+                    "authorized_project_static_bindings",
                     "projected_validation_results",
                 ],
             },
@@ -436,6 +499,11 @@ class BeliefMCPTools:
                 ),
                 "target_writes": False,
                 "custom_adapters": False,
+                "authorized_project_pilot": True,
+                "authorized_project_pilot_configured": (
+                    self._authorized_project_grant is not None
+                ),
+                "authorized_project_dynamic_execution": False,
                 "susvibes_holdout": False,
                 "confirmed_vulnerability_verdict": False,
             },
@@ -448,6 +516,11 @@ class BeliefMCPTools:
                     "registered transparent fixture sources."
                 ),
                 "Fixture evidence never confirms an arbitrary scanned target.",
+                (
+                    "The explicit flask-jwt-extended pilot requires separate "
+                    "startup authorization, exact revision and source digest "
+                    "matching, and always abstains from dynamic execution."
+                ),
                 "Only the transparent local_validation_v2 benchmark is callable.",
                 "Runs are evicted after the in-memory capacity is reached.",
             ],
@@ -802,6 +875,128 @@ class BeliefMCPTools:
             if execution is not None and worker_holder:
                 execution.release_worker(worker_holder[-1])
             self._validation_capacity.release()
+
+    def _prepare_authorized_project_pilot(
+        self,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        _arguments(
+            arguments,
+            allowed=(
+                "adapter_id",
+                "authorization_id",
+                "source_revision",
+                "source_digest",
+                "acknowledge_authorized_project_access",
+            ),
+            required=(
+                "adapter_id",
+                "authorization_id",
+                "source_revision",
+                "source_digest",
+                "acknowledge_authorized_project_access",
+            ),
+        )
+        if arguments["acknowledge_authorized_project_access"] is not True:
+            raise BeliefMCPError(
+                "acknowledge_authorized_project_access must be the JSON boolean true"
+            )
+        try:
+            grant = validate_authorized_project_request(
+                self._authorized_project_grant,
+                adapter_id=arguments["adapter_id"],
+                authorization_id=arguments["authorization_id"],
+                source_revision=arguments["source_revision"],
+                source_digest=arguments["source_digest"],
+            )
+            prepared = prepare_authorized_project(
+                self.workspace_root,
+                grant,
+            )
+            stored = self._runs.put(prepared.analysis_snapshot)
+            bindings = []
+            abstentions = []
+            for plan in prepared.plans:
+                binding = build_authorized_project_binding(
+                    prepared,
+                    run_id=stored.run_id,
+                    plan=plan,
+                    grant=grant,
+                )
+                self._runs.store_plan(
+                    stored.run_id,
+                    plan.to_dict(),
+                    project_binding=binding.to_dict(),
+                )
+                bindings.append(
+                    {
+                        "plan_id": plan.plan_id,
+                        "binding": binding.to_dict(),
+                        "binding_digest": binding.digest,
+                    }
+                )
+                abstentions.append(
+                    project_authorized_project_abstention(
+                        run_id=stored.run_id,
+                        plan=plan,
+                        binding=binding,
+                    )
+                )
+        except AuthorizedProjectError as exc:
+            raise BeliefMCPError(str(exc)) from exc
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise BeliefMCPError(
+                "authorized project preparation could not be completed safely"
+            ) from exc
+
+        return {
+            "schema_version": AUTHORIZED_PROJECT_PREPARATION_SCHEMA_VERSION,
+            "run_id": stored.run_id,
+            "adapter_id": prepared.attestation.adapter_id,
+            "project_id": prepared.attestation.project_id,
+            "authorization_id": grant.authorization_id,
+            "authorization_grant_digest": grant.digest,
+            "source_attestation": prepared.attestation.to_dict(),
+            "static_summary": copy.deepcopy(stored.summary),
+            "plan_count": len(prepared.plans),
+            "bindings": bindings,
+            "abstentions": abstentions,
+            "outcome": "inconclusive",
+            "execution_status": "abstained",
+            "limitations": list(prepared.limitations),
+            "resources": {
+                "run": f"belief://runs/{stored.run_id}",
+                "audit_cases": (
+                    f"belief://runs/{stored.run_id}/audit-cases"
+                ),
+                "validation_plans": (
+                    f"belief://runs/{stored.run_id}/validation-plans"
+                ),
+                "validation_results": (
+                    f"belief://runs/{stored.run_id}/validation-results"
+                ),
+            },
+            "boundaries": {
+                "execution_scope": AUTHORIZED_PROJECT_EXECUTION_SCOPE,
+                "separate_authorization_required": True,
+                "separate_authorization_verified": True,
+                "exact_revision_verified": True,
+                "exact_source_digest_verified": True,
+                "target_executed": False,
+                "target_imported": False,
+                "target_files_written": False,
+                "network_used": False,
+                "subprocess_used": False,
+                "shell_used": False,
+                "arbitrary_source_accepted": False,
+                "arbitrary_path_accepted": False,
+                "arbitrary_module_accepted": False,
+                "arbitrary_callable_accepted": False,
+                "dynamic_execution_authorized": False,
+                "target_vulnerability_confirmed": False,
+                "human_confirmation_required": True,
+            },
+        }
 
     def _compare_runs(self, arguments: dict[str, Any]) -> dict[str, Any]:
         _arguments(
