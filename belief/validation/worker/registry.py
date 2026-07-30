@@ -143,6 +143,12 @@ def load_fixture_runner(spec: FixtureSpec) -> FixturePreparer:
 
     if not optional_framework_available(spec.framework):
         raise OptionalWebDependencyUnavailable(spec.framework)
+    if spec.framework == "flask":
+        import flask.testing
+        from importlib.metadata import version
+
+        if not flask.testing._werkzeug_version:
+            flask.testing._werkzeug_version = version("werkzeug")
     if spec.implementation_id == "f01":
         from ..web.fixtures.f01 import prepare_fixture
     elif spec.implementation_id == "f02":

@@ -11,6 +11,7 @@ import io
 import os
 import re
 import sys
+import tempfile
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -20,6 +21,7 @@ from typing import Any, Mapping
 _BOOTSTRAP_REQUEST_LIMIT = 16 * 1024
 _DIAGNOSTIC_LIMIT = 4_096
 _WORKER_ROOT_PREFIX = "belief-isolated-web-worker-"
+_WORKER_CHILD_ROOT_NAME = "child"
 _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?i)\b(token|secret|password|credential|api[_-]?key)"
@@ -265,14 +267,23 @@ def _validated_worker_root(value: str) -> Path:
     if not isinstance(value, str) or "\x00" in value:
         raise ValueError("invalid worker root")
     candidate = Path(value)
+    container = candidate.parent
     if (
         not candidate.is_absolute()
-        or not candidate.name.startswith(_WORKER_ROOT_PREFIX)
+        or candidate.name != _WORKER_CHILD_ROOT_NAME
+        or not container.name.startswith(_WORKER_ROOT_PREFIX)
         or candidate.is_symlink()
+        or container.is_symlink()
     ):
         raise ValueError("invalid worker root")
     resolved = candidate.resolve(strict=True)
-    if not resolved.is_dir():
+    resolved_container = container.resolve(strict=True)
+    temporary_parent = Path(tempfile.gettempdir()).resolve(strict=True)
+    if (
+        not resolved.is_dir()
+        or resolved.parent != resolved_container
+        or resolved_container.parent != temporary_parent
+    ):
         raise ValueError("invalid worker root")
     return resolved
 

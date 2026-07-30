@@ -100,10 +100,6 @@ def execute_worker_message(
 
     try:
         prepare_fixture = load_fixture_runner(spec)
-        prepared_fixture = prepare_fixture(
-            temporary_root,
-            request.test_parameters,
-        )
     except OptionalWebDependencyUnavailable:
         return (
             _failure_response(
@@ -116,17 +112,6 @@ def execute_worker_message(
             ),
             request,
         )
-    except WorkerPolicyViolation:
-        return (
-            _failure_response(
-                request,
-                status="policy_violation",
-                error_code="policy_violation",
-                state=state,
-                framework=spec.framework,
-            ),
-            request,
-        )
     except Exception:
         return (
             _failure_response(
@@ -135,19 +120,6 @@ def execute_worker_message(
                 error_code="internal_error",
                 state=state,
                 framework=spec.framework,
-            ),
-            request,
-        )
-
-    if cancellation_event.is_set():
-        return (
-            _failure_response(
-                request,
-                status="cancelled",
-                error_code="cancelled",
-                state=state,
-                framework=spec.framework,
-                cancellation_reason="parent cancellation requested",
             ),
             request,
         )
@@ -155,7 +127,15 @@ def execute_worker_message(
     apply_resource_limits(state, timeout_ms=request.timeout_ms)
     try:
         with filesystem_policy(temporary_root, state):
-            fixture_result = prepared_fixture()
+            prepared_fixture = prepare_fixture(
+                temporary_root,
+                request.test_parameters,
+            )
+            fixture_result = (
+                None
+                if cancellation_event.is_set()
+                else prepared_fixture()
+            )
     except WorkerPolicyViolation:
         return (
             _failure_response(
@@ -179,7 +159,7 @@ def execute_worker_message(
             request,
         )
 
-    if cancellation_event.is_set():
+    if cancellation_event.is_set() or fixture_result is None:
         return (
             _failure_response(
                 request,
@@ -371,13 +351,14 @@ def execute_registered_request(
             state=state,
         )
     try:
-        prepare_fixture = load_fixture_runner(spec)
-        prepared_fixture = prepare_fixture(
-            temporary_root,
-            request.test_parameters,
-        )
-        with preliminary_policy(state), filesystem_policy(temporary_root, state):
-            result = prepared_fixture()
+        with preliminary_policy(state):
+            prepare_fixture = load_fixture_runner(spec)
+            with filesystem_policy(temporary_root, state):
+                prepared_fixture = prepare_fixture(
+                    temporary_root,
+                    request.test_parameters,
+                )
+                result = prepared_fixture()
     except OptionalWebDependencyUnavailable:
         return _failure_response(
             request,

@@ -11,10 +11,12 @@ import io
 import math
 import multiprocessing.process
 import os
+import shutil
 import socket
 import subprocess
+import threading
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -106,10 +108,12 @@ def filesystem_policy(
     root: Path,
     state: WorkerPolicyState,
 ) -> Iterator[None]:
-    """Confine ordinary fixture file operations to one resolved private root."""
+    """Confine Python-level fixture filesystem operations to one child root."""
 
     allowed_root = root.resolve(strict=True)
     patches = _PatchSet()
+    guard_state = threading.local()
+
     original_builtin_open = builtins.open
     original_io_open = io.open
     original_os_open = os.open
@@ -119,6 +123,68 @@ def filesystem_policy(
     original_path_write_text = Path.write_text
     original_path_write_bytes = Path.write_bytes
     original_chdir = os.chdir
+    original_rename = os.rename
+    original_replace = os.replace
+    original_remove = os.remove
+    original_unlink = os.unlink
+    original_mkdir = os.mkdir
+    original_makedirs = os.makedirs
+    original_rmdir = os.rmdir
+    original_symlink = os.symlink
+    original_link = os.link
+    original_listdir = os.listdir
+    original_scandir = os.scandir
+    original_stat = os.stat
+    original_lstat = os.lstat
+    original_readlink = os.readlink
+    original_truncate = os.truncate
+    original_chmod = os.chmod
+    original_copy = shutil.copy
+    original_copy2 = shutil.copy2
+    original_copyfile = shutil.copyfile
+    original_copytree = shutil.copytree
+    original_move = shutil.move
+    original_rmtree = shutil.rmtree
+
+    def guard(
+        path: Any,
+        *,
+        action: str,
+        allow_fd: bool = False,
+        forbid_root: bool = False,
+    ) -> Path | None:
+        if isinstance(path, int):
+            if allow_fd:
+                return None
+            state.deny("filesystem", f"{action}_file_descriptor")
+        try:
+            normalized_path = os.fsdecode(os.fspath(path))
+            if "\x00" in normalized_path:
+                raise ValueError
+        except (OSError, TypeError, ValueError):
+            state.deny("filesystem", action)
+        if getattr(guard_state, "active", False):
+            return None
+        guard_state.active = True
+        try:
+            resolved = _guard_path(
+                normalized_path,
+                allowed_root,
+                state,
+                action=action,
+            )
+            if forbid_root and resolved == allowed_root:
+                state.deny("filesystem", f"{action}_root")
+            return resolved
+        finally:
+            guard_state.active = False
+
+    def reject_dir_fd(action: str, values: Mapping[str, Any]) -> None:
+        if any(
+            values.get(name) is not None
+            for name in ("dir_fd", "src_dir_fd", "dst_dir_fd")
+        ):
+            state.deny("filesystem", f"{action}_dir_fd")
 
     def guarded_builtin_open(
         file: Any,
@@ -143,7 +209,7 @@ def filesystem_policy(
             )
         if opener is not None:
             state.deny("filesystem", "custom_opener")
-        _guard_path(file, allowed_root, state, action="open")
+        guard(file, action="open")
         return original_builtin_open(
             file,
             mode,
@@ -178,7 +244,7 @@ def filesystem_policy(
             )
         if opener is not None:
             state.deny("filesystem", "custom_opener")
-        _guard_path(file, allowed_root, state, action="open")
+        guard(file, action="open")
         return original_io_open(
             file,
             mode,
@@ -197,34 +263,224 @@ def filesystem_policy(
         *,
         dir_fd: int | None = None,
     ) -> int:
-        if dir_fd is not None:
-            state.deny("filesystem", "dir_fd_open")
-        _guard_path(path, allowed_root, state, action="os_open")
+        reject_dir_fd("os_open", {"dir_fd": dir_fd})
+        guard(path, action="os_open")
         return original_os_open(path, flags, mode)
 
     def guarded_path_open(path: Path, *args: Any, **kwargs: Any) -> Any:
-        _guard_path(path, allowed_root, state, action="path_open")
+        guard(path, action="path_open")
         return original_path_open(path, *args, **kwargs)
 
     def guarded_read_text(path: Path, *args: Any, **kwargs: Any) -> str:
-        _guard_path(path, allowed_root, state, action="read_text")
+        guard(path, action="read_text")
         return original_path_read_text(path, *args, **kwargs)
 
     def guarded_read_bytes(path: Path, *args: Any, **kwargs: Any) -> bytes:
-        _guard_path(path, allowed_root, state, action="read_bytes")
+        guard(path, action="read_bytes")
         return original_path_read_bytes(path, *args, **kwargs)
 
     def guarded_write_text(path: Path, *args: Any, **kwargs: Any) -> int:
-        _guard_path(path, allowed_root, state, action="write_text")
+        guard(path, action="write_text")
         return original_path_write_text(path, *args, **kwargs)
 
     def guarded_write_bytes(path: Path, *args: Any, **kwargs: Any) -> int:
-        _guard_path(path, allowed_root, state, action="write_bytes")
+        guard(path, action="write_bytes")
         return original_path_write_bytes(path, *args, **kwargs)
 
     def guarded_chdir(path: Any) -> None:
-        _guard_path(path, allowed_root, state, action="chdir")
+        guard(path, action="chdir")
         original_chdir(path)
+
+    def guarded_rename(
+        source: Any,
+        destination: Any,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        reject_dir_fd(
+            "rename",
+            {"src_dir_fd": src_dir_fd, "dst_dir_fd": dst_dir_fd},
+        )
+        guard(source, action="rename_source", forbid_root=True)
+        guard(destination, action="rename_destination")
+        original_rename(source, destination)
+
+    def guarded_replace(
+        source: Any,
+        destination: Any,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        reject_dir_fd(
+            "replace",
+            {"src_dir_fd": src_dir_fd, "dst_dir_fd": dst_dir_fd},
+        )
+        guard(source, action="replace_source", forbid_root=True)
+        guard(destination, action="replace_destination")
+        original_replace(source, destination)
+
+    def guarded_remove(
+        path: Any,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        reject_dir_fd("remove", {"dir_fd": dir_fd})
+        guard(path, action="remove", forbid_root=True)
+        original_remove(path)
+
+    def guarded_unlink(
+        path: Any,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        reject_dir_fd("unlink", {"dir_fd": dir_fd})
+        guard(path, action="unlink", forbid_root=True)
+        original_unlink(path)
+
+    def guarded_mkdir(
+        path: Any,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        reject_dir_fd("mkdir", {"dir_fd": dir_fd})
+        guard(path, action="mkdir")
+        original_mkdir(path, mode)
+
+    def guarded_makedirs(
+        name: Any,
+        mode: int = 0o777,
+        exist_ok: bool = False,
+    ) -> None:
+        guard(name, action="makedirs")
+        original_makedirs(name, mode=mode, exist_ok=exist_ok)
+
+    def guarded_rmdir(
+        path: Any,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        reject_dir_fd("rmdir", {"dir_fd": dir_fd})
+        guard(path, action="rmdir", forbid_root=True)
+        original_rmdir(path)
+
+    def deny_removedirs(path: Any) -> None:
+        guard(path, action="removedirs", forbid_root=True)
+        state.deny("filesystem", "removedirs")
+
+    def deny_renames(source: Any, destination: Any) -> None:
+        guard(source, action="renames_source", forbid_root=True)
+        guard(destination, action="renames_destination")
+        state.deny("filesystem", "renames")
+
+    def guarded_symlink(
+        source: Any,
+        destination: Any,
+        target_is_directory: bool = False,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        reject_dir_fd("symlink", {"dir_fd": dir_fd})
+        destination_path = guard(
+            destination,
+            action="symlink_destination",
+        )
+        source_path = Path(os.fsdecode(os.fspath(source)))
+        if source_path.is_absolute():
+            guard(source_path, action="symlink_source")
+        elif destination_path is not None:
+            guard(
+                destination_path.parent / source_path,
+                action="symlink_source",
+            )
+        original_symlink(
+            source,
+            destination,
+            target_is_directory=target_is_directory,
+        )
+
+    def guarded_link(
+        source: Any,
+        destination: Any,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        reject_dir_fd(
+            "link",
+            {"src_dir_fd": src_dir_fd, "dst_dir_fd": dst_dir_fd},
+        )
+        guard(source, action="link_source")
+        guard(destination, action="link_destination")
+        original_link(
+            source,
+            destination,
+            follow_symlinks=follow_symlinks,
+        )
+
+    def guarded_listdir(path: Any = ".") -> list[str]:
+        guard(path, action="listdir", allow_fd=True)
+        return original_listdir(path)
+
+    def guarded_scandir(path: Any = ".") -> Any:
+        guard(path, action="scandir", allow_fd=True)
+        return original_scandir(path)
+
+    def guarded_stat(path: Any, *args: Any, **kwargs: Any) -> Any:
+        if getattr(guard_state, "active", False):
+            return original_stat(path, *args, **kwargs)
+        reject_dir_fd("stat", kwargs)
+        guard(path, action="stat", allow_fd=True)
+        return original_stat(path, *args, **kwargs)
+
+    def guarded_lstat(path: Any, *args: Any, **kwargs: Any) -> Any:
+        if getattr(guard_state, "active", False):
+            return original_lstat(path, *args, **kwargs)
+        reject_dir_fd("lstat", kwargs)
+        guard(path, action="lstat", allow_fd=True)
+        return original_lstat(path, *args, **kwargs)
+
+    def guarded_readlink(path: Any, *args: Any, **kwargs: Any) -> Any:
+        if getattr(guard_state, "active", False):
+            return original_readlink(path, *args, **kwargs)
+        reject_dir_fd("readlink", kwargs)
+        guard(path, action="readlink")
+        return original_readlink(path, *args, **kwargs)
+
+    def guarded_truncate(path: Any, length: int) -> None:
+        guard(path, action="truncate", allow_fd=True)
+        original_truncate(path, length)
+
+    def guarded_chmod(
+        path: Any,
+        mode: int,
+        *,
+        dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        reject_dir_fd("chmod", {"dir_fd": dir_fd})
+        guard(path, action="chmod", allow_fd=True)
+        original_chmod(path, mode, follow_symlinks=follow_symlinks)
+
+    def guard_copy(
+        original: Callable[..., Any],
+        action: str,
+    ) -> Callable[..., Any]:
+        def guarded(source: Any, destination: Any, *args: Any, **kwargs: Any) -> Any:
+            guard(source, action=f"{action}_source")
+            guard(destination, action=f"{action}_destination")
+            return original(source, destination, *args, **kwargs)
+
+        return guarded
+
+    def guarded_rmtree(path: Any, *args: Any, **kwargs: Any) -> None:
+        if kwargs.get("dir_fd") is not None:
+            state.deny("filesystem", "rmtree_dir_fd")
+        guard(path, action="rmtree", forbid_root=True)
+        original_rmtree(path, *args, **kwargs)
 
     try:
         patches.set(builtins, "open", guarded_builtin_open)
@@ -236,6 +492,50 @@ def filesystem_policy(
         patches.set(Path, "write_text", guarded_write_text)
         patches.set(Path, "write_bytes", guarded_write_bytes)
         patches.set(os, "chdir", guarded_chdir)
+        patches.set(os, "rename", guarded_rename)
+        patches.set(os, "replace", guarded_replace)
+        patches.set(os, "remove", guarded_remove)
+        patches.set(os, "unlink", guarded_unlink)
+        patches.set(os, "mkdir", guarded_mkdir)
+        patches.set(os, "makedirs", guarded_makedirs)
+        patches.set(os, "rmdir", guarded_rmdir)
+        patches.set(os, "removedirs", deny_removedirs)
+        patches.set(os, "renames", deny_renames)
+        patches.set(os, "symlink", guarded_symlink)
+        patches.set(os, "link", guarded_link)
+        patches.set(os, "listdir", guarded_listdir)
+        patches.set(os, "scandir", guarded_scandir)
+        patches.set(os, "stat", guarded_stat)
+        patches.set(os, "lstat", guarded_lstat)
+        patches.set(os, "readlink", guarded_readlink)
+        patches.set(os, "truncate", guarded_truncate)
+        patches.set(os, "chmod", guarded_chmod)
+        patches.set(
+            shutil,
+            "copy",
+            guard_copy(original_copy, "copy"),
+        )
+        patches.set(
+            shutil,
+            "copy2",
+            guard_copy(original_copy2, "copy2"),
+        )
+        patches.set(
+            shutil,
+            "copyfile",
+            guard_copy(original_copyfile, "copyfile"),
+        )
+        patches.set(
+            shutil,
+            "copytree",
+            guard_copy(original_copytree, "copytree"),
+        )
+        patches.set(
+            shutil,
+            "move",
+            guard_copy(original_move, "move"),
+        )
+        patches.set(shutil, "rmtree", guarded_rmtree)
         state.filesystem_policy_installed = True
         yield
     finally:

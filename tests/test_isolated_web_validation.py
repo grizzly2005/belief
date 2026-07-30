@@ -85,6 +85,12 @@ def _plan(case_type: str, *, identifier: str = ""):
     })
 
 
+def _fixture_framework(fixture_id: str) -> str:
+    spec = get_fixture_spec(fixture_id)
+    assert spec is not None
+    return spec.framework
+
+
 def _case_type(fixture_id: str) -> str:
     spec = get_fixture_spec(fixture_id)
     assert spec is not None
@@ -142,7 +148,7 @@ def test_registered_web_fixture_returns_existing_result_contract(
     ),
 )
 def test_path_worker_covers_all_required_oracles(fixture_id):
-    framework = fixture_id.split("_", 1)[0]
+    framework = _fixture_framework(fixture_id)
     if not optional_framework_available(framework):
         pytest.skip(f"optional dependency unavailable: {framework}")
     result = run_isolated_web_validation_plan(
@@ -193,7 +199,7 @@ def test_path_worker_covers_all_required_oracles(fixture_id):
 def test_idor_worker_distinguishes_authentication_owner_and_tenant(
     fixture_id,
 ):
-    framework = fixture_id.split("_", 1)[0]
+    framework = _fixture_framework(fixture_id)
     if not optional_framework_available(framework):
         pytest.skip(f"optional dependency unavailable: {framework}")
     result = run_isolated_web_validation_plan(

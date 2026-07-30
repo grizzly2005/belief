@@ -33,7 +33,11 @@ def prepare_flask_path_app(
         temporary_root / "fixture",
         include_symlink=include_symlink,
     )
-    app = Flask(f"belief_{application_id}")
+    app = Flask(
+        f"belief_{application_id}",
+        root_path=str(temporary_root),
+        instance_path=str(temporary_root / "instance"),
+    )
     app.config.update(TESTING=True)
 
     @app.get("/files")
@@ -74,12 +78,17 @@ def prepare_flask_path_app(
 
 
 def prepare_flask_idor_app(
+    temporary_root: Path,
     *,
     application_id: str,
     policy: ResourcePolicy,
 ) -> Callable[[], RegisteredFixtureResult]:
     resources = initial_resources()
-    app = Flask(f"belief_{application_id}")
+    app = Flask(
+        f"belief_{application_id}",
+        root_path=str(temporary_root),
+        instance_path=str(temporary_root / "instance"),
+    )
     app.config.update(TESTING=True)
 
     @app.route("/resources/<resource_id>", methods=["GET", "PATCH"])

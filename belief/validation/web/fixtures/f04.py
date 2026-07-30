@@ -15,8 +15,9 @@ def prepare_fixture(
     temporary_root: Path,
     parameters: Mapping[str, Any],
 ) -> Callable[[], RegisteredFixtureResult]:
-    del temporary_root, parameters
+    del parameters
     return prepare_flask_idor_app(
+        temporary_root,
         application_id="app_3c8d57",
         policy=resource_policy_beta,
     )

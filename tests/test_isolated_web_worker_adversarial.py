@@ -10,6 +10,7 @@ import http.client
 import inspect
 import multiprocessing
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -26,6 +27,7 @@ import requests
 from belief.validation.worker import process as worker_process
 from belief.validation.worker.bootstrap import (
     _BoundedTextCapture,
+    _validated_worker_root,
     sanitize_diagnostic,
     worker_bootstrap,
 )
@@ -35,6 +37,7 @@ from belief.validation.worker.contracts import (
     WorkerProtocolError,
     WorkerRequest,
 )
+from belief.validation.worker.entrypoint import execute_worker_message
 from belief.validation.worker.policies import (
     WorkerPolicyState,
     WorkerPolicyViolation,
@@ -68,6 +71,154 @@ def _request(
         timeout_ms=timeout_ms,
         correlation_id="corr_adversarial",
     )
+
+
+_EXTERNAL_FILESYSTEM_OPERATIONS = (
+    "rename_source",
+    "rename_destination",
+    "replace_source",
+    "replace_destination",
+    "remove",
+    "unlink",
+    "mkdir",
+    "makedirs",
+    "rmdir",
+    "removedirs",
+    "renames",
+    "symlink_source",
+    "symlink_destination",
+    "link_source",
+    "link_destination",
+    "listdir",
+    "scandir",
+    "stat",
+    "lstat",
+    "readlink",
+    "truncate",
+    "chmod",
+    "copy_source",
+    "copy_destination",
+    "copy2_source",
+    "copy2_destination",
+    "copyfile_source",
+    "copyfile_destination",
+    "copytree_source",
+    "move_source",
+    "move_destination",
+    "move_root",
+    "rmtree",
+    "rename_root",
+    "rmdir_root",
+    "rmtree_root",
+)
+
+
+def _invoke_external_filesystem_operation(
+    action: str,
+    *,
+    root: Path,
+    sibling: Path,
+) -> None:
+    inside_file = root / "inside.txt"
+    outside_file = sibling / "outside.txt"
+    outside_empty = sibling / "empty"
+    outside_tree = sibling / "tree"
+    operations = {
+        "rename_source": lambda: os.rename(
+            outside_file,
+            root / "renamed.txt",
+        ),
+        "rename_destination": lambda: os.rename(
+            inside_file,
+            sibling / "renamed.txt",
+        ),
+        "replace_source": lambda: os.replace(
+            outside_file,
+            root / "replaced.txt",
+        ),
+        "replace_destination": lambda: os.replace(
+            inside_file,
+            sibling / "replaced.txt",
+        ),
+        "remove": lambda: os.remove(outside_file),
+        "unlink": lambda: os.unlink(outside_file),
+        "mkdir": lambda: os.mkdir(sibling / "new-directory"),
+        "makedirs": lambda: os.makedirs(sibling / "nested" / "directory"),
+        "rmdir": lambda: os.rmdir(outside_empty),
+        "removedirs": lambda: os.removedirs(outside_empty),
+        "renames": lambda: os.renames(
+            inside_file,
+            sibling / "renamed" / "inside.txt",
+        ),
+        "symlink_source": lambda: os.symlink(
+            outside_file,
+            root / "outside-symlink",
+        ),
+        "symlink_destination": lambda: os.symlink(
+            inside_file,
+            sibling / "inside-symlink",
+        ),
+        "link_source": lambda: os.link(
+            outside_file,
+            root / "outside-hardlink",
+        ),
+        "link_destination": lambda: os.link(
+            inside_file,
+            sibling / "inside-hardlink",
+        ),
+        "listdir": lambda: os.listdir(sibling),
+        "scandir": lambda: list(os.scandir(sibling)),
+        "stat": lambda: os.stat(outside_file),
+        "lstat": lambda: os.lstat(outside_file),
+        "readlink": lambda: os.readlink(outside_file),
+        "truncate": lambda: os.truncate(outside_file, 0),
+        "chmod": lambda: os.chmod(outside_file, 0o600),
+        "copy_source": lambda: shutil.copy(
+            outside_file,
+            root / "copied.txt",
+        ),
+        "copy_destination": lambda: shutil.copy(
+            inside_file,
+            sibling / "copied.txt",
+        ),
+        "copy2_source": lambda: shutil.copy2(
+            outside_file,
+            root / "copied2.txt",
+        ),
+        "copy2_destination": lambda: shutil.copy2(
+            inside_file,
+            sibling / "copied2.txt",
+        ),
+        "copyfile_source": lambda: shutil.copyfile(
+            outside_file,
+            root / "copyfile.txt",
+        ),
+        "copyfile_destination": lambda: shutil.copyfile(
+            inside_file,
+            sibling / "copyfile.txt",
+        ),
+        "copytree_source": lambda: shutil.copytree(
+            outside_tree,
+            root / "tree-copy",
+        ),
+        "move_source": lambda: shutil.move(
+            outside_file,
+            root / "moved.txt",
+        ),
+        "move_destination": lambda: shutil.move(
+            inside_file,
+            sibling / "moved.txt",
+        ),
+        "move_root": lambda: shutil.move(
+            root,
+            sibling / "moved-root",
+        ),
+        "rmtree": lambda: shutil.rmtree(outside_tree),
+        "rename_root": lambda: os.rename(root, sibling / "stolen-root"),
+        "rmdir_root": lambda: os.rmdir(root),
+        "rmtree_root": lambda: shutil.rmtree(root),
+    }
+    operations[action]()
 
 
 def test_filesystem_policy_denies_external_reads_writes_and_symlink_escape(
@@ -130,6 +281,112 @@ def test_filesystem_policy_denies_external_reads_writes_and_symlink_escape(
     assert outside.read_text(encoding="utf-8") == "outside"
     assert state.filesystem_policy_installed is True
     assert any(item.startswith("filesystem:") for item in state.io_policy_violations)
+
+
+@pytest.mark.parametrize("action", _EXTERNAL_FILESYSTEM_OPERATIONS)
+def test_filesystem_policy_denies_external_metadata_and_mutation_operations(
+    tmp_path,
+    action,
+):
+    root = tmp_path / "worker"
+    root.mkdir()
+    inside = root / "inside.txt"
+    inside.write_text("inside", encoding="utf-8")
+    sibling = tmp_path / "sibling"
+    sibling.mkdir()
+    outside = sibling / "outside.txt"
+    outside.write_text("outside", encoding="utf-8")
+    (sibling / "empty").mkdir()
+    outside_tree = sibling / "tree"
+    outside_tree.mkdir()
+    (outside_tree / "payload.txt").write_text("tree", encoding="utf-8")
+    state = WorkerPolicyState()
+
+    with filesystem_policy(root, state):
+        with pytest.raises(WorkerPolicyViolation, match="filesystem"):
+            _invoke_external_filesystem_operation(
+                action,
+                root=root,
+                sibling=sibling,
+            )
+
+    assert root.is_dir()
+    assert inside.read_text(encoding="utf-8") == "inside"
+    assert sibling.is_dir()
+    assert outside.read_text(encoding="utf-8") == "outside"
+    assert (outside_tree / "payload.txt").read_text(encoding="utf-8") == "tree"
+    assert state.io_policy_violations
+
+
+def test_filesystem_policy_allows_a_complete_inside_lifecycle(tmp_path):
+    root = tmp_path / "worker"
+    root.mkdir()
+    state = WorkerPolicyState()
+
+    with filesystem_policy(root, state):
+        nested = root / "nested"
+        os.makedirs(nested / "child")
+        source = nested / "source.txt"
+        source.write_text("payload", encoding="utf-8")
+        assert os.stat(source).st_size == 7
+        assert source.name in os.listdir(nested)
+        with os.scandir(nested) as entries:
+            assert source.name in {entry.name for entry in entries}
+        renamed = nested / "renamed.txt"
+        os.rename(source, renamed)
+        copied = nested / "copied.txt"
+        shutil.copyfile(renamed, copied)
+        os.truncate(copied, 4)
+        assert copied.read_text(encoding="utf-8") == "payl"
+        moved = nested / "child" / "moved.txt"
+        shutil.move(copied, moved)
+        os.unlink(renamed)
+        shutil.rmtree(nested / "child")
+        os.rmdir(nested)
+
+    assert state.filesystem_policy_installed is True
+    assert state.io_policy_violations == []
+    assert list(root.iterdir()) == []
+
+
+def test_pathlike_reentrancy_cannot_read_a_sibling(tmp_path):
+    root = tmp_path / "worker"
+    root.mkdir()
+    inside = root / "inside.txt"
+    inside.write_text("inside", encoding="utf-8")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside", encoding="utf-8")
+    state = WorkerPolicyState()
+
+    class ReentrantPath:
+        def __fspath__(self):
+            outside.read_text(encoding="utf-8")
+            return str(inside)
+
+    with filesystem_policy(root, state):
+        with pytest.raises(WorkerPolicyViolation, match="filesystem"):
+            builtins.open(ReentrantPath(), encoding="utf-8")
+
+    assert outside.read_text(encoding="utf-8") == "outside"
+    assert "filesystem:read_text" in state.io_policy_violations
+
+
+def test_filesystem_policy_denies_repository_listing_and_stat(tmp_path):
+    root = tmp_path / "worker"
+    root.mkdir()
+    repository = Path(__file__).resolve().parents[1]
+    state = WorkerPolicyState()
+
+    with filesystem_policy(root, state):
+        with pytest.raises(WorkerPolicyViolation, match="filesystem"):
+            os.listdir(repository)
+        with pytest.raises(WorkerPolicyViolation, match="filesystem"):
+            os.stat(repository)
+
+    assert {
+        "filesystem:listdir",
+        "filesystem:stat",
+    } <= set(state.io_policy_violations)
 
 
 def test_network_policy_denies_tcp_udp_dns_http_and_async_entrypoints():
@@ -254,6 +511,32 @@ def test_spawn_bootstrap_has_only_top_level_standard_library_imports():
         )
 
 
+def test_resource_limits_and_filesystem_policy_precede_fixture_preparation():
+    source = inspect.getsource(execute_worker_message)
+
+    limits = source.index("apply_resource_limits(")
+    filesystem = source.index("with filesystem_policy(")
+    preparation = source.index("prepared_fixture = prepare_fixture(")
+    execution = source.index("prepared_fixture()")
+    assert limits < filesystem < preparation < execution
+
+
+def test_bootstrap_accepts_only_the_fixed_child_of_a_temporary_container(
+    tmp_path,
+):
+    container, child = worker_process._create_worker_roots()
+    try:
+        assert _validated_worker_root(str(child)) == child
+        with pytest.raises(ValueError, match="invalid worker root"):
+            _validated_worker_root(str(container))
+        decoy = tmp_path / container.name / "child"
+        decoy.mkdir(parents=True)
+        with pytest.raises(ValueError, match="invalid worker root"):
+            _validated_worker_root(str(decoy))
+    finally:
+        assert worker_process._cleanup_worker_root(container) is True
+
+
 def test_bounded_output_capture_blocks_protocol_injection_and_redacts():
     stdout = _BoundedTextCapture()
     stderr = _BoundedTextCapture()
@@ -305,6 +588,30 @@ def _exit_target(request_connection, _response, _root, _cancel):
     os._exit(23)
 
 
+def _rename_then_sleep_target(
+    request_connection,
+    _response,
+    root,
+    _cancel,
+):
+    _receive_request(request_connection)
+    child = Path(root)
+    child.rename(child.with_name("renamed-child"))
+    time.sleep(30)
+
+
+def _rename_then_exit_target(
+    request_connection,
+    _response,
+    root,
+    _cancel,
+):
+    _receive_request(request_connection)
+    child = Path(root)
+    child.rename(child.with_name("renamed-child"))
+    os._exit(23)
+
+
 def _exception_target(request_connection, _response, _root, _cancel):
     _receive_request(request_connection)
     raise RuntimeError("untrusted exception text must not cross")
@@ -351,6 +658,7 @@ def test_timeout_targets_are_killed_and_cleaned(monkeypatch, target):
     )
     handle = start_worker_request(_request(timeout_ms=100))
     root = handle.temporary_root
+    container = handle.container_root
 
     response = handle.wait()
 
@@ -358,6 +666,7 @@ def test_timeout_targets_are_killed_and_cleaned(monkeypatch, target):
     assert [error.code for error in response.errors] == ["timeout"]
     assert response.attestation.cleanup_completed is True
     assert not root.exists()
+    assert not container.exists()
     assert response.observations == ()
 
 
@@ -397,6 +706,7 @@ def test_invalid_child_output_is_rejected_and_cleaned(
     )
     handle = start_worker_request(_request())
     root = handle.temporary_root
+    container = handle.container_root
 
     response = handle.wait()
 
@@ -404,6 +714,39 @@ def test_invalid_child_output_is_rejected_and_cleaned(
     assert [error.code for error in response.errors] == [error_code]
     assert response.attestation.cleanup_completed is True
     assert not root.exists()
+    assert not container.exists()
+
+
+@pytest.mark.parametrize(
+    ("target", "timeout_ms", "expected_status"),
+    (
+        (_rename_then_sleep_target, 100, "timed_out"),
+        (_rename_then_exit_target, 5_000, "crashed"),
+    ),
+)
+def test_parent_container_cleanup_survives_child_root_rename(
+    monkeypatch,
+    target,
+    timeout_ms,
+    expected_status,
+):
+    monkeypatch.setattr(
+        worker_process,
+        "_spawn_context",
+        lambda: _TargetContext(target),
+    )
+    handle = start_worker_request(_request(timeout_ms=timeout_ms))
+    child = handle.temporary_root
+    container = handle.container_root
+    renamed = container / "renamed-child"
+
+    response = handle.wait()
+
+    assert response.worker_status == expected_status
+    assert response.attestation.cleanup_completed is True
+    assert not child.exists()
+    assert not renamed.exists()
+    assert not container.exists()
 
 
 def test_cancellation_before_start_and_during_execution_releases_everything(
@@ -416,13 +759,16 @@ def test_cancellation_before_start_and_during_execution_releases_everything(
     )
     before_start = start_worker_request(_request())
     before_root = before_start.temporary_root
+    before_container = before_start.container_root
     assert before_start.cancel("cancel before start") is True
     before_response = before_start.wait()
     assert before_response.worker_status == "cancelled"
     assert not before_root.exists()
+    assert not before_container.exists()
 
     active = start_worker_request(_request())
     active_root = active.temporary_root
+    active_container = active.container_root
     active.start()
     assert active.cancel("cancel during execution") is True
     active_response = active.wait()
@@ -430,6 +776,7 @@ def test_cancellation_before_start_and_during_execution_releases_everything(
     assert [error.code for error in active_response.errors] == ["cancelled"]
     assert active_response.attestation.cleanup_completed is True
     assert not active_root.exists()
+    assert not active_container.exists()
     assert active._request_receive.closed
     assert active._request_send.closed
     assert active._response_receive.closed
@@ -442,13 +789,13 @@ def test_twenty_sequential_runs_leave_no_children_or_temporary_roots():
     before_roots = set(temp_parent.glob("belief-isolated-web-worker-*"))
 
     responses = [
-        run_worker_request(_request("unknown_fixture_v1"))
+        run_worker_request(_request("fx_18a4e9_v1"))
         for _index in range(20)
     ]
 
     after_children = {child.pid for child in multiprocessing.active_children()}
     after_roots = set(temp_parent.glob("belief-isolated-web-worker-*"))
-    assert all(response.worker_status == "unsupported" for response in responses)
+    assert all(response.worker_status == "completed" for response in responses)
     assert after_children == before_children
     assert after_roots == before_roots
     assert all(

@@ -56,6 +56,7 @@ _WORKER_ROOT_PREFIX = "belief-isolated-web-worker-"
 _WORKER_ROOT_NAME_RE = re.compile(
     r"^belief-isolated-web-worker-[A-Za-z0-9_-]{4,64}$"
 )
+_WORKER_CHILD_ROOT_NAME = "child"
 _OWNED_WORKER_ROOTS: set[str] = set()
 _OWNED_WORKER_ROOTS_LOCK = threading.Lock()
 _CANCEL_GRACE_SECONDS = 0.05
@@ -92,7 +93,10 @@ class WorkerRunHandle:
         self.request = request
         self._message = encode_worker_request(request)
         self._context = _spawn_context()
-        self._temporary_root = _create_worker_root()
+        (
+            self._container_root,
+            self._temporary_root,
+        ) = _create_worker_roots()
         created_connections: list[Any] = []
         try:
             self._request_receive, self._request_send = self._context.Pipe(
@@ -118,7 +122,7 @@ class WorkerRunHandle:
         except Exception:
             for connection in created_connections:
                 _close_connection(connection)
-            _cleanup_worker_root(self._temporary_root)
+            _cleanup_worker_root(self._container_root)
             raise
         self._state_lock = threading.RLock()
         self._wait_lock = threading.Lock()
@@ -136,9 +140,15 @@ class WorkerRunHandle:
 
     @property
     def temporary_root(self) -> Path:
-        """Expose the parent-owned root for lifecycle tests, not protocol output."""
+        """Expose the child root for lifecycle tests, not protocol output."""
 
         return self._temporary_root
+
+    @property
+    def container_root(self) -> Path:
+        """Expose the parent-owned cleanup container for lifecycle tests."""
+
+        return self._container_root
 
     def start(self) -> "WorkerRunHandle":
         with self._state_lock:
@@ -350,7 +360,7 @@ class WorkerRunHandle:
             _close_connection(connection)
         if self._started:
             _close_process(self._process)
-        cleanup_completed = _cleanup_worker_root(self._temporary_root)
+        cleanup_completed = _cleanup_worker_root(self._container_root)
         return cleanup_completed, exit_code
 
 
@@ -785,13 +795,16 @@ def _spawn_context() -> multiprocessing.context.BaseContext:
     return multiprocessing.get_context("spawn")
 
 
-def _create_worker_root() -> Path:
-    created = Path(
+def _create_worker_roots() -> tuple[Path, Path]:
+    container = Path(
         tempfile.mkdtemp(prefix=_WORKER_ROOT_PREFIX)
     ).resolve(strict=True)
+    child = container / _WORKER_CHILD_ROOT_NAME
+    child.mkdir()
+    child = child.resolve(strict=True)
     with _OWNED_WORKER_ROOTS_LOCK:
-        _OWNED_WORKER_ROOTS.add(os.path.normcase(str(created)))
-    return created
+        _OWNED_WORKER_ROOTS.add(os.path.normcase(str(container)))
+    return container, child
 
 
 def _cleanup_worker_root(path: Path) -> bool:
