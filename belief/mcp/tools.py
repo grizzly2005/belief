@@ -721,9 +721,11 @@ class BeliefMCPTools:
                 ),
                 "Fixture evidence never confirms an arbitrary scanned target.",
                 (
-                    "The explicit flask-jwt-extended pilot requires separate "
-                    "startup authorization, exact revision and source digest "
-                    "matching, and always abstains from dynamic execution."
+                    "The explicit flask-jwt-extended pilot requires local "
+                    "operator opt-in, exact revision and source digest "
+                    "matching, analyzes a temporary byte snapshot, and always "
+                    "abstains from dynamic execution. The opt-in is not "
+                    "cryptographic authorization."
                 ),
                 "Only the transparent local_validation_v2 benchmark is callable.",
                 "Runs are evicted after the in-memory capacity is reached.",
@@ -1196,10 +1198,14 @@ class BeliefMCPTools:
             },
             "boundaries": {
                 "execution_scope": AUTHORIZED_PROJECT_EXECUTION_SCOPE,
-                "separate_authorization_required": True,
-                "separate_authorization_verified": True,
+                "local_operator_opt_in_required": True,
+                "local_operator_opt_in_verified": True,
+                "cryptographic_authorization_proof": False,
                 "exact_revision_verified": True,
                 "exact_source_digest_verified": True,
+                "immutable_source_snapshot_analyzed": True,
+                "live_workspace_analyzed_in_place": False,
+                "live_workspace_reattested_after_analysis": True,
                 "target_executed": False,
                 "target_imported": False,
                 "target_files_written": False,

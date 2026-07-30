@@ -271,6 +271,79 @@ def test_pilot_rechecks_source_after_static_analysis(
         )
 
 
+def test_pilot_analyzes_a_temporary_attested_byte_snapshot(
+    tmp_path,
+    monkeypatch,
+):
+    app = _write_test_project(tmp_path)
+    expected_source = app.read_bytes()
+    _pin_test_project(monkeypatch, tmp_path)
+    grant = pilot.make_authorized_project_grant(_AUTHORIZATION_ID)
+    service = _service(tmp_path, grant=grant)
+    analyze = pilot.analyze_static_target
+    observed: dict[str, object] = {}
+
+    def observe_snapshot(root, options):
+        observed["root"] = root.resolve(strict=True)
+        observed["source"] = (root / "app.py").read_bytes()
+        observed["git_exists"] = (root / ".git").exists()
+        assert root.resolve(strict=True) != tmp_path.resolve(strict=True)
+        return analyze(root, options)
+
+    monkeypatch.setattr(
+        pilot,
+        "analyze_static_target",
+        observe_snapshot,
+    )
+
+    payload = service.call_tool(
+        "belief_prepare_authorized_project_pilot",
+        _request(),
+    )
+
+    snapshot_root = observed["root"]
+    assert isinstance(snapshot_root, Path)
+    assert observed["source"] == expected_source
+    assert observed["git_exists"] is False
+    assert not snapshot_root.exists()
+    assert payload["boundaries"]["immutable_source_snapshot_analyzed"] is True
+    assert payload["boundaries"]["live_workspace_analyzed_in_place"] is False
+    assert (
+        payload["boundaries"]["live_workspace_reattested_after_analysis"]
+        is True
+    )
+
+
+def test_pilot_rejects_a_snapshot_changed_by_the_analyzer(
+    tmp_path,
+    monkeypatch,
+):
+    app = _write_test_project(tmp_path)
+    original_source = app.read_bytes()
+    _pin_test_project(monkeypatch, tmp_path)
+    grant = pilot.make_authorized_project_grant(_AUTHORIZATION_ID)
+    service = _service(tmp_path, grant=grant)
+    analyze = pilot.analyze_static_target
+
+    def analyze_then_tamper_snapshot(root, options):
+        result = analyze(root, options)
+        (root / "app.py").write_bytes(b"# mutated snapshot\n")
+        return result
+
+    monkeypatch.setattr(
+        pilot,
+        "analyze_static_target",
+        analyze_then_tamper_snapshot,
+    )
+
+    with pytest.raises(BeliefMCPError, match="snapshot changed"):
+        service.call_tool(
+            "belief_prepare_authorized_project_pilot",
+            _request(),
+        )
+    assert app.read_bytes() == original_source
+
+
 def test_pilot_binds_exact_source_and_always_abstains(
     tmp_path,
     monkeypatch,
@@ -287,6 +360,9 @@ def test_pilot_binds_exact_source_and_always_abstains(
 
     assert payload["outcome"] == "inconclusive"
     assert payload["execution_status"] == "abstained"
+    assert payload["boundaries"]["local_operator_opt_in_required"] is True
+    assert payload["boundaries"]["local_operator_opt_in_verified"] is True
+    assert payload["boundaries"]["cryptographic_authorization_proof"] is False
     assert payload["source_attestation"] == {
         "adapter_id": pilot.FLASKJWT_PILOT_ADAPTER_ID,
         "project_id": pilot.FLASKJWT_PILOT_PROJECT_ID,

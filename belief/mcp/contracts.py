@@ -64,8 +64,9 @@ SERVER_INSTRUCTIONS = (
     "are never executable. Local dynamic validation is limited to plans prepared "
     "from and cryptographically bound to transparent first-party registered "
     "fixtures. Fixture evidence never confirms the scanned target. This server "
-    "also exposes one separately authorized, exact-source flask-jwt-extended "
-    "static pilot that always abstains from target execution. This server has "
+    "also exposes one locally opted-in, exact-source flask-jwt-extended static "
+    "pilot that always abstains from target execution. The opt-in is not a "
+    "cryptographic authorization proof. This server has "
     "no live target network, shell, target-workspace write, caller-controlled "
     "import, Docker, or SusVibes holdout capability. It does spawn one bounded "
     "worker and writes only inside a parent-owned temporary fixture root."
@@ -598,10 +599,12 @@ def tool_definitions() -> list[dict[str, Any]]:
             "description": (
                 "Verify the configured workspace against the one pinned "
                 "flask-jwt-extended revision and canonical source digest, then "
-                "perform static analysis and create non-executable bindings. "
-                "A separate startup authorization is mandatory. This tool "
-                "accepts no path, module, callable, or source and always "
-                "abstains from dynamic target execution."
+                "copy the attested bytes to a temporary snapshot, analyze that "
+                "snapshot, re-attest the live workspace, and create "
+                "non-executable bindings. A separate startup local-operator "
+                "opt-in is mandatory but is not cryptographic authorization. "
+                "This tool accepts no path, module, callable, or source and "
+                "always abstains from dynamic target execution."
             ),
             "inputSchema": _object(
                 {

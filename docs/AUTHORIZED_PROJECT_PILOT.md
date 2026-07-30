@@ -1,4 +1,4 @@
-# Authorized real-project pilot
+# Locally opted-in real-project pilot
 
 ## Scope
 
@@ -22,19 +22,21 @@ This is a static-only pilot. It does not import the target, start its
 application, run its tests, execute a validation plan against it, use its
 configuration, or write to it.
 
-## Separate authorization
+## Explicit local-operator opt-in
 
 The adapter is unavailable unless the local operator provides a distinct
-startup grant:
+startup opt-in:
 
 ```text
 BELIEF_MCP_FLASKJWT_PILOT_AUTHORIZED=true
 BELIEF_MCP_FLASKJWT_PILOT_AUTHORIZATION_ID=auth_<64 lowercase hex characters>
 ```
 
-The authorization identifier is supplied again to the tool with the exact
-adapter ID, revision, source digest, and a literal boolean acknowledgement.
-The tool verifies that all fields match the startup grant.
+The authorization-shaped identifier is supplied again to the tool with the
+exact adapter ID, revision, source digest, and a literal boolean
+acknowledgement. The tool verifies that all fields match the startup opt-in.
+This is a local consent gate only. It is not authentication, cryptographic
+authorization, or proof that the operator controls the upstream project.
 
 The configured `BELIEF_MCP_WORKSPACE_ROOT` is the only workspace inspected.
 The pilot tool itself accepts no path. It also accepts no module, callable,
@@ -55,15 +57,19 @@ implementation.
 }
 ```
 
-Before and after static analysis, BELIEF:
+BELIEF performs the pilot in this order:
 
 1. resolves Git `HEAD` using bounded direct reads of `.git/HEAD`, its local
    branch ref, or `packed-refs`;
 2. rejects Git files, source files, directories, symlinks, or junctions that
    escape the configured workspace;
-3. recomputes the complete bounded source inventory;
-4. compares the revision, file count, byte count, and digest with the built-in
-   immutable adapter specification.
+3. reads every bounded source file and compares the revision, file count, byte
+   count, and digest with the built-in immutable adapter specification;
+4. writes those already-attested bytes to a new temporary snapshot;
+5. verifies the snapshot digest, analyzes the snapshot rather than the live
+   workspace, and verifies the snapshot again after analysis;
+6. re-attests the original workspace and refuses the result if any revision or
+   source-inventory field changed.
 
 The adapter uses no Git subprocess and performs no network request.
 
@@ -105,11 +111,15 @@ in-memory run resources for human review.
 ## Residual limitations
 
 - The local operator and Python interpreter remain trusted.
+- The startup opt-in is not a cryptographic authorization mechanism or an
+  external proof of authority.
 - Direct Git metadata reading supports an in-place `.git` directory, a detached
   revision, a loose local branch ref, or `packed-refs`; linked worktrees and
   submodule-style `.git` files are rejected.
 - The adapter proves byte identity with the pinned local snapshot, not the
   authenticity of a remote hosting account or deployment.
+- Static analysis consumes a temporary copy of the attested bytes. The live
+  workspace is read for pre/post attestation but is not analyzed in place.
 - Static analysis can produce false positives and false negatives.
 - Dynamic confirmation of the real target remains deferred to a future,
   separately reviewed target-specific harness.

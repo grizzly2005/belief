@@ -13,9 +13,10 @@ import copy
 import hashlib
 import os
 import re
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from belief.static_analysis_pipeline import (
@@ -30,7 +31,7 @@ AUTHORIZED_PROJECT_BINDING_SCHEMA_VERSION = (
     "belief.authorized_project_binding.v1"
 )
 AUTHORIZED_PROJECT_PREPARATION_SCHEMA_VERSION = (
-    "belief.authorized_project_preparation.v1"
+    "belief.authorized_project_preparation.v2"
 )
 AUTHORIZED_PROJECT_RESULT_SCHEMA_VERSION = (
     "belief.authorized_project_abstention.v1"
@@ -71,12 +72,16 @@ _ABSTENTION_REASON = (
 
 
 class AuthorizedProjectError(ValueError):
-    """An authorization, identity, or exact-source invariant failed."""
+    """A local opt-in, identity, or exact-source invariant failed."""
 
 
 @dataclass(frozen=True)
 class AuthorizedProjectGrant:
-    """Separate local-operator grant bound to the one built-in pilot."""
+    """Local startup consent bound to the one built-in pilot.
+
+    This is an explicit local-operator opt-in, not authentication,
+    cryptographic authorization, or proof of authority over the project.
+    """
 
     authorization_id: str
     adapter_id: str = FLASKJWT_PILOT_ADAPTER_ID
@@ -132,6 +137,19 @@ class PreparedAuthorizedProject:
     analysis_snapshot: dict[str, Any]
     plans: tuple[ValidationPlan, ...]
     limitations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _CapturedSourceFile:
+    relative_path: str
+    data: bytes
+    sha256: str
+
+
+@dataclass(frozen=True)
+class _CapturedWorkspace:
+    attestation: AuthorizedProjectAttestation
+    files: tuple[_CapturedSourceFile, ...]
 
 
 @dataclass(frozen=True)
@@ -236,7 +254,7 @@ def validate_authorized_project_request(
     normalized_authorization = _authorization_id(authorization_id)
     if grant is None:
         raise AuthorizedProjectError(
-            "separate local-operator authorization is not configured"
+            "separate local-operator opt-in is not configured"
         )
     expected = make_authorized_project_grant(normalized_authorization)
     if grant.to_dict() != expected.to_dict():
@@ -254,20 +272,28 @@ def prepare_authorized_project(
 
     expected_grant = make_authorized_project_grant(grant.authorization_id)
     if grant.to_dict() != expected_grant.to_dict():
-        raise AuthorizedProjectError("authorization grant is not canonical")
+        raise AuthorizedProjectError("local operator opt-in grant is not canonical")
 
-    before = _attest_workspace(workspace_root)
-    result = analyze_static_target(
-        workspace_root,
-        StaticAnalysisOptions(
-            max_files=200,
-            selected_categories=frozenset(STATIC_ANALYSIS_CATEGORIES),
-            audit_mode=True,
-            include_routes=True,
-            reportability=True,
-            dedup_audit_cases=True,
-        ),
-    )
+    captured = _capture_workspace(workspace_root)
+    before = captured.attestation
+    with tempfile.TemporaryDirectory(
+        prefix="belief-authorized-project-snapshot-"
+    ) as raw_snapshot_root:
+        snapshot_root = Path(raw_snapshot_root).resolve(strict=True)
+        _materialize_source_snapshot(captured, snapshot_root)
+        _verify_materialized_snapshot(captured, snapshot_root)
+        result = analyze_static_target(
+            snapshot_root,
+            StaticAnalysisOptions(
+                max_files=200,
+                selected_categories=frozenset(STATIC_ANALYSIS_CATEGORIES),
+                audit_mode=True,
+                include_routes=True,
+                reportability=True,
+                dedup_audit_cases=True,
+            ),
+        )
+        _verify_materialized_snapshot(captured, snapshot_root)
     after = _attest_workspace(workspace_root)
     if after != before:
         raise AuthorizedProjectError(
@@ -285,6 +311,8 @@ def prepare_authorized_project(
     snapshot["source_digest"] = before.source_digest
     snapshot["source_file_count"] = before.source_file_count
     snapshot["source_total_bytes"] = before.source_total_bytes
+    snapshot["analysis_source"] = "immutable_attested_byte_snapshot"
+    snapshot["live_workspace_reattested_after_analysis"] = True
     rows = snapshot.get("audit_cases")
     plans = tuple(
         sorted(
@@ -299,8 +327,13 @@ def prepare_authorized_project(
         else ()
     )
     limitations = (
-        "Only the exact pinned flask-jwt-extended source snapshot was read.",
-        "The target was statically analyzed but never imported or executed.",
+        "Only an exact temporary copy of the attested source bytes was analyzed.",
+        "The live target was attested before and after but never analyzed in place.",
+        "The target was never imported or executed.",
+        (
+            "The startup gate is explicit local-operator opt-in, not "
+            "cryptographic authorization or proof of project authority."
+        ),
         _ABSTENTION_REASON,
         "Static candidate evidence does not confirm a vulnerability.",
         "Independent human confirmation remains required before reporting.",
@@ -330,7 +363,7 @@ def build_authorized_project_binding(
         raise AuthorizedProjectError("authorized project attestation is not canonical")
     canonical_grant = make_authorized_project_grant(grant.authorization_id)
     if grant.to_dict() != canonical_grant.to_dict():
-        raise AuthorizedProjectError("authorization grant is not canonical")
+        raise AuthorizedProjectError("local operator opt-in grant is not canonical")
     return AuthorizedProjectBinding(
         run_id=run_id,
         audit_case_id=plan.subject_id,
@@ -397,6 +430,10 @@ def project_authorized_project_abstention(
 
 
 def _attest_workspace(workspace_root: Path) -> AuthorizedProjectAttestation:
+    return _capture_workspace(workspace_root).attestation
+
+
+def _capture_workspace(workspace_root: Path) -> _CapturedWorkspace:
     try:
         root = workspace_root.resolve(strict=True)
     except (OSError, RuntimeError) as exc:
@@ -408,13 +445,13 @@ def _attest_workspace(workspace_root: Path) -> AuthorizedProjectAttestation:
             "authorized project workspace must be a real directory"
         )
     revision = _read_git_revision(root)
-    source_file_count, source_total_bytes, source_digest = _source_inventory(root)
+    files, source_total_bytes, source_digest = _capture_source_files(root)
     observed = AuthorizedProjectAttestation(
         adapter_id=FLASKJWT_PILOT_ADAPTER_ID,
         project_id=FLASKJWT_PILOT_PROJECT_ID,
         source_revision=revision,
         source_digest=source_digest,
-        source_file_count=source_file_count,
+        source_file_count=len(files),
         source_total_bytes=source_total_bytes,
     )
     expected = _expected_attestation()
@@ -422,7 +459,10 @@ def _attest_workspace(workspace_root: Path) -> AuthorizedProjectAttestation:
         raise AuthorizedProjectError(
             "workspace does not match the exact authorized revision and source inventory"
         )
-    return observed
+    return _CapturedWorkspace(
+        attestation=observed,
+        files=files,
+    )
 
 
 def _expected_attestation() -> AuthorizedProjectAttestation:
@@ -437,7 +477,14 @@ def _expected_attestation() -> AuthorizedProjectAttestation:
 
 
 def _source_inventory(root: Path) -> tuple[int, int, str]:
-    records: list[dict[str, Any]] = []
+    files, total_bytes, digest = _capture_source_files(root)
+    return len(files), total_bytes, digest
+
+
+def _capture_source_files(
+    root: Path,
+) -> tuple[tuple[_CapturedSourceFile, ...], int, str]:
+    files: list[_CapturedSourceFile] = []
     total_bytes = 0
     stack = [root]
     while stack:
@@ -503,18 +550,26 @@ def _source_inventory(root: Path) -> tuple[int, int, str]:
                 raise AuthorizedProjectError(
                     "authorized project source changed while being read"
                 )
-            records.append(
-                {
-                    "path": relative.as_posix(),
-                    "size": size,
-                    "sha256": hashlib.sha256(data).hexdigest(),
-                }
+            files.append(
+                _CapturedSourceFile(
+                    relative_path=relative.as_posix(),
+                    data=data,
+                    sha256=hashlib.sha256(data).hexdigest(),
+                )
             )
-            if len(records) > _MAX_SOURCE_FILES:
+            if len(files) > _MAX_SOURCE_FILES:
                 raise AuthorizedProjectError(
                     "authorized project source exceeds the reviewed file bound"
                 )
-    records.sort(key=lambda row: row["path"])
+    files.sort(key=lambda item: item.relative_path)
+    records = [
+        {
+            "path": item.relative_path,
+            "size": len(item.data),
+            "sha256": item.sha256,
+        }
+        for item in files
+    ]
     digest = canonical_digest(
         {
             "schema_version": (
@@ -523,7 +578,60 @@ def _source_inventory(root: Path) -> tuple[int, int, str]:
             "files": records,
         }
     )
-    return len(records), total_bytes, digest
+    return tuple(files), total_bytes, digest
+
+
+def _materialize_source_snapshot(
+    captured: _CapturedWorkspace,
+    snapshot_root: Path,
+) -> None:
+    try:
+        if any(snapshot_root.iterdir()):
+            raise AuthorizedProjectError(
+                "authorized project snapshot root is not empty"
+            )
+    except OSError as exc:
+        raise AuthorizedProjectError(
+            "authorized project snapshot root is unavailable"
+        ) from exc
+    for item in captured.files:
+        relative = PurePosixPath(item.relative_path)
+        if (
+            relative.is_absolute()
+            or not relative.parts
+            or any(
+                part in {"", ".", ".."} or ":" in part
+                for part in relative.parts
+            )
+        ):
+            raise AuthorizedProjectError(
+                "authorized project snapshot path is invalid"
+            )
+        destination = snapshot_root.joinpath(*relative.parts)
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        try:
+            with destination.open("xb") as handle:
+                handle.write(item.data)
+        except OSError as exc:
+            raise AuthorizedProjectError(
+                "authorized project snapshot could not be materialized"
+            ) from exc
+
+
+def _verify_materialized_snapshot(
+    captured: _CapturedWorkspace,
+    snapshot_root: Path,
+) -> None:
+    count, total_bytes, digest = _source_inventory(snapshot_root)
+    attestation = captured.attestation
+    if (
+        count != attestation.source_file_count
+        or total_bytes != attestation.source_total_bytes
+        or digest != attestation.source_digest
+    ):
+        raise AuthorizedProjectError(
+            "immutable authorized project source snapshot changed"
+        )
 
 
 def _read_git_revision(root: Path) -> str:
