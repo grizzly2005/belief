@@ -33,6 +33,9 @@ jobs:
           python -m belief --help
           python -m belief scan --help
 
+      - name: Python source classification
+        run: python -m belief.source_classification --root .
+
       - name: Security regressions
         run: python -m pytest -q -m security
 

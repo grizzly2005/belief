@@ -20,6 +20,10 @@ Publication notes:
 
 - these assets may include code, examples, data, or APIs inspired by third-party
   ecosystems;
+- the historical `z3_playground/` Python files are classified as non-executable
+  Python 2 reference data by `belief/python_source_classification.json`; their
+  exact inventory is pinned and every other package source remains subject to
+  the Python 3 syntax gate;
 - JSON manifests describe external tools and risk profiles; they are not
   vendored copies of upstream tools;
 - provenance and licensing must be reviewed per subdirectory before commercial
@@ -45,6 +49,13 @@ Each manifest records:
 These manifests intentionally do not vendor Semgrep, CodeQL, ZAP, RESTler,
 Schemathesis, Joern, EvoMaster, Arjun, Dradis, Faraday, AuthMatrix, Autorize, or
 Param Miner source trees.
+
+### `belief/tools_bundled/z3_playground/`
+
+This directory contains 29 historical Python 2 Z3 examples retained only as
+vendored reference data. BELIEF does not import or execute them. See
+`docs/PYTHON_SOURCE_CLASSIFICATION.md` for the fail-closed inventory and Python
+3 compile boundary.
 
 ## `belief/security_rules/`
 
