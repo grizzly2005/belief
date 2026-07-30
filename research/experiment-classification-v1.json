@@ -1,0 +1,153 @@
+{
+  "schema_version": "belief.research_experiment_classification.v1",
+  "classification_only": true,
+  "existing_results_rerun": false,
+  "existing_results_overwritten": false,
+  "research_commits_integrated_into_core": false,
+  "reserved_cohort_opened": false,
+  "susvibes_holdout_opened": false,
+  "allowed_roles": [
+    "internal_sanity",
+    "public_development",
+    "reserved_test",
+    "external_blind"
+  ],
+  "parser_recovery_provenance_vocabulary": [
+    "parsed_as_provided",
+    "parsed_after_dedent",
+    "parsed_after_bounded_recovery",
+    "unparseable"
+  ],
+  "claim_policy": {
+    "precision_requires_negative_controls": true,
+    "public_tuned_data_is_external_blind": false,
+    "positive_only_sensitivity_is_precision": false,
+    "safety_preflight_is_benchmark_execution": false,
+    "leaderboard_or_secpass_comparison_allowed": false
+  },
+  "experiments": [
+    {
+      "experiment_id": "web-synthetic-development-v2",
+      "role": "internal_sanity",
+      "interpretation_class": "internal_public_development_fit",
+      "tuning_allowed": true,
+      "tuning_occurred_before_result": true,
+      "negative_controls_present": true,
+      "precision_eligible": true,
+      "precision_eligibility_scope": "committed_32_case_development_artifact_only",
+      "external_blind": false,
+      "dynamic_execution": false,
+      "secpass_comparable": false,
+      "external_validation_claim_allowed": false,
+      "source_ref": "research/web-validation-generalization-v1",
+      "source_ref_head": "236bcdb36e859e4432f71f8a2da1d56dbfa14843",
+      "artifact_commit": "12d6d25adbb1a1acb9e5a8b0ae03752195cdc602",
+      "artifact_path": "benchmark_web_validation_results/development-static-v2.json",
+      "artifact_schema_version": "belief.web_validation_static_run.v1",
+      "artifact_digest": "a73ba62aa8e6eb2c33e55f781aab2b16187c18f8b068c4831f95f3cefcd86a1b",
+      "artifact_status": "verified_commit_artifact",
+      "journal_declared_case_count": 48,
+      "verified_artifact_case_count": 32,
+      "case_count_consistent": false,
+      "claim_boundary": "Only the committed 32-case development artifact is independently verifiable; the journal's 48-case statement has no matching Git artifact.",
+      "parser_recovery_provenance": [
+        "parsed_as_provided"
+      ],
+      "parser_recovery_mapping": {
+        "generated_parseable_python": "parsed_as_provided"
+      }
+    },
+    {
+      "experiment_id": "cyberseceval-v1-first-exposure",
+      "role": "public_development",
+      "interpretation_class": "first_exposure_positive_only_sensitivity",
+      "tuning_allowed": true,
+      "tuning_occurred_before_result": false,
+      "negative_controls_present": false,
+      "precision_eligible": false,
+      "precision_eligibility_scope": "none_positive_only_corpus",
+      "external_blind": false,
+      "dynamic_execution": false,
+      "secpass_comparable": false,
+      "external_validation_claim_allowed": false,
+      "source_ref": "research/cyberseceval-static-preflight-v1",
+      "source_ref_head": "8a36c8bf1873ed6a06f9a8bd125cadd64dba106d",
+      "artifact_commit": "cb8c04fd75c849c3a2c00d9bfe8b1d81abb32fbc",
+      "artifact_path": "benchmark_cyberseceval_results/python-instruct-v2-static-v1.json",
+      "artifact_schema_version": "belief.cyberseceval_static_preflight.v1",
+      "artifact_digest": "0138ceed9ba2b141c57cea2436353a8e650e152823bc04d5ec3490ef0408f544",
+      "artifact_status": "verified_commit_artifact",
+      "verified_artifact_case_count": 282,
+      "claim_boundary": "This is a first-exposure sensitivity snapshot on a public positive-only corpus, not precision, specificity, external-blind validation, or an official benchmark score.",
+      "parser_recovery_provenance": [
+        "parsed_as_provided",
+        "unparseable"
+      ],
+      "parser_recovery_mapping": {
+        "raw_ast_parseable_true": "parsed_as_provided",
+        "raw_ast_parseable_false": "unparseable"
+      }
+    },
+    {
+      "experiment_id": "cyberseceval-v2-public-tuned",
+      "role": "public_development",
+      "interpretation_class": "tuned_public_third_party_development_result",
+      "tuning_allowed": true,
+      "tuning_occurred_before_result": true,
+      "negative_controls_present": false,
+      "precision_eligible": false,
+      "precision_eligibility_scope": "none_positive_only_corpus",
+      "external_blind": false,
+      "dynamic_execution": false,
+      "secpass_comparable": false,
+      "external_validation_claim_allowed": false,
+      "source_ref": "research/cyberseceval-static-preflight-v1",
+      "source_ref_head": "8a36c8bf1873ed6a06f9a8bd125cadd64dba106d",
+      "artifact_commit": "8a36c8bf1873ed6a06f9a8bd125cadd64dba106d",
+      "artifact_path": "benchmark_cyberseceval_results/python-instruct-v2-static-v2.json",
+      "artifact_schema_version": "belief.cyberseceval_static_preflight.v2",
+      "artifact_digest": "9669a18cec9b1c3df4dde2664cd4487465a21ffd6342e2251eab9172a45d11f2",
+      "artifact_status": "verified_commit_artifact",
+      "verified_artifact_case_count": 282,
+      "claim_boundary": "The runner was developed against the same public positive-only corpus. The result is public development sensitivity, not unseen evaluation, precision, or external-blind validation.",
+      "parser_recovery_provenance": [
+        "parsed_as_provided",
+        "parsed_after_dedent",
+        "parsed_after_bounded_recovery",
+        "unparseable"
+      ],
+      "parser_recovery_mapping": {
+        "raw_or_raw_wrapper": "parsed_as_provided",
+        "full_dedent_or_full_dedent_wrapper": "parsed_after_dedent",
+        "target_window_sync": "parsed_after_bounded_recovery",
+        "no_recovery_projection": "unparseable"
+      }
+    },
+    {
+      "experiment_id": "seccodebench-python-safety-preflight",
+      "role": "public_development",
+      "interpretation_class": "safety_preflight_only",
+      "tuning_allowed": false,
+      "tuning_occurred_before_result": false,
+      "negative_controls_present": false,
+      "precision_eligible": false,
+      "precision_eligibility_scope": "none_no_recorded_result",
+      "external_blind": false,
+      "dynamic_execution": false,
+      "secpass_comparable": false,
+      "external_validation_claim_allowed": false,
+      "source_ref": "research/seccodebench-python-preflight-v1",
+      "source_ref_head": "8a36c8bf1873ed6a06f9a8bd125cadd64dba106d",
+      "artifact_commit": null,
+      "artifact_path": null,
+      "artifact_schema_version": null,
+      "artifact_digest": null,
+      "artifact_status": "branch_created_no_seccodebench_artifact_recorded",
+      "verified_artifact_case_count": 0,
+      "claim_boundary": "The branch exists at the CyberSecEval v2 head but contains no SecCodeBench-specific committed artifact. No execution, score, comparison, or validation claim is available.",
+      "parser_recovery_provenance": [],
+      "parser_recovery_mapping": {},
+      "parser_provenance_status": "not_applicable_no_recorded_preflight_result"
+    }
+  ]
+}
