@@ -311,6 +311,11 @@ The attestation binds:
 - per-control resource-limit state;
 - observed policy violations and stable limitations.
 
+The platform label derives only from `sys.platform` and interpreter pointer
+width. It deliberately avoids `platform.system()`/`platform.machine()` because
+older Windows Python versions may implement those probes through a subprocess
+after the worker process policy is active.
+
 Each fixture behavior now lives in a separate fixed application module behind
 an opaque public ID. There is no runtime `security_enforced` switch and no
 expected-posture label in scanner, worker, MCP, or plan-generation input.

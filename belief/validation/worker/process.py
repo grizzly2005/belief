@@ -32,7 +32,11 @@ from ..executors.base import (
 )
 from ..models import ValidationResult
 from ..plan_models import ValidationPlan, canonical_digest
-from .bootstrap import sanitize_diagnostic, worker_bootstrap
+from .bootstrap import (
+    safe_platform_label,
+    sanitize_diagnostic,
+    worker_bootstrap,
+)
 from .contracts import (
     MAX_WORKER_RESPONSE_BYTES,
     WorkerAttestation,
@@ -747,7 +751,7 @@ def _parent_failure_attestation(
         framework=framework,
         framework_version=framework_version,
         python_version=platform_module.python_version(),
-        platform=_platform_label(),
+        platform=safe_platform_label(),
         environment_policy_installed=None,
         environment_secret_probe_passed=None,
         filesystem_policy_installed=None,
@@ -882,12 +886,6 @@ def _has_additional_response(connection: Any) -> bool:
     except (OSError, ValueError):
         return False
     return False
-
-
-def _platform_label() -> str:
-    system = platform_module.system().lower() or "unknown"
-    machine = platform_module.machine().lower() or "unknown"
-    return f"{system}-{machine}".replace(" ", "_")
 
 
 def _elapsed_ms(started: float) -> int:

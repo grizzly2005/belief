@@ -355,6 +355,23 @@ def _sensitive_environment_present(environment: Mapping[str, str]) -> bool:
     return False
 
 
+def safe_platform_label() -> str:
+    """Return a bounded runtime label without invoking a platform subprocess."""
+
+    raw_platform = sys.platform.casefold()
+    if raw_platform.startswith("win"):
+        system = "windows"
+    elif raw_platform.startswith("linux"):
+        system = "linux"
+    elif raw_platform.startswith("darwin"):
+        system = "darwin"
+    else:
+        system = re.sub(r"[^a-z0-9]+", "_", raw_platform).strip("_")
+        system = system[:32] or "unknown"
+    pointer_width = "64bit" if sys.maxsize > 2**32 else "32bit"
+    return f"{system}-{pointer_width}"
+
+
 def _redirect_native_output_to_null() -> None:
     try:
         null_fd = os.open(os.devnull, os.O_WRONLY)
@@ -404,6 +421,7 @@ def sanitize_diagnostic(
 __all__ = [
     "_BoundedTextCapture",
     "_minimal_environment_values",
+    "safe_platform_label",
     "sanitize_diagnostic",
     "worker_bootstrap",
 ]

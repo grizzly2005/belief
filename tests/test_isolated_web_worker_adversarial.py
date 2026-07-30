@@ -28,6 +28,7 @@ from belief.validation.worker import process as worker_process
 from belief.validation.worker.bootstrap import (
     _BoundedTextCapture,
     _validated_worker_root,
+    safe_platform_label,
     sanitize_diagnostic,
     worker_bootstrap,
 )
@@ -56,6 +57,17 @@ from belief.validation.worker.registry import (
 
 
 pytestmark = pytest.mark.security
+
+
+def test_platform_attestation_label_never_requires_a_subprocess() -> None:
+    state = WorkerPolicyState()
+
+    with preliminary_policy(state):
+        label = safe_platform_label()
+
+    assert label
+    assert label.endswith(("32bit", "64bit"))
+    assert state.io_policy_violations == []
 
 
 def _request(

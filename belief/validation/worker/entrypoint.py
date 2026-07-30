@@ -8,7 +8,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Iterator
 
-from .bootstrap import _minimal_environment_values
+from .bootstrap import _minimal_environment_values, safe_platform_label
 from .contracts import (
     WORKER_RESPONSE_SCHEMA_VERSION,
     WorkerAttestation,
@@ -293,7 +293,7 @@ def _attestation(
         framework=framework,
         framework_version=_framework_version(framework),
         python_version=platform_module.python_version(),
-        platform=_platform_label(),
+        platform=safe_platform_label(),
         environment_policy_installed=state.environment_policy_installed,
         environment_secret_probe_passed=state.environment_secret_probe_passed,
         filesystem_policy_installed=state.filesystem_policy_installed,
@@ -314,12 +314,6 @@ def _framework_version(framework: str) -> str:
         return version(framework)
     except PackageNotFoundError:
         return ""
-
-
-def _platform_label() -> str:
-    system = platform_module.system().lower() or "unknown"
-    machine = platform_module.machine().lower() or "unknown"
-    return f"{system}-{machine}".replace(" ", "_")
 
 
 @contextmanager
