@@ -359,7 +359,7 @@ def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
         "anchor_file": finding.get("file", ""),
         "anchor_line": finding.get("line", 0),
         "anchor_line_end": finding.get("line", 0),
-        "justification_type": "C4",  # AST-based check, conventional pattern
+        "justification_type": "C2_STATICALLY_VERIFIED_PROPERTY",
         "contextual_constraint": f"severity={finding.get('severity','high')}",
         "trust_domain": Path(finding.get("file", "")).stem if finding.get("file") else "",
         "logic_type": "info_flow",

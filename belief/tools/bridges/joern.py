@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
 
+from belief.json_contracts import StrictJSONError, load_json_file
 from belief.tools.schemas import ExternalFinding, NormalizedToolResult
 
 from .base import ManifestBridge
@@ -18,8 +18,8 @@ class JoernBridge(ManifestBridge):
     def import_file(self, path: str | Path) -> NormalizedToolResult:
         source = Path(path)
         try:
-            payload = json.loads(source.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
+            payload = load_json_file(source)
+        except StrictJSONError as exc:
             return NormalizedToolResult(tool_id=self.tool_id, warnings=[f"unsupported Joern JSON: {exc}"])
         findings = []
         rows = payload if isinstance(payload, list) else payload.get("findings", []) if isinstance(payload, dict) else []

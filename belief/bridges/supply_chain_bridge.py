@@ -213,7 +213,7 @@ def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
             "assumption": f"{finding['package']}=={finding['version']} has no known CVE",
             "anchor_file": finding.get("source_file") or "requirements.txt",
             "anchor_line": 1, "anchor_line_end": 1,
-            "justification_type": "C3",
+            "justification_type": "C5_DOCUMENTED_CONVENTION",
             "contextual_constraint": f"spec={finding.get('matched_spec')}, cve={finding.get('cve')}",
             "trust_domain": "supply_chain",
             "logic_type": "semantic",
@@ -225,7 +225,7 @@ def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
             "assumption": f"{finding['package']} is the intended package (not a typo of '{finding['suggested']}')",
             "anchor_file": finding.get("source_file") or "requirements.txt",
             "anchor_line": 1, "anchor_line_end": 1,
-            "justification_type": "C5",
+            "justification_type": "C6_UNSUPPORTED_ASSUMPTION",
             "contextual_constraint": (
                 f"edit_distance={finding.get('edit_distance')} from popular package "
                 f"'{finding.get('suggested')}'"
@@ -240,7 +240,7 @@ def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
             "assumption": f"{finding['package']}=={finding['version']} has no OSV advisory",
             "anchor_file": finding.get("source_file") or "requirements.txt",
             "anchor_line": 1, "anchor_line_end": 1,
-            "justification_type": "C3",
+            "justification_type": "C5_DOCUMENTED_CONVENTION",
             "contextual_constraint": (
                 f"osv={finding.get('osv_id')} severity={finding.get('severity')}"
             ),

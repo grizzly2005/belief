@@ -70,7 +70,7 @@ def _guarantee(expression: str, *, file: str, line: int) -> Belief:
             line_start=line,
             line_end=line,
         ),
-        justification=JustificationCategory.C5_NO_JUSTIFICATION,
+        justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         epistemic_status=EpistemicStatus.BELIEF,
         logic_type=LogicType.FOL,
         confidence_score=0.9,

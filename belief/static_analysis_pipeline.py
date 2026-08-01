@@ -11,9 +11,17 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .models import Belief, Finding, _json_safe
+from .source_snapshot import (
+    DEFAULT_MAX_AST_NODES,
+    DEFAULT_MAX_FILE_BYTES,
+    DEFAULT_MAX_TOTAL_SOURCE_BYTES,
+    build_source_snapshot,
+    canonical_json_digest,
+    source_snapshot_diagnostics,
+)
 
 
-STATIC_ANALYSIS_RESULT_SCHEMA_VERSION = "belief.static_analysis_result.v1"
+STATIC_ANALYSIS_RESULT_SCHEMA_VERSION = "belief.static_analysis_result.v2"
 STATIC_ANALYSIS_CATEGORIES = ("structural", "security", "taint", "temporal", "cycles")
 
 
@@ -88,6 +96,10 @@ class StaticAnalysisOptions:
     min_reportability_score: int = 0
     only_reportable: bool = False
     dedup_audit_cases: bool = False
+    max_file_bytes: int = DEFAULT_MAX_FILE_BYTES
+    max_total_source_bytes: int = DEFAULT_MAX_TOTAL_SOURCE_BYTES
+    max_ast_nodes_per_file: int = DEFAULT_MAX_AST_NODES
+    denied_source_sha256: frozenset[str] = field(default_factory=frozenset)
 
     @property
     def hypotheses_enabled(self) -> bool:
@@ -116,6 +128,47 @@ class StaticAnalysisOptions:
             or self.dedup_audit_cases
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return every semantic option in canonical JSON-compatible form."""
+
+        return {
+            "max_files": self.max_files,
+            "selected_categories": sorted(self.selected_categories),
+            "min_confidence": self.min_confidence,
+            "hide_structural": self.hide_structural,
+            "include_cycles": self.include_cycles,
+            "max_cycles": self.max_cycles,
+            "include_hypotheses": self.include_hypotheses,
+            "include_guarantees": self.include_guarantees,
+            "show_proofs": self.show_proofs,
+            "only_hypotheses": self.only_hypotheses,
+            "include_dataflow": self.include_dataflow,
+            "show_dataflow": self.show_dataflow,
+            "max_dataflow_depth": self.max_dataflow_depth,
+            "max_dataflow_nodes": self.max_dataflow_nodes,
+            "dataflow_cycle_detection": self.dataflow_cycle_detection,
+            "security_analysis_profile": self.security_analysis_profile,
+            "legacy_single_file_path_projection": (
+                self.legacy_single_file_path_projection
+            ),
+            "include_audit_cases": self.include_audit_cases,
+            "audit_mode": self.audit_mode,
+            "interesting_only": self.interesting_only,
+            "include_routes": self.include_routes,
+            "import_tool_results": list(self.import_tool_results),
+            "reportability": self.reportability,
+            "min_reportability_score": self.min_reportability_score,
+            "only_reportable": self.only_reportable,
+            "dedup_audit_cases": self.dedup_audit_cases,
+            "max_file_bytes": self.max_file_bytes,
+            "max_total_source_bytes": self.max_total_source_bytes,
+            "max_ast_nodes_per_file": self.max_ast_nodes_per_file,
+            "denied_source_sha256_count": len(self.denied_source_sha256),
+            "denied_source_sha256_set_digest": canonical_json_digest(
+                sorted(self.denied_source_sha256)
+            ),
+        }
+
 
 @dataclass
 class StaticAnalysisResult:
@@ -123,6 +176,7 @@ class StaticAnalysisResult:
 
     target: str
     files: tuple[Path, ...] = ()
+    logical_files: tuple[str, ...] = ()
     records: tuple[ScanRecord, ...] = ()
     filtered_records: tuple[ScanRecord, ...] = ()
     totals: dict[str, int] = field(default_factory=dict)
@@ -137,6 +191,8 @@ class StaticAnalysisResult:
     imported_tool_results: tuple[Any, ...] = ()
     cycle_metadata: dict[str, Any] | None = None
     diagnostics: tuple[StaticAnalysisDiagnostic, ...] = ()
+    source_snapshot_manifest: dict[str, Any] = field(default_factory=dict)
+    analysis_options: dict[str, Any] = field(default_factory=dict)
 
     @property
     def files_scanned(self) -> int:
@@ -156,7 +212,31 @@ class StaticAnalysisResult:
         return {
             "schema_version": STATIC_ANALYSIS_RESULT_SCHEMA_VERSION,
             "target": self.target,
-            "files": [_normalized_path(path) for path in self.files],
+            "files": list(self.logical_files) or [
+                _normalized_path(path) for path in self.files
+            ],
+            "source_snapshot": _json_safe(self.source_snapshot_manifest),
+            "analysis_identity": {
+                "source_snapshot_id": self.source_snapshot_manifest.get(
+                    "source_snapshot_id"
+                ),
+                "source_manifest_digest": self.source_snapshot_manifest.get(
+                    "source_manifest_digest"
+                ),
+                "analysis_options_digest": self.source_snapshot_manifest.get(
+                    "analysis_options_digest"
+                ),
+                "engine_revision": self.source_snapshot_manifest.get(
+                    "engine_revision"
+                ),
+                "analysis_id": self.source_snapshot_manifest.get(
+                    "analysis_id"
+                ),
+            },
+            "analysis_options": _json_safe(self.analysis_options),
+            "coverage": _json_safe(
+                self.source_snapshot_manifest.get("coverage", {})
+            ),
             "totals": dict(sorted(self.totals.items())),
             "findings": [
                 _finding_to_dict(record.finding, record.category)
@@ -187,6 +267,8 @@ class StaticAnalysisPipeline:
 def analyze_static_target(
     target: str | Path,
     options: StaticAnalysisOptions | None = None,
+    *,
+    target_identity: str | None = None,
 ) -> StaticAnalysisResult:
     """Analyze a local file or directory without CLI or network side effects."""
 
@@ -204,19 +286,31 @@ def analyze_static_target(
     opts = options or StaticAnalysisOptions()
     _validate_options(opts)
     target_path = Path(target)
+    source_snapshot = build_source_snapshot(
+        target_path,
+        analysis_options=opts.to_dict(),
+        max_files=opts.max_files,
+        max_file_bytes=opts.max_file_bytes,
+        max_total_source_bytes=opts.max_total_source_bytes,
+        max_ast_nodes=opts.max_ast_nodes_per_file,
+        denied_source_sha256=opts.denied_source_sha256,
+        target_identity=target_identity,
+    )
+    source_contexts = source_snapshot.source_map
+    source_ast_map = source_snapshot.ast_map
     parser = CodeParser(str(target_path))
-    files = tuple(parser._collect_python_files()[: opts.max_files])
+    analyzable_documents = source_snapshot.analyzable_documents
+    files = tuple(item.disk_path for item in analyzable_documents)
+    logical_files = tuple(item.logical_path for item in analyzable_documents)
 
     routes: list[Any] = []
     if opts.routes_enabled:
-        from .routes import extract_routes_from_files
+        from .routes import extract_routes_from_sources
 
-        route_root = target_path if target_path.is_dir() else (
-            target_path.parent
-            if opts.legacy_single_file_path_projection
-            else None
+        routes = extract_routes_from_sources(
+            source_contexts,
+            ast_map=source_ast_map,
         )
-        routes = extract_routes_from_files(files, target_root=route_root)
 
     structural = StructuralExtractor()
     security = SecurityPatternExtractor(
@@ -237,23 +331,22 @@ def analyze_static_target(
     totals = {name: 0 for name in ("structural", "security", "taint", "temporal")}
     records: list[ScanRecord] = []
     guarantees: list[Belief] = []
-    source_contexts: dict[str, str] = {}
     dataflow_summaries: dict[str, Any] = {}
-    diagnostics: list[StaticAnalysisDiagnostic] = []
+    diagnostics: list[StaticAnalysisDiagnostic] = [
+        StaticAnalysisDiagnostic(
+            code=str(item["code"]),
+            message=str(item["message"]),
+            file=str(item.get("file") or ""),
+            details=dict(item.get("details") or {}),
+        )
+        for item in source_snapshot_diagnostics(source_snapshot)
+    ]
 
-    for file_path in files:
-        relative = _target_relative_path(file_path, target_path)
-        try:
-            source = file_path.read_text(errors="replace")
-        except OSError as exc:
-            diagnostics.append(StaticAnalysisDiagnostic(
-                code="source_read_failed",
-                message=str(exc),
-                file=relative,
-            ))
+    for document in analyzable_documents:
+        relative = document.logical_path
+        source = document.decoded_source
+        if source is None:
             continue
-
-        source_contexts[relative] = source
         if opts.dataflow_enabled:
             summary = _analyze_dataflow(source, relative, opts)
             dataflow_summaries[relative] = summary
@@ -279,7 +372,10 @@ def analyze_static_target(
     if opts.include_cycles:
         from .cycle_detector import detect_cycle_findings_with_metadata
 
-        parser.parse()
+        parser.parse_sources(
+            source_contexts,
+            ast_map=source_ast_map,
+        )
         cycle_findings, cycle_metadata = detect_cycle_findings_with_metadata(
             parser.call_graph,
             max_cycles=opts.max_cycles,
@@ -323,10 +419,7 @@ def analyze_static_target(
         from .guarantee_index import build_guarantee_index
         from .hypothesis_engine import attach_hypotheses_to_findings
 
-        guarantee_root = target_path if (
-            target_path.is_dir() or opts.legacy_single_file_path_projection
-        ) else None
-        guarantee_index = build_guarantee_index(files, target_root=guarantee_root)
+        guarantee_index = build_guarantee_index(source_contexts)
         guarantees = _dedupe_beliefs([*guarantees, *guarantee_index.all_guarantees])
         attach_hypotheses_to_findings(
             [record.finding for record in records],
@@ -386,6 +479,7 @@ def analyze_static_target(
     return StaticAnalysisResult(
         target=str(target_path),
         files=files,
+        logical_files=logical_files,
         records=tuple(records),
         filtered_records=tuple(filtered_records),
         totals=totals,
@@ -400,6 +494,8 @@ def analyze_static_target(
         imported_tool_results=tuple(imported_results),
         cycle_metadata=cycle_metadata,
         diagnostics=tuple(_dedupe_diagnostics(diagnostics)),
+        source_snapshot_manifest=source_snapshot.manifest.to_dict(),
+        analysis_options=opts.to_dict(),
     )
 
 
@@ -477,6 +573,25 @@ def _validate_options(options: StaticAnalysisOptions) -> None:
         raise ValueError("max_dataflow_depth must be non-negative")
     if options.max_dataflow_nodes < 0:
         raise ValueError("max_dataflow_nodes must be non-negative")
+    for name, value in (
+        ("max_file_bytes", options.max_file_bytes),
+        ("max_total_source_bytes", options.max_total_source_bytes),
+        ("max_ast_nodes_per_file", options.max_ast_nodes_per_file),
+    ):
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
+    for digest in options.denied_source_sha256:
+        if (
+            not isinstance(digest, str)
+            or len(digest) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in digest
+            )
+        ):
+            raise ValueError(
+                "denied_source_sha256 entries must be lowercase SHA-256 values"
+            )
     if options.security_analysis_profile not in {"default", "patch_review"}:
         raise ValueError(
             "security_analysis_profile must be one of: default, patch_review"

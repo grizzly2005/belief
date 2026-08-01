@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from belief.json_contracts import load_json_file
 from belief.tools.schemas import ExternalFinding, NormalizedToolResult
 
 
 def import_checkov_json(path: str | Path) -> NormalizedToolResult:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = load_json_file(path)
     failed = _failed_checks(payload)
     findings = []
     for item in failed:

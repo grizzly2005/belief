@@ -117,12 +117,12 @@ Return a JSON array of belief objects. Each belief has:
 }}
 
 ## Justification Categories
-- C1: Verified by assert, type check, or explicit guard in this function
-- C2: Verified by every known caller (but not in this function itself)
-- C3: Stated in a comment, docstring, or documentation
-- C4: Standard domain convention (e.g. "HTTP headers are untrusted")
-- C5: No justification found — pure assumption
-- C6: Inferred from opaque external component (API, binary, service)
+- C1: Mechanically proven by a replayable proof artifact bound to this exact source
+- C2: Property verified by an identified static-analysis result
+- C3: Enforced by an explicit runtime guard in this function
+- C4: Assumed by known callers but not guarded in this function
+- C5: Stated in a comment, docstring, specification, or documentation
+- C6: Unsupported assumption, heuristic inference, or opaque external claim
 
 ## Rules
 1. Be SPECIFIC. Not "input is valid" but "len(user_input) <= 1024".
@@ -131,7 +131,8 @@ Return a JSON array of belief objects. Each belief has:
 4. If logic_type='fol', `predicate.expression` MUST conform to the DSL above.
 5. If you can't fit it in the DSL, use logic_type='semantic' instead — do NOT
    force-fit semantic properties into bad pseudo-Z3 syntax.
-6. If `justification='C3'`, the keyword from your predicate must be findable
+6. Never emit C1 or C2: extraction has no proof/static-result artifact. Use C3
+   only for an explicit guard. If `justification='C5'`, the predicate keyword must be findable
    in the docstring or comments.
 7. Look for beliefs about: types, sizes, nullity, concurrency, trust,
    encoding, error handling, resource availability, timing, ordering.
@@ -152,7 +153,7 @@ Return a JSON array of belief objects. Each belief has:
       "line_start": 38,
       "line_end": 55
     }},
-    "justification": "C5",
+    "justification": "C6",
     "dependencies": [],
     "epistemic_status": "belief",
     "logic_type": "fol",
@@ -171,7 +172,7 @@ Return a JSON array of belief objects. Each belief has:
       "line_start": 58,
       "line_end": 72
     }},
-    "justification": "C5",
+    "justification": "C6",
     "dependencies": [],
     "epistemic_status": "hope",
     "logic_type": "fol",
@@ -190,7 +191,7 @@ Return a JSON array of belief objects. Each belief has:
       "line_start": 85,
       "line_end": 92
     }},
-    "justification": "C5",
+    "justification": "C6",
     "dependencies": [],
     "epistemic_status": "hope",
     "logic_type": "semantic",
@@ -352,7 +353,7 @@ Output ONLY the JSON object.\
 
 SYNTHESIZE_SPEC_PROMPT = """\
 The following beliefs have weak or no justification (C4, C5, or C6).
-Generate the code that would make them formally verified (upgrade to C1).
+Generate code that would add an explicit runtime guard (upgrade to C3).
 
 ## Unjustified Beliefs
 ```json
@@ -485,8 +486,8 @@ Return JSON array of beliefs in the same format as code beliefs, with:
 - scope.function_name = "{method} {url}"
 - logic_type: 'http_logic' for HTTP-specific, 'fol' if it's a numeric/string
   property, 'semantic' otherwise
-- justification: C1 if observed in N≥3 requests, C4 if REST convention, C5 if
-  guessed
+- justification: C5 if an explicit protocol specification documents it,
+  otherwise C6. Repeated observations are not a mechanical proof.
 
 Output ONLY the JSON array.\
 """

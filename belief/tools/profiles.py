@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from belief.json_contracts import load_json_file
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,9 @@ def builtin_profile_dir() -> Path:
 def load_tool_profiles() -> dict[str, ToolProfile]:
     profiles = {}
     for path in sorted(builtin_profile_dir().glob("*.json"), key=lambda item: item.name):
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = load_json_file(path)
+        if not isinstance(raw, dict):
+            raise ValueError(f"tool profile must be an object: {path}")
         profile = ToolProfile.from_dict(raw)
         profiles[profile.profile_id] = profile
     return profiles

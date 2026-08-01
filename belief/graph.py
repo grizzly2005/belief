@@ -109,15 +109,16 @@ class BeliefGraph:
 
     def unjustified_foundations(self) -> list[GraphNode]:
         """
-        Find C5/C6 beliefs that other beliefs depend on.
+        Find unsupported C6 beliefs that other beliefs depend on.
         These are the most dangerous: pure-faith foundations.
         """
         results = []
         for node in self.nodes.values():
-            if (node.belief.justification in (
-                    JustificationCategory.C5_NO_JUSTIFICATION,
-                    JustificationCategory.C6_OPAQUE_INFERENCE)
-                    and node.dependents):
+            if (
+                node.belief.justification
+                is JustificationCategory.C6_UNSUPPORTED_ASSUMPTION
+                and node.dependents
+            ):
                 results.append(node)
         return sorted(results, key=lambda n: len(n.dependents), reverse=True)
 

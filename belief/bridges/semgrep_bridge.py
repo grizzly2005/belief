@@ -116,15 +116,15 @@ def run_semgrep(
 
 
 _SEMGREP_SEVERITY = {
-    "ERROR":   ("HIGH", "C1"),
-    "WARNING": ("MED",  "C4"),
-    "INFO":    ("LOW",  "C5"),
+    "ERROR":   ("HIGH", "C2_STATICALLY_VERIFIED_PROPERTY"),
+    "WARNING": ("MED",  "C2_STATICALLY_VERIFIED_PROPERTY"),
+    "INFO":    ("LOW",  "C2_STATICALLY_VERIFIED_PROPERTY"),
 }
 
 
 def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
     sev, justif = _SEMGREP_SEVERITY.get(finding.get("severity", "INFO"),
-                                         ("LOW", "C5"))
+                                         ("LOW", "C2_STATICALLY_VERIFIED_PROPERTY"))
     meta = finding.get("metadata", {})
     cwe = (meta.get("cwe") if isinstance(meta.get("cwe"), str)
            else (meta.get("cwe") or [""])[0] if meta.get("cwe") else "")

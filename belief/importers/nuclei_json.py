@@ -5,15 +5,15 @@ Nuclei execution is intentionally not implemented in this pass.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from belief.json_contracts import read_bounded_utf8, strict_json_loads
 from belief.tools.schemas import ExternalFinding, NormalizedToolResult
 
 
 def import_nuclei_json(path: str | Path) -> NormalizedToolResult:
-    text = Path(path).read_text(encoding="utf-8")
+    text = read_bounded_utf8(path)
     rows = _parse_rows(text)
     findings = []
     for item in rows:
@@ -44,12 +44,12 @@ def _parse_rows(text: str) -> list[Any]:
     if not stripped:
         return []
     if stripped.startswith("["):
-        payload = json.loads(stripped)
+        payload = strict_json_loads(stripped)
         return payload if isinstance(payload, list) else []
     rows = []
     for line in stripped.splitlines():
         if line.strip():
-            rows.append(json.loads(line))
+            rows.append(strict_json_loads(line))
     return rows
 
 

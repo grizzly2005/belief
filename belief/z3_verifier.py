@@ -32,6 +32,7 @@ from .models import (
     Frontier,
     LogicType,
 )
+from .predicate_logic import PredicateLogicError
 
 logger = logging.getLogger("belief.z3_verifier")
 
@@ -455,6 +456,7 @@ class ConflictDetector:
             "translation_failed": 0,
             "z3_conflicts": 0,
             "heuristic_conflicts": 0,
+            "predicate_negation_abstained": 0,
         }
 
     # ── Public API ──
@@ -650,8 +652,15 @@ class ConflictDetector:
         """Conservative heuristic: only fire on strong textual signals."""
 
         # Direct negation match
-        neg_a = a.predicate.negation()
-        if self._expressions_match(neg_a, b.predicate.expression):
+        try:
+            neg_a = a.predicate.negation()
+        except PredicateLogicError:
+            neg_a = None
+            self.stats["predicate_negation_abstained"] += 1
+        if (
+            neg_a is not None
+            and self._expressions_match(neg_a, b.predicate.expression)
+        ):
             self.stats["heuristic_conflicts"] += 1
             return Conflict(
                 belief_a=a,

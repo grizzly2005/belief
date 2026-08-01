@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
 
+from belief.json_contracts import load_json_file
 from belief.tools.schemas import ExternalFinding
 
 
 def import_codeql_sarif(path: str | Path) -> list[ExternalFinding]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = load_json_file(path)
     return codeql_sarif_payload_to_findings(payload)
 
 

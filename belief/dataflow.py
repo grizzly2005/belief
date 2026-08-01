@@ -354,9 +354,9 @@ def dataflow_paths_to_beliefs(paths: Iterable[DataFlowPath]) -> list[Belief]:
                 line_end=path.sink_line,
             ),
             justification=(
-                JustificationCategory.C2_CALLER_VERIFICATION
+                JustificationCategory.C3_EXPLICIT_RUNTIME_GUARD
                 if path.sanitized
-                else JustificationCategory.C5_NO_JUSTIFICATION
+                else JustificationCategory.C6_UNSUPPORTED_ASSUMPTION
             ),
             epistemic_status=EpistemicStatus.BELIEF if path.sanitized else EpistemicStatus.HOPE,
             logic_type=LogicType.INFORMATION_FLOW,

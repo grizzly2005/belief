@@ -99,7 +99,7 @@ class TestPredicateTranslator:
 
 
 class TestConflictDetector:
-    def _make_belief(self, expr, justification=JustificationCategory.C5_NO_JUSTIFICATION,
+    def _make_belief(self, expr, justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                      variables=(), confidence=0.8):
         return Belief(
             predicate=Predicate(expression=expr, variables=variables),
@@ -135,11 +135,11 @@ class TestConflictDetector:
         # Two C5 beliefs should produce higher severity
         a = self._make_belief(
             "x <= 10", variables=("x",),
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         )
         b = self._make_belief(
             "x > 10", variables=("x",),
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         )
 
         conflicts = detector.detect_pairwise([a], [b])
@@ -154,7 +154,7 @@ class TestConflictDetector:
 # ─── Belief Graph Tests ───
 
 class TestBeliefGraph:
-    def _make_belief(self, expr, deps=None, justification=JustificationCategory.C3_DOCUMENTED_CONVENTION):
+    def _make_belief(self, expr, deps=None, justification=JustificationCategory.C5_DOCUMENTED_CONVENTION):
         return Belief(
             predicate=Predicate(expression=expr),
             scope=Scope(file_path="test.py"),
@@ -195,7 +195,7 @@ class TestBeliefGraph:
         graph = BeliefGraph()
         root = self._make_belief(
             "network available",
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         )
         dep1 = self._make_belief("api responds", deps=["network available"])
         dep2 = self._make_belief("data valid", deps=["network available"])
@@ -208,7 +208,7 @@ class TestBeliefGraph:
         graph = BeliefGraph()
         root = self._make_belief(
             "env is safe",
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         )
         dep = self._make_belief("can trust input", deps=["env is safe"])
         graph.add_beliefs([root, dep])

@@ -14,7 +14,7 @@ Reason: keeps Bandit's ~20 dependencies out of BELIEF's env.
 Mapping to BELIEF sextuplet:
   assumption   ← f"{test_name} should not match at {location}"
   anchor_point ← (file, line)
-  justification_type ← C1 (enforced if severity=HIGH) or C5
+  justification_type ← C2_STATICALLY_VERIFIED_PROPERTY
   contextual_constraint ← bandit's test_id + severity + confidence
   trust_domain ← file's module
   logic_type   ← 'semantic' (pre-LLM, not Z3-translatable directly)
@@ -160,13 +160,9 @@ def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
     filename = finding.get("filename", "<unknown>")
     line = finding.get("line_number", 0)
 
-    # Severity → justification type (more severe = stronger enforcement claim)
-    if severity == "HIGH" and confidence == "HIGH":
-        justif = "C1"       # enforced at runtime (often raise/abort)
-    elif severity in ("HIGH", "MEDIUM"):
-        justif = "C4"       # enforced by check but weak
-    else:
-        justif = "C5"       # pure convention
+    # Severity and evidentiary support are separate axes.  This bridge emits a
+    # concrete static rule match, never a source-bound mechanical proof.
+    justif = "C2_STATICALLY_VERIFIED_PROPERTY"
 
     # Trust domain = module path
     trust_domain = Path(filename).stem

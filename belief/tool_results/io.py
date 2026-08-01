@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any, Iterable
 
+from belief.json_contracts import (
+    StrictJSONError,
+    load_json_file,
+    strict_json_dumps,
+)
 from belief.tools.schemas import (
     AccessObservation,
     AttackPath,
@@ -90,7 +94,7 @@ def write_normalized_tool_result(result: NormalizedToolResult, path: Path | str)
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
-        json.dumps(
+        strict_json_dumps(
             normalized_tool_result_to_dict(result),
             indent=2,
             sort_keys=True,
@@ -103,8 +107,8 @@ def write_normalized_tool_result(result: NormalizedToolResult, path: Path | str)
 def read_normalized_tool_result(path: Path | str) -> NormalizedToolResult:
     """Read one normalized result from disk."""
     try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        payload = load_json_file(path)
+    except StrictJSONError as exc:
         raise ToolResultSchemaError(f"invalid normalized tool-result JSON: {exc}") from exc
     return normalized_tool_result_from_dict(payload)
 

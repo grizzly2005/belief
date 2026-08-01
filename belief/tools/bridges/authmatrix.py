@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from belief.exporters.authmatrix import export_authmatrix_state
+from belief.json_contracts import load_json_file
 from belief.tools.schemas import AccessObservation, NormalizedToolResult
 
 from .base import ManifestBridge
@@ -18,7 +18,7 @@ class AuthMatrixBridge(ManifestBridge):
 
     def import_file(self, path: str | Path) -> NormalizedToolResult:
         source = Path(path)
-        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload = load_json_file(source)
         return NormalizedToolResult(
             tool_id=self.tool_id,
             access_observations=_authmatrix_observations(payload),

@@ -26,9 +26,7 @@ from belief.pipeline import (
 )
 
 
-def test_enum_compatibility_aliases_and_json_names():
-    assert JustificationCategory.C3_DOCUMENTED is JustificationCategory.C3_DOCUMENTED_CONVENTION
-    assert JustificationCategory.parse("C3_DOCUMENTED") is JustificationCategory.C3_DOCUMENTED_CONVENTION
+def test_legacy_taxonomy_is_migrated_without_upgrading_evidence():
     assert LogicType.parse("SEMANTIC") is LogicType.SEMANTIC
     assert LogicType.parse("contract") is LogicType.SEMANTIC
 
@@ -39,7 +37,10 @@ def test_enum_compatibility_aliases_and_json_names():
         "logic_type": "SEMANTIC",
     })
 
-    assert belief.justification is JustificationCategory.C3_DOCUMENTED_CONVENTION
+    assert belief.justification is JustificationCategory.C5_DOCUMENTED_CONVENTION
+    assert belief.source_metadata["deserialization_diagnostics"][0]["code"] == (
+        "legacy_justification_taxonomy_migrated"
+    )
     assert belief.logic_type is LogicType.SEMANTIC
 
 
@@ -110,7 +111,7 @@ def test_json_roundtrip_preserves_stable_identity_and_metadata(tmp_path):
     first = Belief(
         predicate=Predicate(expression="query uses parameter binding"),
         scope=scope,
-        justification=JustificationCategory.C3_DOCUMENTED,
+        justification=JustificationCategory.C5_DOCUMENTED_CONVENTION,
         logic_type=LogicType.SEMANTIC,
         cwe="CWE-89",
         source_metadata={"source": "bandit", "rule_id": "B608"},
@@ -118,7 +119,7 @@ def test_json_roundtrip_preserves_stable_identity_and_metadata(tmp_path):
     drifted_text = Belief(
         predicate=Predicate(expression="sql call is parameterized"),
         scope=scope,
-        justification=JustificationCategory.C5_NO_JUSTIFICATION,
+        justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         cwe="CWE-89",
     )
 
@@ -184,7 +185,7 @@ def test_checkpoint_resume_skips_phase_with_restored_beliefs(tmp_path):
                 Belief(
                     predicate=Predicate(expression="x > 0"),
                     scope=Scope(file_path="seed.py"),
-                    justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                    justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                 )
             )
             return state

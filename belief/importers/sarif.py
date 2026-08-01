@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 from typing import Any
 
+from ..json_contracts import load_json_file, strict_json_dumps
 from ..models import Finding
 
 
 def load_sarif(path: str | Path) -> dict[str, Any]:
     """Load a SARIF JSON document without requiring a SARIF package."""
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = load_json_file(path)
     if not isinstance(payload, dict):
         raise ValueError("SARIF payload must be a JSON object")
     return payload
@@ -156,7 +156,7 @@ def _fingerprint(
         "line": line,
         "message": message,
     }
-    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    raw = strict_json_dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from belief.json_contracts import load_json_file
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,15 @@ class ToolCapability:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ToolCapability":
+        risk_level = str(raw.get("risk_level") or "low")
+        if risk_level not in {"low", "medium", "high"}:
+            raise ValueError(f"unknown tool risk_level: {risk_level!r}")
+        timeout = raw.get("default_timeout_seconds", 180)
+        if isinstance(timeout, bool):
+            raise ValueError("default_timeout_seconds must be an integer")
+        timeout = int(timeout)
+        if not 1 <= timeout <= 86_400:
+            raise ValueError("default_timeout_seconds must be between 1 and 86400")
         return cls(
             tool_id=str(raw["tool_id"]),
             name=str(raw.get("name") or raw["tool_id"]),
@@ -40,13 +50,13 @@ class ToolCapability:
             output_formats=tuple(_strings(raw.get("output_formats"))),
             languages=tuple(_strings(raw.get("languages"))),
             capabilities=tuple(_strings(raw.get("capabilities"))),
-            requires_network=bool(raw.get("requires_network", False)),
-            requires_dynamic=bool(raw.get("requires_dynamic", False)),
-            requires_scope=bool(raw.get("requires_scope", False)),
-            can_run_local=bool(raw.get("can_run_local", False)),
-            can_import_only=bool(raw.get("can_import_only", False)),
-            risk_level=str(raw.get("risk_level") or "low"),
-            default_timeout_seconds=int(raw.get("default_timeout_seconds", 180) or 180),
+            requires_network=_bool(raw, "requires_network"),
+            requires_dynamic=_bool(raw, "requires_dynamic"),
+            requires_scope=_bool(raw, "requires_scope"),
+            can_run_local=_bool(raw, "can_run_local"),
+            can_import_only=_bool(raw, "can_import_only"),
+            risk_level=risk_level,
+            default_timeout_seconds=timeout,
             profiles=tuple(_strings(raw.get("profiles"))),
             run_command_template=tuple(_strings(raw.get("run_command_template"))),
             import_format=_optional(raw.get("import_format")),
@@ -85,7 +95,9 @@ def builtin_capability_dir() -> Path:
 def load_builtin_capabilities() -> dict[str, ToolCapability]:
     capabilities = {}
     for path in sorted(builtin_capability_dir().glob("*.json"), key=lambda item: item.name):
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = load_json_file(path)
+        if not isinstance(raw, dict):
+            raise ValueError(f"tool capability must be an object: {path}")
         capability = ToolCapability.from_dict(raw)
         capabilities[capability.tool_id] = capability
     return capabilities
@@ -107,6 +119,13 @@ def _strings(value: Any) -> list[str]:
 def _optional(value: Any) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def _bool(raw: dict[str, Any], key: str) -> bool:
+    value = raw.get(key, False)
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be boolean")
+    return value
 
 
 __all__ = [

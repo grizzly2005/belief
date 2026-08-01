@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from belief.json_contracts import (
+    StrictJSONError,
+    load_json_file,
+    strict_json_dumps,
+)
 from .models import PDXBundle
 from .redaction import redact_pdx_value
 
@@ -27,8 +31,8 @@ def pdx_bundle_from_dict(payload: dict[str, Any]) -> PDXBundle:
 
 def read_pdx_bundle(path: Path | str) -> PDXBundle:
     try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        payload = load_json_file(path)
+    except StrictJSONError as exc:
         raise PDXSchemaError(f"invalid PDX JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise PDXSchemaError("PDX JSON must be an object")
@@ -39,7 +43,10 @@ def write_pdx_bundle(bundle: PDXBundle, path: Path | str) -> None:
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
-        json.dumps(pdx_bundle_to_dict(bundle), indent=2, sort_keys=True) + "\n",
+        strict_json_dumps(
+            pdx_bundle_to_dict(bundle), indent=2, sort_keys=True
+        )
+        + "\n",
         encoding="utf-8",
     )
 

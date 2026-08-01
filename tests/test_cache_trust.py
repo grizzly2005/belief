@@ -68,7 +68,7 @@ class TestBeliefCacheMemory:
         return Belief(
             predicate=Predicate(expression=expr),
             scope=Scope(file_path="t.py"),
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         )
 
     def test_miss_returns_none(self):
@@ -158,7 +158,7 @@ class TestBeliefCacheDisk:
         return Belief(
             predicate=Predicate(expression=expr),
             scope=Scope(file_path="t.py"),
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         )
 
     def test_flush_and_reload(self, tmp_path):

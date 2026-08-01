@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
+
+from belief.json_contracts import load_json_file
 
 from .matchers import is_url, match_scope_pattern
 from .models import ScopeDecision, ScopePolicy
@@ -12,7 +13,7 @@ from .validation import validate_scope
 
 
 def load_scope(path: str | Path) -> ScopePolicy:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = load_json_file(path)
     if not isinstance(payload, dict):
         raise ValueError("scope file must contain a JSON object")
     scope = ScopePolicy.from_dict(payload)

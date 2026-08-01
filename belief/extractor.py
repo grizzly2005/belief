@@ -185,7 +185,11 @@ class BeliefExtractor:
             f"Code:\n```\n{code[:6000]}\n```\n\n"
             f"Beliefs:\n{beliefs_json}\n\n"
             f"Return JSON array: "
-            f'[{{"id": "...", "agree": true/false, "corrected_justification": "C1-C6 or null"}}]'
+            f'[{{"id": "...", "agree": true/false, '
+            f'"corrected_justification": "C1-C6 or null"}}]. '
+            f"C1 means a replayable mechanical proof artifact, C2 a static "
+            f"verification result, C3 an explicit runtime guard, C4 a caller "
+            f"assumption, C5 a documented convention, and C6 unsupported."
         )
 
         try:
@@ -293,7 +297,7 @@ class BeliefExtractor:
     def synthesize_specifications(
         self, beliefs: list[Belief], code: str
     ) -> list[dict]:
-        """Generate assertions/tests for unjustified beliefs (C4-C6)."""
+        """Generate assertions/tests for weakly supported beliefs (C4-C6)."""
         weak_beliefs = [
             b for b in beliefs
             if b.justification.robustness_score <= 0.4
@@ -495,12 +499,11 @@ class BeliefExtractor:
                 line_end=scope_data.get("line_end"),
             )
 
-            justification = JustificationCategory.parse(raw.get("justification", "C5"))
+            justification = JustificationCategory.parse(
+                raw.get("justification", "C6")
+            )
 
-            try:
-                epistemic = EpistemicStatus(raw.get("epistemic_status", "belief"))
-            except ValueError:
-                epistemic = EpistemicStatus.BELIEF
+            epistemic = EpistemicStatus(raw.get("epistemic_status", "belief"))
 
             logic = LogicType.parse(raw.get("logic_type", "fol"))
 
@@ -511,7 +514,7 @@ class BeliefExtractor:
                 dependencies=raw.get("dependencies", []) or [],
                 epistemic_status=epistemic,
                 logic_type=logic,
-                confidence_score=float(raw.get("confidence_score", 0.5)),
+                confidence_score=raw.get("confidence_score", 0.5),
                 cwe=raw.get("cwe", "") or "",
                 canonical_key=raw.get("canonical_key", "") or "",
                 source_metadata=raw.get("source_metadata") or raw.get("metadata") or {},
@@ -565,15 +568,26 @@ class BeliefExtractor:
                     logger.debug(f"Filtered: anchor_line {ln} outside scope")
                     return False
 
-        # F5: justification consistency
-        if belief.justification == JustificationCategory.C1_FORMAL_VERIFICATION:
-            # Must have an assert / raise / explicit check in the code
-            if not re.search(r"\b(assert|raise|if\s+not|if\s+\w+\s+is\s+None)\b", source_code):
-                # Downgrade to C4
-                belief.justification = JustificationCategory.C4_IMPLICIT_CONVENTION
+        # F5: justification consistency. LLM extraction cannot manufacture a
+        # proof/static-verifier artifact merely by naming C1 or C2.
+        if belief.justification in {
+            JustificationCategory.C1_MECHANICALLY_PROVEN,
+            JustificationCategory.C2_STATICALLY_VERIFIED_PROPERTY,
+        }:
+            belief.justification = JustificationCategory.C6_UNSUPPORTED_ASSUMPTION
+            belief.confidence_score *= 0.7
+
+        if belief.justification == JustificationCategory.C3_EXPLICIT_RUNTIME_GUARD:
+            if not re.search(
+                r"\b(assert|raise|if\s+not|if\s+\w+\s+is\s+None)\b",
+                source_code,
+            ):
+                belief.justification = (
+                    JustificationCategory.C6_UNSUPPORTED_ASSUMPTION
+                )
                 belief.confidence_score *= 0.8
 
-        if belief.justification == JustificationCategory.C3_DOCUMENTED:
+        if belief.justification == JustificationCategory.C5_DOCUMENTED_CONVENTION:
             # The keyword must appear in a comment or docstring
             comment_or_doc = "\n".join(
                 line for line in source_code.split("\n")
@@ -586,7 +600,9 @@ class BeliefExtractor:
             if not any(
                 k.lower() in comment_or_doc.lower() for k in keyword if len(k) >= 4
             ):
-                belief.justification = JustificationCategory.C5_NO_JUSTIFICATION
+                belief.justification = (
+                    JustificationCategory.C6_UNSUPPORTED_ASSUMPTION
+                )
                 belief.confidence_score *= 0.8
 
         # F6: minimum confidence threshold

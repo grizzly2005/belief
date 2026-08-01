@@ -36,7 +36,7 @@ _RESPONSE_PATTERNS = [
     {   # 403 vs 404 → server believes the path is protected (vs absent)
         "match": lambda e: e.status_code == 403,
         "predicate": "server.path_exists_but_requires_auth",
-        "justification": "C4",
+        "justification": "C6",
         "scope_fn": lambda e: (e.path, 0, 0),
         "logic": "semantic",
         "reason": "403 reveals existence; 404 would hide it",
@@ -44,7 +44,7 @@ _RESPONSE_PATTERNS = [
     {   # 429 → rate limit is enforced and trusted
         "match": lambda e: e.status_code == 429,
         "predicate": "server.rate_limit_enforces_global_quota",
-        "justification": "C4",
+        "justification": "C6",
         "scope_fn": lambda e: (e.path, 0, 0),
         "logic": "semantic",
         "reason": "429 assumes client is rate-limited; may bypass via X-Forwarded-For",
@@ -52,7 +52,7 @@ _RESPONSE_PATTERNS = [
     {   # 500 on arbitrary input → server trusted input format
         "match": lambda e: e.status_code >= 500,
         "predicate": "server.input_parser_handles_malformed_input",
-        "justification": "C5",
+        "justification": "C6",
         "scope_fn": lambda e: (e.path, 0, 0),
         "logic": "semantic",
         "reason": "5xx implies unhandled exception path; input validation gap",
@@ -66,7 +66,7 @@ _RESPONSE_PATTERNS = [
             )
         ),
         "predicate": "server.cookies_not_accessible_to_js",
-        "justification": "C5",
+        "justification": "C6",
         "scope_fn": lambda e: (e.path, 0, 0),
         "logic": "contract",
         "reason": "HttpOnly missing → XSS can steal session",
@@ -78,7 +78,7 @@ _RESPONSE_PATTERNS = [
             and "text/html" in (e.mime_type or "").lower()
         ),
         "predicate": "server.html_response_cannot_inject_scripts",
-        "justification": "C5",
+        "justification": "C6",
         "scope_fn": lambda e: (e.path, 0, 0),
         "logic": "semantic",
         "reason": "No CSP → any reflected XSS is directly exploitable",
@@ -90,7 +90,7 @@ _RESPONSE_PATTERNS = [
                      and v in (e.response_body or ""))
         ),
         "predicate": "server.user_input_is_sanitized_before_reflection",
-        "justification": "C4",
+        "justification": "C6",
         "scope_fn": lambda e: (e.path, 0, 0),
         "logic": "contract",
         "reason": "Query param value appears verbatim in response → possible XSS/HTMLi",
@@ -124,16 +124,9 @@ def _entry_to_beliefs(entry: HarEntry) -> List["Belief"]:
             line_start=line_start or None,
             line_end=line_end or None,
         )
-        justif_map = {
-            "C1": "C1_FORMAL_VERIFICATION",
-            "C2": "C2_CALLER_VERIFICATION",
-            "C3": "C3_DOCUMENTED_CONVENTION",
-            "C4": "C4_IMPLICIT_CONVENTION",
-            "C5": "C5_NO_JUSTIFICATION",
-            "C6": "C6_OPAQUE_INFERENCE",
-        }
-        justif = getattr(JustificationCategory,
-                         justif_map.get(pat["justification"], "C5_NO_JUSTIFICATION"))
+        # A black-box response is an observation, not proof of the server-side
+        # policy that produced it.
+        justif = JustificationCategory.C6_UNSUPPORTED_ASSUMPTION
         logic_map = {"fol": "FOL", "semantic": "SEMANTIC",
                      "contract": "CONTRACT", "temporal": "TEMPORAL"}
         logic = getattr(LogicType, logic_map.get(pat["logic"], "FOL"),

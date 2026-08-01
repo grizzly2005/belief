@@ -2618,7 +2618,7 @@ class SecurityPatternExtractor:
                 natural_language=f"{desc}",
             ),
             scope=scope,
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
             epistemic_status=EpistemicStatus.BELIEF,
             logic_type=LogicType.INFORMATION_FLOW,
             confidence_score=confidence,

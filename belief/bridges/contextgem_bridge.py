@@ -85,7 +85,12 @@ def extract_structured(
                 "assumption": {"type": "string"},
                 "anchor_line": {"type": "integer"},
                 "justification_type": {"type": "string",
-                                       "enum": ["C1", "C2", "C3", "C4", "C5"]},
+                                       "enum": [
+                                           "C3_EXPLICIT_RUNTIME_GUARD",
+                                           "C4_CALLER_ASSUMPTION",
+                                           "C5_DOCUMENTED_CONVENTION",
+                                           "C6_UNSUPPORTED_ASSUMPTION",
+                                       ]},
                 "contextual_constraint": {"type": "string"},
                 "trust_domain": {"type": "string"},
                 "logic_type": {"type": "string",

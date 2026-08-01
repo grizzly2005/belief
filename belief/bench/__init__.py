@@ -104,7 +104,7 @@ BUILTIN_GROUND_TRUTH = [
         line_start=1, line_end=50,
         cwe="CWE-94", severity="critical",
         belief_expression="llm_output.is_safe_code == True",
-        belief_justification="C5",
+        belief_justification="C6",
         fix_commit="", language="python",
     ),
     GroundTruthEntry(
@@ -114,7 +114,7 @@ BUILTIN_GROUND_TRUTH = [
         line_start=1, line_end=100,
         cwe="CWE-74", severity="high",
         belief_expression="memory.contents in TRUSTED_DATA",
-        belief_justification="C5",
+        belief_justification="C6",
         fix_commit="", language="python",
     ),
     GroundTruthEntry(
@@ -124,7 +124,7 @@ BUILTIN_GROUND_TRUTH = [
         line_start=1, line_end=50,
         cwe="CWE-74", severity="high",
         belief_expression="web_response.content_type == 'passive_data'",
-        belief_justification="C5",
+        belief_justification="C6",
         fix_commit="", language="python",
     ),
     GroundTruthEntry(
@@ -134,7 +134,7 @@ BUILTIN_GROUND_TRUTH = [
         line_start=1, line_end=80,
         cwe="CWE-89", severity="high",
         belief_expression="sql_query in SAFE_QUERIES",
-        belief_justification="C5",
+        belief_justification="C6",
         fix_commit="", language="python",
     ),
     GroundTruthEntry(
@@ -144,7 +144,7 @@ BUILTIN_GROUND_TRUTH = [
         line_start=1, line_end=100,
         cwe="CWE-94", severity="critical",
         belief_expression="generated_code.is_safe == True",
-        belief_justification="C5",
+        belief_justification="C6",
         fix_commit="", language="python",
     ),
     GroundTruthEntry(
@@ -154,7 +154,7 @@ BUILTIN_GROUND_TRUTH = [
         line_start=1, line_end=50,
         cwe="CWE-74", severity="medium",
         belief_expression="vectorstore.documents in CLEAN_DATA",
-        belief_justification="C5",
+        belief_justification="C6",
         fix_commit="", language="python",
     ),
     GroundTruthEntry(
@@ -164,7 +164,7 @@ BUILTIN_GROUND_TRUTH = [
         line_start=1, line_end=50,
         cwe="CWE-20", severity="medium",
         belief_expression="chain_output.format == expected_format",
-        belief_justification="C4",
+        belief_justification="C6",
         fix_commit="", language="python",
     ),
     GroundTruthEntry(
@@ -174,7 +174,7 @@ BUILTIN_GROUND_TRUTH = [
         line_start=1, line_end=100,
         cwe="CWE-862", severity="medium",
         belief_expression="callback.is_trusted == True",
-        belief_justification="C5",
+        belief_justification="C6",
         fix_commit="", language="python",
     ),
 ]

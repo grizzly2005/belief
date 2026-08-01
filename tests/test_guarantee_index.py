@@ -157,7 +157,7 @@ def test_direct_open_storage_path_receives_propagated_guarantee():
     )
 
 
-def test_cli_source_app_scan_resolves_parent_store_and_exports_propagated_json(tmp_path):
+def test_cli_source_app_scan_does_not_read_parent_outside_snapshot(tmp_path):
     project = tmp_path / "securedrop"
     source_app = project / "source_app"
     source_app.mkdir(parents=True)
@@ -194,12 +194,9 @@ def test_cli_source_app_scan_resolves_parent_store_and_exports_propagated_json(t
     ]
     assert path_findings
     hypothesis = path_findings[0]["hypothesis"]
-    assert hypothesis["status"] in {"weakened", "contradicted"}
-    assert any(
-        guarantee["propagated"]
-        and guarantee["registered_function"] == "storage.path"
-        for guarantee in hypothesis["guarantee_beliefs"]
-    )
+    assert hypothesis["status"] == "strengthened"
+    assert hypothesis["guarantee_beliefs"] == []
+    assert "store.py" not in json.dumps(payload)
 
 
 def test_propagated_guarantee_order_is_deterministic():
