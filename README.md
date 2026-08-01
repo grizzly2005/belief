@@ -112,6 +112,28 @@ for the trusted-binding, cancellation, storage, and human-confirmation model.
 
 ---
 
+## C Exploration Objective Research Pilot
+
+The separate Duck-oriented research pilot projects only explicit C
+reachability hints from a `ValidationPlan` into a deterministic
+`ExplorationObjective`, renders a manual function-scope C fragment, and
+strictly imports objective-bound path artifacts. It preserves the
+`supported` / `refuted` / `inconclusive` distinction and never turns a
+plausible path into vulnerability confirmation.
+
+Run its closed three-case synthetic contract benchmark:
+
+```powershell
+python scripts/benchmark_exploration_objective.py `
+  --output out/exploration-objective-pilot.json
+```
+
+The pilot does not execute Duck, an LLM, a compiler, a subprocess, or external
+project code. Exact Duck wire-format compatibility is not claimed. See
+[`docs/DUCK_PATH_OBJECTIVE_PILOT.md`](docs/DUCK_PATH_OBJECTIVE_PILOT.md).
+
+---
+
 ## PDX JSON Adapter
 
 BELIEF can passively import JSON-only PDX bundles as normalized tool results:
@@ -828,6 +850,7 @@ pyproject.toml
 - [`docs/TOOL_BRIDGES.md`](docs/TOOL_BRIDGES.md)
 - [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md)
 - [`docs/MCP_DYNAMIC_VALIDATION_SECURITY.md`](docs/MCP_DYNAMIC_VALIDATION_SECURITY.md)
+- [`docs/DUCK_PATH_OBJECTIVE_PILOT.md`](docs/DUCK_PATH_OBJECTIVE_PILOT.md)
 - [`docs/AUTHORIZED_PROJECT_PILOT.md`](docs/AUTHORIZED_PROJECT_PILOT.md)
 - [`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md)
 - [`docs/PYTHON_SOURCE_CLASSIFICATION.md`](docs/PYTHON_SOURCE_CLASSIFICATION.md)
