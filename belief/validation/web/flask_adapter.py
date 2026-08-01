@@ -1,23 +1,27 @@
-"""Transparent Flask fixtures exercised only through ``test_client()``."""
+"""Flask system-under-test adapter; it contains no oracle expectations."""
 
 from __future__ import annotations
 
-import copy
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from flask import Flask, jsonify, request
 
-from ..worker.registry import RegisteredFixtureResult
-from ._shared import (
+from .fixtures.apps.contracts import (
     ClientResponse,
-    PathPolicy,
-    ResourcePolicy,
-    idor_observations,
+    PathApplication,
+    ResourceApplication,
+)
+from .fixtures.apps.support import (
     initial_resources,
-    path_observations,
+    path_policy_alpha,
+    path_policy_beta,
+    path_state,
     prepare_path_layout,
+    resource_policy_alpha,
+    resource_policy_beta,
+    resource_state,
 )
 
 
@@ -26,8 +30,14 @@ def prepare_flask_path_app(
     parameters: Mapping[str, Any],
     *,
     application_id: str,
-    policy: PathPolicy,
-) -> Callable[[], RegisteredFixtureResult]:
+    policy_name: str,
+) -> PathApplication:
+    policy = {
+        "alpha": path_policy_alpha,
+        "beta": path_policy_beta,
+    }.get(policy_name)
+    if policy is None:
+        raise ValueError("unknown closed path application policy")
     include_symlink = parameters.get("include_symlink", True)
     layout = prepare_path_layout(
         temporary_root / "fixture",
@@ -50,39 +60,38 @@ def prepare_flask_path_app(
 
     client = app.test_client()
 
-    def execute() -> RegisteredFixtureResult:
+    def requester(value: str) -> ClientResponse:
         with client:
-            def requester(value: str) -> ClientResponse:
-                response = client.get(
-                    "/files",
-                    query_string={"path": value},
-                )
-                body = response.get_json(silent=True)
-                return ClientResponse(
-                    status_code=response.status_code,
-                    body=body if isinstance(body, dict) else {},
-                )
-
-            observations, limitations = path_observations(
-                requester,
-                layout,
-                include_symlink=include_symlink,
+            response = client.get(
+                "/files",
+                query_string={"path": value},
             )
-        return RegisteredFixtureResult(
-            observations=observations,
-            limitations=limitations,
-            capability_used="flask_test_client",
-        )
+            body = response.get_json(silent=True)
+            return ClientResponse(
+                status_code=response.status_code,
+                body=body if isinstance(body, dict) else {},
+            )
 
-    return execute
+    return PathApplication(
+        request=requester,
+        state=lambda: path_state(layout),
+        absolute_outside_stimulus=str(layout.sentinel),
+        symlink_supported=layout.symlink_supported,
+    )
 
 
 def prepare_flask_idor_app(
     temporary_root: Path,
     *,
     application_id: str,
-    policy: ResourcePolicy,
-) -> Callable[[], RegisteredFixtureResult]:
+    policy_name: str,
+) -> ResourceApplication:
+    policy = {
+        "alpha": resource_policy_alpha,
+        "beta": resource_policy_beta,
+    }.get(policy_name)
+    if policy is None:
+        raise ValueError("unknown closed resource application policy")
     resources = initial_resources()
     app = Flask(
         f"belief_{application_id}",
@@ -111,50 +120,39 @@ def prepare_flask_idor_app(
 
     client = app.test_client()
 
-    def execute() -> RegisteredFixtureResult:
+    def requester(
+        method: str,
+        resource_id: str,
+        user_id: str,
+        tenant_id: str,
+        value: str,
+    ) -> ClientResponse:
         with client:
-            def requester(
-                method: str,
-                resource_id: str,
-                user_id: str,
-                tenant_id: str,
-                value: str,
-            ) -> ClientResponse:
-                headers = {
-                    "X-User-ID": user_id,
-                    "X-Tenant-ID": tenant_id,
-                }
-                if method == "GET":
-                    response = client.get(
-                        f"/resources/{resource_id}",
-                        headers=headers,
-                    )
-                else:
-                    response = client.patch(
-                        f"/resources/{resource_id}",
-                        headers=headers,
-                        json={"value": value},
-                    )
-                body = response.get_json(silent=True)
-                return ClientResponse(
-                    status_code=response.status_code,
-                    body=body if isinstance(body, dict) else {},
+            headers = {
+                "X-User-ID": user_id,
+                "X-Tenant-ID": tenant_id,
+            }
+            if method == "GET":
+                response = client.get(
+                    f"/resources/{resource_id}",
+                    headers=headers,
                 )
-
-            def snapshot() -> dict[str, dict[str, str]]:
-                return copy.deepcopy(resources)
-
-            observations, limitations = idor_observations(
-                requester,
-                snapshot,
+            else:
+                response = client.patch(
+                    f"/resources/{resource_id}",
+                    headers=headers,
+                    json={"value": value},
+                )
+            body = response.get_json(silent=True)
+            return ClientResponse(
+                status_code=response.status_code,
+                body=body if isinstance(body, dict) else {},
             )
-        return RegisteredFixtureResult(
-            observations=observations,
-            limitations=limitations,
-            capability_used="flask_test_client",
-        )
 
-    return execute
+    return ResourceApplication(
+        request=requester,
+        state=lambda: resource_state(resources),
+    )
 
 
 __all__ = [

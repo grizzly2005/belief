@@ -12,8 +12,10 @@ from .bootstrap import _minimal_environment_values, safe_platform_label
 from .contracts import (
     WORKER_RESPONSE_SCHEMA_VERSION,
     WorkerAttestation,
+    WorkerChildPolicyAttestation,
     WorkerDiagnostics,
     WorkerError,
+    WorkerParentLifecycleAttestation,
     WorkerProtocolError,
     WorkerRequest,
     WorkerResponse,
@@ -29,10 +31,12 @@ from .policies import (
 )
 from .registry import (
     OptionalWebDependencyUnavailable,
+    PreparedExecutionBundle,
+    execution_bundle_identity,
     fixture_registry_digest,
-    fixture_source_digest,
     get_fixture_spec,
     load_fixture_runner,
+    prepare_execution_bundle,
 )
 
 
@@ -62,6 +66,7 @@ def execute_worker_message(
     temporary_root: Path,
     cancellation_event: Any,
     state: WorkerPolicyState,
+    execution_bundle_transport: Any,
 ) -> tuple[WorkerResponse, WorkerRequest | None]:
     """Decode, resolve, import, and execute one exact registered fixture."""
 
@@ -99,7 +104,39 @@ def execute_worker_message(
         )
 
     try:
-        prepare_fixture = load_fixture_runner(spec)
+        bundle = PreparedExecutionBundle.from_transport(
+            execution_bundle_transport
+        )
+    except (TypeError, ValueError):
+        return (
+            _failure_response(
+                request,
+                status="inconclusive",
+                error_code="binding_mismatch",
+                state=state,
+                framework=spec.framework,
+            ),
+            request,
+        )
+    expected_identity = execution_bundle_identity(bundle)
+    if any(
+        getattr(request, field_name) != expected
+        for field_name, expected in expected_identity.items()
+    ):
+        return (
+            _failure_response(
+                request,
+                status="inconclusive",
+                error_code="binding_mismatch",
+                state=state,
+                framework=spec.framework,
+                bundle=bundle,
+            ),
+            request,
+        )
+
+    try:
+        prepare_fixture = load_fixture_runner(spec, bundle)
     except OptionalWebDependencyUnavailable:
         return (
             _failure_response(
@@ -108,6 +145,7 @@ def execute_worker_message(
                 error_code="dependency_unavailable",
                 state=state,
                 framework=spec.framework,
+                bundle=bundle,
                 limitations=(f"dependency_unavailable:{spec.framework}",),
             ),
             request,
@@ -120,6 +158,7 @@ def execute_worker_message(
                 error_code="internal_error",
                 state=state,
                 framework=spec.framework,
+                bundle=bundle,
             ),
             request,
         )
@@ -144,6 +183,7 @@ def execute_worker_message(
                 error_code="policy_violation",
                 state=state,
                 framework=spec.framework,
+                bundle=bundle,
             ),
             request,
         )
@@ -155,6 +195,7 @@ def execute_worker_message(
                 error_code="internal_error",
                 state=state,
                 framework=spec.framework,
+                bundle=bundle,
             ),
             request,
         )
@@ -167,6 +208,7 @@ def execute_worker_message(
                 error_code="cancelled",
                 state=state,
                 framework=spec.framework,
+                bundle=bundle,
                 cancellation_reason="parent cancellation requested",
             ),
             request,
@@ -187,6 +229,7 @@ def execute_worker_message(
         request,
         state=state,
         framework=spec.framework,
+        bundle=bundle,
         limitations=limitations,
     )
     return (
@@ -219,6 +262,11 @@ def bootstrap_failure_response(
             validation_plan_id="vp_0000000000000000",
             validation_plan_digest="0" * 64,
             source_revision="invalid-request",
+            fixture_registry_digest="0" * 64,
+            fixture_source_digest="0" * 64,
+            fixture_descriptor_digest="0" * 64,
+            fixture_execution_bundle_digest="0" * 64,
+            fixture_code_object_digest="0" * 64,
             correlation_id="invalid_request",
         )
     status = (
@@ -241,6 +289,7 @@ def _failure_response(
     error_code: str,
     state: WorkerPolicyState,
     framework: str = "",
+    bundle: PreparedExecutionBundle | None = None,
     limitations: tuple[str, ...] = (),
     cancellation_reason: str = "",
 ) -> WorkerResponse:
@@ -263,6 +312,7 @@ def _failure_response(
             request,
             state=state,
             framework=framework,
+            bundle=bundle,
             limitations=stable_limitations,
         ),
         diagnostics=WorkerDiagnostics(
@@ -277,16 +327,32 @@ def _attestation(
     *,
     state: WorkerPolicyState,
     framework: str,
+    bundle: PreparedExecutionBundle | None = None,
     limitations: tuple[str, ...] = (),
 ) -> WorkerAttestation:
     spec = get_fixture_spec(request.fixture_id)
     registry_digest = fixture_registry_digest() if spec is not None else "0" * 64
-    source_digest = fixture_source_digest(spec) if spec is not None else "0" * 64
+    source_digest = bundle.source_digest if bundle is not None else "0" * 64
     return WorkerAttestation(
         protocol_version=WORKER_RESPONSE_SCHEMA_VERSION,
         fixture_id=request.fixture_id,
         fixture_registry_digest=registry_digest,
         fixture_source_digest=source_digest,
+        fixture_descriptor_digest=(
+            bundle.descriptor_digest
+            if bundle is not None
+            else "0" * 64
+        ),
+        fixture_execution_bundle_digest=(
+            bundle.execution_bundle_digest
+            if bundle is not None
+            else "0" * 64
+        ),
+        fixture_code_object_digest=(
+            bundle.code_object_digest
+            if bundle is not None
+            else "0" * 64
+        ),
         validation_plan_id=request.validation_plan_id,
         validation_plan_digest=request.validation_plan_digest,
         source_revision=request.source_revision,
@@ -294,15 +360,22 @@ def _attestation(
         framework_version=_framework_version(framework),
         python_version=platform_module.python_version(),
         platform=safe_platform_label(),
-        environment_policy_installed=state.environment_policy_installed,
-        environment_secret_probe_passed=state.environment_secret_probe_passed,
-        filesystem_policy_installed=state.filesystem_policy_installed,
-        network_policy_installed=state.network_policy_installed,
-        process_policy_installed=state.process_policy_installed,
-        timeout_enforced=state.timeout_enforced,
-        cleanup_completed=None,
-        resource_limits=dict(state.resource_limits),
-        io_policy_violations=tuple(state.io_policy_violations),
+        child_policy_attestation=WorkerChildPolicyAttestation(
+            environment_policy_installed=state.environment_policy_installed,
+            environment_secret_probe_passed=(
+                state.environment_secret_probe_passed
+            ),
+            filesystem_policy_installed=state.filesystem_policy_installed,
+            network_policy_installed=state.network_policy_installed,
+            process_policy_installed=state.process_policy_installed,
+            resource_limits=dict(state.resource_limits),
+            io_policy_violations=tuple(state.io_policy_violations),
+            limitations=tuple(state.limitations),
+        ),
+        parent_lifecycle_attestation=WorkerParentLifecycleAttestation(
+            timeout_enforced=None,
+            cleanup_completed=None,
+        ),
         limitations=tuple(dict.fromkeys((*limitations, *state.limitations))),
     )
 
@@ -344,9 +417,13 @@ def execute_registered_request(
             error_code="unknown_fixture",
             state=state,
         )
+    bundle: PreparedExecutionBundle | None = None
     try:
         with preliminary_policy(state):
-            prepare_fixture = load_fixture_runner(spec)
+            bundle = PreparedExecutionBundle.from_transport(
+                prepare_execution_bundle(spec).transport()
+            )
+            prepare_fixture = load_fixture_runner(spec, bundle)
             with filesystem_policy(temporary_root, state):
                 prepared_fixture = prepare_fixture(
                     temporary_root,
@@ -360,6 +437,7 @@ def execute_registered_request(
             error_code="dependency_unavailable",
             state=state,
             framework=spec.framework,
+            bundle=bundle,
         )
     except WorkerPolicyViolation:
         return _failure_response(
@@ -368,6 +446,7 @@ def execute_registered_request(
             error_code="policy_violation",
             state=state,
             framework=spec.framework,
+            bundle=bundle,
         )
     except Exception:
         return _failure_response(
@@ -376,6 +455,7 @@ def execute_registered_request(
             error_code="internal_error",
             state=state,
             framework=spec.framework,
+            bundle=bundle,
         )
     return WorkerResponse(
         correlation_id=request.correlation_id,
@@ -390,6 +470,7 @@ def execute_registered_request(
             request,
             state=state,
             framework=spec.framework,
+            bundle=bundle,
             limitations=result.limitations,
         ),
     )

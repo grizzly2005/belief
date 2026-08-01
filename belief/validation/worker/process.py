@@ -40,8 +40,10 @@ from .bootstrap import (
 from .contracts import (
     MAX_WORKER_RESPONSE_BYTES,
     WorkerAttestation,
+    WorkerChildPolicyAttestation,
     WorkerDiagnostics,
     WorkerError,
+    WorkerParentLifecycleAttestation,
     WorkerProtocolError,
     WorkerRequest,
     WorkerResponse,
@@ -49,9 +51,11 @@ from .contracts import (
     encode_worker_request,
 )
 from .registry import (
+    PreparedExecutionBundle,
+    execution_bundle_identity,
     fixture_registry_digest,
-    fixture_source_digest,
     get_fixture_spec,
+    prepare_execution_bundle,
 )
 
 
@@ -69,6 +73,11 @@ _CONTEXT_CONFIG_FIELDS = {
     "correlation_id",
     "test_parameters",
     "timeout_ms",
+    "fixture_registry_digest",
+    "fixture_source_digest",
+    "fixture_descriptor_digest",
+    "fixture_execution_bundle_digest",
+    "fixture_code_object_digest",
 }
 _VALIDATION_TYPE = {
     "path_traversal_possible": "path_traversal",
@@ -88,7 +97,11 @@ _PARENT_ERROR_MESSAGES = {
 class WorkerRunHandle:
     """One cancellable worker lifecycle with parent-owned cleanup state."""
 
-    def __init__(self, request: WorkerRequest) -> None:
+    def __init__(
+        self,
+        request: WorkerRequest,
+        execution_bundle: PreparedExecutionBundle | None = None,
+    ) -> None:
         if not isinstance(request, WorkerRequest):
             raise WorkerProtocolError(
                 "invalid_request",
@@ -96,6 +109,17 @@ class WorkerRunHandle:
             )
         self.request = request
         self._message = encode_worker_request(request)
+        spec = get_fixture_spec(request.fixture_id)
+        self._execution_bundle = (
+            execution_bundle or prepare_execution_bundle(spec)
+            if spec is not None
+            else None
+        )
+        _validate_request_bundle_binding(
+            request,
+            spec=spec,
+            execution_bundle=self._execution_bundle,
+        )
         self._context = _spawn_context()
         (
             self._container_root,
@@ -119,6 +143,11 @@ class WorkerRunHandle:
                     self._response_send,
                     str(self._temporary_root),
                     self._cancellation_event,
+                    (
+                        self._execution_bundle.transport()
+                        if self._execution_bundle is not None
+                        else None
+                    ),
                 ),
                 name="belief-isolated-web-validation",
                 daemon=True,
@@ -297,7 +326,11 @@ class WorkerRunHandle:
             )
         try:
             response = decode_worker_response(message)
-            _validate_response_binding(self.request, response)
+            _validate_response_binding(
+                self.request,
+                response,
+                self._execution_bundle,
+            )
         except WorkerProtocolError as exc:
             code = (
                 exc.code
@@ -321,7 +354,12 @@ class WorkerRunHandle:
             response,
             attestation=replace(
                 response.attestation,
-                cleanup_completed=cleanup_completed,
+                parent_lifecycle_attestation=(
+                    WorkerParentLifecycleAttestation(
+                        timeout_enforced=True,
+                        cleanup_completed=cleanup_completed,
+                    )
+                ),
             ),
             diagnostics=replace(
                 response.diagnostics,
@@ -346,6 +384,7 @@ class WorkerRunHandle:
             cleanup_completed=cleanup_completed,
             child_exit_code=exit_code,
             cancellation_reason=self._cancellation_reason,
+            execution_bundle=self._execution_bundle,
         )
         with self._state_lock:
             self._done = True
@@ -368,21 +407,44 @@ class WorkerRunHandle:
         return cleanup_completed, exit_code
 
 
-def start_worker_request(request: WorkerRequest) -> WorkerRunHandle:
+def start_worker_request(
+    request: WorkerRequest,
+    *,
+    execution_bundle: PreparedExecutionBundle | None = None,
+) -> WorkerRunHandle:
     """Create a cancellable handle without starting it."""
 
-    return WorkerRunHandle(request)
+    return WorkerRunHandle(request, execution_bundle=execution_bundle)
 
 
 def run_worker_request(
     request: WorkerRequest,
     *,
     on_handle: Callable[[WorkerRunHandle], None] | None = None,
+    execution_bundle: PreparedExecutionBundle | None = None,
 ) -> WorkerResponse:
     """Execute one validated request in a hard-timeout spawn process."""
 
     try:
-        handle = start_worker_request(request)
+        handle = start_worker_request(
+            request,
+            execution_bundle=execution_bundle,
+        )
+    except WorkerProtocolError as exc:
+        error_code = (
+            "binding_mismatch"
+            if exc.code == "binding_mismatch"
+            else "internal_error"
+        )
+        return _parent_failure_response(
+            request,
+            status="inconclusive",
+            error_code=error_code,
+            duration_ms=0,
+            cleanup_completed=None,
+            child_exit_code=None,
+            execution_bundle=execution_bundle,
+        )
     except Exception:
         return _parent_failure_response(
             request,
@@ -391,6 +453,7 @@ def run_worker_request(
             duration_ms=0,
             cleanup_completed=None,
             child_exit_code=None,
+            execution_bundle=execution_bundle,
         )
     if on_handle is not None:
         try:
@@ -427,11 +490,14 @@ def build_isolated_web_context(
             "timeout_ms": timeout_ms,
         })[:16]
     )
+    bundle = _execution_bundle_for_fixture(fixture_id)
+    identities = _bundle_identity_fields(bundle)
     request = WorkerRequest(
         fixture_id=fixture_id,
         validation_plan_id=plan.plan_id,
         validation_plan_digest=validation_plan_digest(plan),
         source_revision=source_revision,
+        **identities,
         test_parameters=parameters,
         timeout_ms=timeout_ms,
         correlation_id=correlation,
@@ -445,6 +511,7 @@ def build_isolated_web_context(
             "correlation_id": request.correlation_id,
             "test_parameters": request.test_parameters,
             "timeout_ms": request.timeout_ms,
+            **identities,
         },
     )
 
@@ -531,16 +598,32 @@ class IsolatedWebValidationExecutor(LocalValidationExecutor):
                 limitation="fixture_case_type_mismatch",
             )
         options = _context_options(context.config)
+        bundle = _execution_bundle_for_fixture(context.fixture_id)
         request = WorkerRequest(
             fixture_id=context.fixture_id,
             validation_plan_id=plan.plan_id,
             validation_plan_digest=plan_digest,
             source_revision=context.source_revision,
+            fixture_registry_digest=options["fixture_registry_digest"],
+            fixture_source_digest=options["fixture_source_digest"],
+            fixture_descriptor_digest=options[
+                "fixture_descriptor_digest"
+            ],
+            fixture_execution_bundle_digest=options[
+                "fixture_execution_bundle_digest"
+            ],
+            fixture_code_object_digest=options[
+                "fixture_code_object_digest"
+            ],
             test_parameters=options["test_parameters"],
             timeout_ms=options["timeout_ms"],
             correlation_id=options["correlation_id"],
         )
-        response = run_worker_request(request, on_handle=self.on_handle)
+        response = run_worker_request(
+            request,
+            on_handle=self.on_handle,
+            execution_bundle=bundle,
+        )
         self.last_response = response
         observations = tuple(
             ValidationObservation(
@@ -622,6 +705,15 @@ def _context_options(config: Mapping[str, Any]) -> dict[str, Any]:
             validation_plan_id="vp_0000000000000000",
             validation_plan_digest="0" * 64,
             source_revision="validation-probe",
+            fixture_registry_digest=config["fixture_registry_digest"],
+            fixture_source_digest=config["fixture_source_digest"],
+            fixture_descriptor_digest=config["fixture_descriptor_digest"],
+            fixture_execution_bundle_digest=config[
+                "fixture_execution_bundle_digest"
+            ],
+            fixture_code_object_digest=config[
+                "fixture_code_object_digest"
+            ],
             test_parameters=config["test_parameters"],
             timeout_ms=config["timeout_ms"],
             correlation_id=config["correlation_id"],
@@ -634,12 +726,81 @@ def _context_options(config: Mapping[str, Any]) -> dict[str, Any]:
         "correlation_id": request.correlation_id,
         "test_parameters": request.test_parameters,
         "timeout_ms": request.timeout_ms,
+        "fixture_registry_digest": request.fixture_registry_digest,
+        "fixture_source_digest": request.fixture_source_digest,
+        "fixture_descriptor_digest": request.fixture_descriptor_digest,
+        "fixture_execution_bundle_digest": (
+            request.fixture_execution_bundle_digest
+        ),
+        "fixture_code_object_digest": request.fixture_code_object_digest,
     }
+
+
+def _execution_bundle_for_fixture(
+    fixture_id: str,
+) -> PreparedExecutionBundle | None:
+    spec = get_fixture_spec(fixture_id)
+    return prepare_execution_bundle(spec) if spec is not None else None
+
+
+def _bundle_identity_fields(
+    execution_bundle: PreparedExecutionBundle | None,
+) -> dict[str, str]:
+    if execution_bundle is None:
+        return {
+            "fixture_registry_digest": "0" * 64,
+            "fixture_source_digest": "0" * 64,
+            "fixture_descriptor_digest": "0" * 64,
+            "fixture_execution_bundle_digest": "0" * 64,
+            "fixture_code_object_digest": "0" * 64,
+        }
+    return execution_bundle_identity(execution_bundle)
+
+
+def _validate_request_bundle_binding(
+    request: WorkerRequest,
+    *,
+    spec: Any,
+    execution_bundle: PreparedExecutionBundle | None,
+) -> None:
+    expected = _bundle_identity_fields(execution_bundle)
+    actual = {
+        field_name: getattr(request, field_name)
+        for field_name in expected
+    }
+    if actual != expected:
+        raise WorkerProtocolError(
+            "binding_mismatch",
+            "worker request execution-bundle binding mismatch",
+        )
+    if spec is None:
+        if execution_bundle is not None:
+            raise WorkerProtocolError(
+                "binding_mismatch",
+                "unknown fixture received an execution bundle",
+            )
+        return
+    if execution_bundle is None or (
+        execution_bundle.fixture_id,
+        execution_bundle.framework,
+        execution_bundle.case_type,
+        execution_bundle.implementation_id,
+    ) != (
+        spec.fixture_id,
+        spec.framework,
+        spec.case_type,
+        spec.implementation_id,
+    ):
+        raise WorkerProtocolError(
+            "binding_mismatch",
+            "worker request fixture descriptor mismatch",
+        )
 
 
 def _validate_response_binding(
     request: WorkerRequest,
     response: WorkerResponse,
+    execution_bundle: PreparedExecutionBundle | None,
 ) -> None:
     expected = {
         "correlation_id": request.correlation_id,
@@ -660,6 +821,13 @@ def _validate_response_binding(
         "validation_plan_id": request.validation_plan_id,
         "validation_plan_digest": request.validation_plan_digest,
         "source_revision": request.source_revision,
+        "fixture_registry_digest": request.fixture_registry_digest,
+        "fixture_source_digest": request.fixture_source_digest,
+        "fixture_descriptor_digest": request.fixture_descriptor_digest,
+        "fixture_execution_bundle_digest": (
+            request.fixture_execution_bundle_digest
+        ),
+        "fixture_code_object_digest": request.fixture_code_object_digest,
     }
     if any(
         getattr(response.attestation, field_name) != value
@@ -672,9 +840,21 @@ def _validate_response_binding(
     spec = get_fixture_spec(request.fixture_id)
     if spec is None:
         return
+    if execution_bundle is None:
+        raise WorkerProtocolError(
+            "binding_mismatch",
+            "worker execution bundle is unavailable",
+        )
     if (
         response.attestation.fixture_registry_digest != fixture_registry_digest()
-        or response.attestation.fixture_source_digest != fixture_source_digest(spec)
+        or response.attestation.fixture_source_digest
+        != execution_bundle.source_digest
+        or response.attestation.fixture_descriptor_digest
+        != execution_bundle.descriptor_digest
+        or response.attestation.fixture_execution_bundle_digest
+        != execution_bundle.execution_bundle_digest
+        or response.attestation.fixture_code_object_digest
+        != execution_bundle.code_object_digest
         or response.attestation.framework != spec.framework
     ):
         raise WorkerProtocolError(
@@ -692,6 +872,7 @@ def _parent_failure_response(
     cleanup_completed: bool | None,
     child_exit_code: int | None,
     cancellation_reason: str = "",
+    execution_bundle: PreparedExecutionBundle | None = None,
 ) -> WorkerResponse:
     return WorkerResponse(
         correlation_id=request.correlation_id,
@@ -711,6 +892,7 @@ def _parent_failure_response(
         attestation=_parent_failure_attestation(
             request,
             cleanup_completed=cleanup_completed,
+            execution_bundle=execution_bundle,
         ),
         diagnostics=WorkerDiagnostics(
             summary=f"parent controller ended with {error_code}",
@@ -724,16 +906,20 @@ def _parent_failure_attestation(
     request: WorkerRequest,
     *,
     cleanup_completed: bool | None,
+    execution_bundle: PreparedExecutionBundle | None = None,
 ) -> WorkerAttestation:
     spec = get_fixture_spec(request.fixture_id)
     registry_digest = "0" * 64
-    source_digest = "0" * 64
+    source_digest = (
+        execution_bundle.source_digest
+        if execution_bundle is not None
+        else "0" * 64
+    )
     framework = ""
     framework_version = ""
     if spec is not None:
         try:
             registry_digest = fixture_registry_digest()
-            source_digest = fixture_source_digest(spec)
         except (OSError, UnicodeError, ValueError):
             pass
         framework = spec.framework
@@ -745,6 +931,21 @@ def _parent_failure_attestation(
         fixture_id=request.fixture_id,
         fixture_registry_digest=registry_digest,
         fixture_source_digest=source_digest,
+        fixture_descriptor_digest=(
+            execution_bundle.descriptor_digest
+            if execution_bundle is not None
+            else request.fixture_descriptor_digest
+        ),
+        fixture_execution_bundle_digest=(
+            execution_bundle.execution_bundle_digest
+            if execution_bundle is not None
+            else request.fixture_execution_bundle_digest
+        ),
+        fixture_code_object_digest=(
+            execution_bundle.code_object_digest
+            if execution_bundle is not None
+            else request.fixture_code_object_digest
+        ),
         validation_plan_id=request.validation_plan_id,
         validation_plan_digest=request.validation_plan_digest,
         source_revision=request.source_revision,
@@ -752,19 +953,24 @@ def _parent_failure_attestation(
         framework_version=framework_version,
         python_version=platform_module.python_version(),
         platform=safe_platform_label(),
-        environment_policy_installed=None,
-        environment_secret_probe_passed=None,
-        filesystem_policy_installed=None,
-        network_policy_installed=None,
-        process_policy_installed=None,
-        timeout_enforced=True,
-        cleanup_completed=cleanup_completed,
-        resource_limits={
-            "cpu": None,
-            "open_files": None,
-            "file_size": None,
-            "child_processes": None,
-        },
+        child_policy_attestation=WorkerChildPolicyAttestation(
+            environment_policy_installed=None,
+            environment_secret_probe_passed=None,
+            filesystem_policy_installed=None,
+            network_policy_installed=None,
+            process_policy_installed=None,
+            resource_limits={
+                "cpu": None,
+                "open_files": None,
+                "file_size": None,
+                "child_processes": None,
+            },
+            limitations=("child_attestation_unavailable",),
+        ),
+        parent_lifecycle_attestation=WorkerParentLifecycleAttestation(
+            timeout_enforced=True,
+            cleanup_completed=cleanup_completed,
+        ),
         limitations=("child_attestation_unavailable",),
     )
 

@@ -80,6 +80,7 @@ def worker_bootstrap(
     response_connection: Any,
     temporary_root: str,
     cancellation_event: Any,
+    execution_bundle_transport: Any,
 ) -> None:
     """Prepare the child boundary, execute one request, and send one response."""
 
@@ -130,6 +131,7 @@ def worker_bootstrap(
                     temporary_root=root,
                     cancellation_event=cancellation_event,
                     state=state,
+                    execution_bundle_transport=execution_bundle_transport,
                 )
     except BaseException:
         if state is not None:
@@ -177,6 +179,7 @@ def _send_single_response(
 ) -> None:
     from .contracts import (
         MAX_WORKER_TIMEOUT_MS,
+        WorkerChildPolicyAttestation,
         WorkerDiagnostics,
         WorkerError,
         WorkerProtocolError,
@@ -185,16 +188,19 @@ def _send_single_response(
 
     stdout = sanitize_diagnostic(stdout_capture.getvalue(), temporary_root=root)
     stderr = sanitize_diagnostic(stderr_capture.getvalue(), temporary_root=root)
-    attestation = replace(
-        response.attestation,
+    child_policy = WorkerChildPolicyAttestation(
         environment_policy_installed=state.environment_policy_installed,
         environment_secret_probe_passed=state.environment_secret_probe_passed,
         filesystem_policy_installed=state.filesystem_policy_installed,
         network_policy_installed=state.network_policy_installed,
         process_policy_installed=state.process_policy_installed,
-        timeout_enforced=state.timeout_enforced,
         resource_limits=dict(state.resource_limits),
         io_policy_violations=tuple(state.io_policy_violations),
+        limitations=tuple(state.limitations),
+    )
+    attestation = replace(
+        response.attestation,
+        child_policy_attestation=child_policy,
         limitations=tuple(
             dict.fromkeys((*response.attestation.limitations, *state.limitations))
         ),

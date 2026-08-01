@@ -23,6 +23,9 @@ from belief.validation.worker.process import (
 )
 from belief.validation.worker.registry import (
     OptionalWebDependencyUnavailable,
+    execution_bundle_identity,
+    get_fixture_spec,
+    prepare_execution_bundle,
 )
 from belief.validation.plans import build_validation_plan
 from belief.validation.web import optional_framework_available
@@ -36,11 +39,24 @@ def _request(
     *,
     timeout_ms: int = 5_000,
 ) -> WorkerRequest:
+    spec = get_fixture_spec(fixture_id)
+    identity = (
+        execution_bundle_identity(prepare_execution_bundle(spec))
+        if spec is not None
+        else {
+            "fixture_registry_digest": "0" * 64,
+            "fixture_source_digest": "0" * 64,
+            "fixture_descriptor_digest": "0" * 64,
+            "fixture_execution_bundle_digest": "0" * 64,
+            "fixture_code_object_digest": "0" * 64,
+        }
+    )
     return WorkerRequest(
         fixture_id=fixture_id,
         validation_plan_id="vp_0123456789abcdef",
         validation_plan_digest="a" * 64,
         source_revision="fixture-source-v1",
+        **identity,
         timeout_ms=timeout_ms,
         correlation_id="corr_safety",
     )
@@ -236,7 +252,7 @@ def test_missing_framework_is_an_explicit_unsupported_result(
     monkeypatch,
     tmp_path,
 ):
-    def unavailable(_spec):
+    def unavailable(_spec, _bundle):
         raise OptionalWebDependencyUnavailable("flask")
 
     monkeypatch.setattr(

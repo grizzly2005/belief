@@ -18,13 +18,20 @@ from ..evidence_policy import (
 from ..plan_models import canonical_digest, clean_text, unique_strings
 
 
-WORKER_REQUEST_SCHEMA_VERSION = "belief.validation_worker_request.v2"
+WORKER_REQUEST_SCHEMA_VERSION = "belief.validation_worker_request.v3"
 WORKER_RESPONSE_V2_SCHEMA_VERSION = "belief.validation_worker_response.v2"
-WORKER_RESPONSE_SCHEMA_VERSION = "belief.validation_worker_response.v3"
+WORKER_RESPONSE_SCHEMA_VERSION = "belief.validation_worker_response.v4"
 WORKER_ATTESTATION_V2_SCHEMA_VERSION = (
     "belief.validation_worker_attestation.v2"
 )
-WORKER_ATTESTATION_SCHEMA_VERSION = "belief.validation_worker_attestation.v3"
+WORKER_ATTESTATION_SCHEMA_VERSION = "belief.validation_worker_attestation.v4"
+WORKER_CHILD_POLICY_SCHEMA_VERSION = (
+    "belief.validation_worker_child_policy_attestation.v1"
+)
+WORKER_PARENT_LIFECYCLE_SCHEMA_VERSION = (
+    "belief.validation_worker_parent_lifecycle_attestation.v1"
+)
+WORKER_ENVIRONMENT_SCHEMA_VERSION = "belief.validation_worker_environment.v1"
 WORKER_DIAGNOSTICS_SCHEMA_VERSION = "belief.validation_worker_diagnostics.v1"
 
 MAX_WORKER_REQUEST_BYTES = 16 * 1024
@@ -76,6 +83,11 @@ _REQUEST_FIELDS = {
     "validation_plan_id",
     "validation_plan_digest",
     "source_revision",
+    "fixture_registry_digest",
+    "fixture_source_digest",
+    "fixture_descriptor_digest",
+    "fixture_execution_bundle_digest",
+    "fixture_code_object_digest",
     "test_parameters",
     "timeout_ms",
     "correlation_id",
@@ -113,6 +125,27 @@ _ATTESTATION_FIELDS = {
     "fixture_id",
     "fixture_registry_digest",
     "fixture_source_digest",
+    "fixture_descriptor_digest",
+    "fixture_execution_bundle_digest",
+    "fixture_code_object_digest",
+    "validation_plan_id",
+    "validation_plan_digest",
+    "source_revision",
+    "framework",
+    "framework_version",
+    "python_version",
+    "platform",
+    "environment_digest",
+    "child_policy_attestation",
+    "parent_lifecycle_attestation",
+    "limitations",
+}
+_ATTESTATION_V2_FIELDS = {
+    "schema_version",
+    "protocol_version",
+    "fixture_id",
+    "fixture_registry_digest",
+    "fixture_source_digest",
     "validation_plan_id",
     "validation_plan_digest",
     "source_revision",
@@ -130,6 +163,22 @@ _ATTESTATION_FIELDS = {
     "resource_limits",
     "io_policy_violations",
     "limitations",
+}
+_CHILD_POLICY_ATTESTATION_FIELDS = {
+    "schema_version",
+    "environment_policy_installed",
+    "environment_secret_probe_passed",
+    "filesystem_policy_installed",
+    "network_policy_installed",
+    "process_policy_installed",
+    "resource_limits",
+    "io_policy_violations",
+    "limitations",
+}
+_PARENT_LIFECYCLE_ATTESTATION_FIELDS = {
+    "schema_version",
+    "timeout_enforced",
+    "cleanup_completed",
 }
 _DIAGNOSTIC_FIELDS = {
     "schema_version",
@@ -191,6 +240,11 @@ class WorkerRequest:
     validation_plan_id: str
     validation_plan_digest: str
     source_revision: str
+    fixture_registry_digest: str
+    fixture_source_digest: str
+    fixture_descriptor_digest: str
+    fixture_execution_bundle_digest: str
+    fixture_code_object_digest: str
     test_parameters: dict[str, Any] = field(default_factory=dict)
     timeout_ms: int = 5_000
     correlation_id: str = "correlation"
@@ -214,13 +268,21 @@ class WorkerRequest:
             code="invalid_request",
             message="validation plan ID is invalid",
         )
-        digest = _require_pattern(
-            self.validation_plan_digest,
-            _SHA256_RE,
-            code="invalid_request",
-            message="validation plan digest is invalid",
-        )
-        object.__setattr__(self, "validation_plan_digest", digest)
+        for field_name in (
+            "validation_plan_digest",
+            "fixture_registry_digest",
+            "fixture_source_digest",
+            "fixture_descriptor_digest",
+            "fixture_execution_bundle_digest",
+            "fixture_code_object_digest",
+        ):
+            digest = _require_pattern(
+                getattr(self, field_name),
+                _SHA256_RE,
+                code="invalid_request",
+                message=f"{field_name} is invalid",
+            )
+            object.__setattr__(self, field_name, digest)
         _require_pattern(
             self.source_revision,
             _REVISION_RE,
@@ -255,6 +317,13 @@ class WorkerRequest:
             "validation_plan_id": self.validation_plan_id,
             "validation_plan_digest": self.validation_plan_digest,
             "source_revision": self.source_revision,
+            "fixture_registry_digest": self.fixture_registry_digest,
+            "fixture_source_digest": self.fixture_source_digest,
+            "fixture_descriptor_digest": self.fixture_descriptor_digest,
+            "fixture_execution_bundle_digest": (
+                self.fixture_execution_bundle_digest
+            ),
+            "fixture_code_object_digest": self.fixture_code_object_digest,
             "test_parameters": copy.deepcopy(self.test_parameters),
             "timeout_ms": self.timeout_ms,
             "correlation_id": self.correlation_id,
@@ -269,6 +338,11 @@ class WorkerRequest:
             "validation_plan_id",
             "validation_plan_digest",
             "source_revision",
+            "fixture_registry_digest",
+            "fixture_source_digest",
+            "fixture_descriptor_digest",
+            "fixture_execution_bundle_digest",
+            "fixture_code_object_digest",
             "correlation_id",
         ):
             if not isinstance(payload[field_name], str):
@@ -282,6 +356,13 @@ class WorkerRequest:
             validation_plan_id=payload["validation_plan_id"],
             validation_plan_digest=payload["validation_plan_digest"],
             source_revision=payload["source_revision"],
+            fixture_registry_digest=payload["fixture_registry_digest"],
+            fixture_source_digest=payload["fixture_source_digest"],
+            fixture_descriptor_digest=payload["fixture_descriptor_digest"],
+            fixture_execution_bundle_digest=payload[
+                "fixture_execution_bundle_digest"
+            ],
+            fixture_code_object_digest=payload["fixture_code_object_digest"],
             test_parameters=payload["test_parameters"],
             timeout_ms=payload["timeout_ms"],
             correlation_id=payload["correlation_id"],
@@ -534,12 +615,168 @@ class WorkerError:
 
 
 @dataclass(frozen=True)
+class WorkerChildPolicyAttestation:
+    """Child-observed capability policy state only."""
+
+    environment_policy_installed: bool | None
+    environment_secret_probe_passed: bool | None
+    filesystem_policy_installed: bool | None
+    network_policy_installed: bool | None
+    process_policy_installed: bool | None
+    resource_limits: dict[str, bool | None]
+    io_policy_violations: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+    schema_version: str = WORKER_CHILD_POLICY_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != WORKER_CHILD_POLICY_SCHEMA_VERSION:
+            raise WorkerProtocolError(
+                "malformed_response",
+                "unsupported child policy attestation schema",
+            )
+        for field_name in (
+            "environment_policy_installed",
+            "environment_secret_probe_passed",
+            "filesystem_policy_installed",
+            "network_policy_installed",
+            "process_policy_installed",
+        ):
+            _require_tristate(getattr(self, field_name), field_name)
+        resource_limits = dict(self.resource_limits)
+        if set(resource_limits) != _RESOURCE_LIMIT_FIELDS:
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker resource-limit attestation fields are invalid",
+            )
+        for name, value in resource_limits.items():
+            _require_tristate(value, f"resource limit {name}")
+        object.__setattr__(self, "resource_limits", resource_limits)
+        object.__setattr__(
+            self,
+            "io_policy_violations",
+            _bounded_strings(
+                self.io_policy_violations,
+                code="malformed_response",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "limitations",
+            _bounded_strings(self.limitations, code="malformed_response"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "environment_policy_installed": self.environment_policy_installed,
+            "environment_secret_probe_passed": (
+                self.environment_secret_probe_passed
+            ),
+            "filesystem_policy_installed": self.filesystem_policy_installed,
+            "network_policy_installed": self.network_policy_installed,
+            "process_policy_installed": self.process_policy_installed,
+            "resource_limits": dict(self.resource_limits),
+            "io_policy_violations": list(self.io_policy_violations),
+            "limitations": list(self.limitations),
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "WorkerChildPolicyAttestation":
+        _require_exact_fields(
+            payload,
+            _CHILD_POLICY_ATTESTATION_FIELDS,
+            "worker child policy attestation",
+            "malformed_response",
+        )
+        return cls(
+            schema_version=_strict_string(
+                payload["schema_version"],
+                "child policy attestation schema",
+            ),
+            environment_policy_installed=payload[
+                "environment_policy_installed"
+            ],
+            environment_secret_probe_passed=payload[
+                "environment_secret_probe_passed"
+            ],
+            filesystem_policy_installed=payload[
+                "filesystem_policy_installed"
+            ],
+            network_policy_installed=payload["network_policy_installed"],
+            process_policy_installed=payload["process_policy_installed"],
+            resource_limits=_strict_tristate_object(
+                payload["resource_limits"],
+                "resource limits",
+            ),
+            io_policy_violations=_strict_string_sequence(
+                payload["io_policy_violations"],
+                "I/O policy violations",
+            ),
+            limitations=_strict_string_sequence(
+                payload["limitations"],
+                "child policy limitations",
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class WorkerParentLifecycleAttestation:
+    """Parent-owned timeout and cleanup state only."""
+
+    timeout_enforced: bool | None
+    cleanup_completed: bool | None
+    schema_version: str = WORKER_PARENT_LIFECYCLE_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != WORKER_PARENT_LIFECYCLE_SCHEMA_VERSION:
+            raise WorkerProtocolError(
+                "malformed_response",
+                "unsupported parent lifecycle attestation schema",
+            )
+        _require_tristate(self.timeout_enforced, "timeout_enforced")
+        _require_tristate(self.cleanup_completed, "cleanup_completed")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "timeout_enforced": self.timeout_enforced,
+            "cleanup_completed": self.cleanup_completed,
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> "WorkerParentLifecycleAttestation":
+        _require_exact_fields(
+            payload,
+            _PARENT_LIFECYCLE_ATTESTATION_FIELDS,
+            "worker parent lifecycle attestation",
+            "malformed_response",
+        )
+        return cls(
+            schema_version=_strict_string(
+                payload["schema_version"],
+                "parent lifecycle attestation schema",
+            ),
+            timeout_enforced=payload["timeout_enforced"],
+            cleanup_completed=payload["cleanup_completed"],
+        )
+
+
+@dataclass(frozen=True)
 class WorkerAttestation:
-    """Versioned semantic statement about one isolated worker run."""
+    """Versioned identity, environment, child policy, and parent lifecycle."""
 
     fixture_id: str
     fixture_registry_digest: str
     fixture_source_digest: str
+    fixture_descriptor_digest: str
+    fixture_execution_bundle_digest: str
+    fixture_code_object_digest: str
     validation_plan_id: str
     validation_plan_digest: str
     source_revision: str
@@ -547,15 +784,9 @@ class WorkerAttestation:
     framework_version: str
     python_version: str
     platform: str
-    environment_policy_installed: bool | None
-    environment_secret_probe_passed: bool | None
-    filesystem_policy_installed: bool | None
-    network_policy_installed: bool | None
-    process_policy_installed: bool | None
-    timeout_enforced: bool | None
-    cleanup_completed: bool | None
-    resource_limits: dict[str, bool | None] = field(default_factory=dict)
-    io_policy_violations: tuple[str, ...] = ()
+    child_policy_attestation: WorkerChildPolicyAttestation
+    parent_lifecycle_attestation: WorkerParentLifecycleAttestation
+    environment_digest: str = ""
     limitations: tuple[str, ...] = ()
     protocol_version: str = WORKER_RESPONSE_SCHEMA_VERSION
     schema_version: str = WORKER_ATTESTATION_SCHEMA_VERSION
@@ -586,6 +817,9 @@ class WorkerAttestation:
         for field_name in (
             "fixture_registry_digest",
             "fixture_source_digest",
+            "fixture_descriptor_digest",
+            "fixture_execution_bundle_digest",
+            "fixture_code_object_digest",
             "validation_plan_digest",
         ):
             _require_pattern(
@@ -607,44 +841,89 @@ class WorkerAttestation:
             "platform",
         ):
             value = getattr(self, field_name)
-            if value and (
+            if (
                 not isinstance(value, str)
-                or not _SAFE_TOKEN_RE.fullmatch(value)
+                or (value and not _SAFE_TOKEN_RE.fullmatch(value))
                 or _contains_invalid_unicode(value)
             ):
                 raise WorkerProtocolError(
                     "malformed_response",
                     f"attested {field_name} is invalid",
                 )
-        for field_name in (
-            "environment_policy_installed",
-            "environment_secret_probe_passed",
-            "filesystem_policy_installed",
-            "network_policy_installed",
-            "process_policy_installed",
-            "timeout_enforced",
-            "cleanup_completed",
+        if not isinstance(
+            self.child_policy_attestation,
+            WorkerChildPolicyAttestation,
         ):
-            _require_tristate(getattr(self, field_name), field_name)
-        resource_limits = dict(self.resource_limits)
-        if set(resource_limits) != _RESOURCE_LIMIT_FIELDS:
             raise WorkerProtocolError(
                 "malformed_response",
-                "worker resource-limit attestation fields are invalid",
+                "worker child policy attestation is invalid",
             )
-        for name, value in resource_limits.items():
-            _require_tristate(value, f"resource limit {name}")
-        object.__setattr__(self, "resource_limits", resource_limits)
+        if not isinstance(
+            self.parent_lifecycle_attestation,
+            WorkerParentLifecycleAttestation,
+        ):
+            raise WorkerProtocolError(
+                "malformed_response",
+                "worker parent lifecycle attestation is invalid",
+            )
+        expected_environment_digest = canonical_digest({
+            "schema_version": WORKER_ENVIRONMENT_SCHEMA_VERSION,
+            "framework": self.framework,
+            "framework_version": self.framework_version,
+            "python_version": self.python_version,
+            "platform": self.platform,
+        })
+        _verify_optional_digest(
+            self.environment_digest,
+            expected_environment_digest,
+            "worker environment digest mismatch",
+        )
         object.__setattr__(
             self,
-            "io_policy_violations",
-            _bounded_strings(self.io_policy_violations, code="malformed_response"),
+            "environment_digest",
+            expected_environment_digest,
         )
         object.__setattr__(
             self,
             "limitations",
             _bounded_strings(self.limitations, code="malformed_response"),
         )
+
+    @property
+    def environment_policy_installed(self) -> bool | None:
+        return self.child_policy_attestation.environment_policy_installed
+
+    @property
+    def environment_secret_probe_passed(self) -> bool | None:
+        return self.child_policy_attestation.environment_secret_probe_passed
+
+    @property
+    def filesystem_policy_installed(self) -> bool | None:
+        return self.child_policy_attestation.filesystem_policy_installed
+
+    @property
+    def network_policy_installed(self) -> bool | None:
+        return self.child_policy_attestation.network_policy_installed
+
+    @property
+    def process_policy_installed(self) -> bool | None:
+        return self.child_policy_attestation.process_policy_installed
+
+    @property
+    def resource_limits(self) -> dict[str, bool | None]:
+        return dict(self.child_policy_attestation.resource_limits)
+
+    @property
+    def io_policy_violations(self) -> tuple[str, ...]:
+        return self.child_policy_attestation.io_policy_violations
+
+    @property
+    def timeout_enforced(self) -> bool | None:
+        return self.parent_lifecycle_attestation.timeout_enforced
+
+    @property
+    def cleanup_completed(self) -> bool | None:
+        return self.parent_lifecycle_attestation.cleanup_completed
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -653,6 +932,11 @@ class WorkerAttestation:
             "fixture_id": self.fixture_id,
             "fixture_registry_digest": self.fixture_registry_digest,
             "fixture_source_digest": self.fixture_source_digest,
+            "fixture_descriptor_digest": self.fixture_descriptor_digest,
+            "fixture_execution_bundle_digest": (
+                self.fixture_execution_bundle_digest
+            ),
+            "fixture_code_object_digest": self.fixture_code_object_digest,
             "validation_plan_id": self.validation_plan_id,
             "validation_plan_digest": self.validation_plan_digest,
             "source_revision": self.source_revision,
@@ -660,15 +944,13 @@ class WorkerAttestation:
             "framework_version": self.framework_version,
             "python_version": self.python_version,
             "platform": self.platform,
-            "environment_policy_installed": self.environment_policy_installed,
-            "environment_secret_probe_passed": self.environment_secret_probe_passed,
-            "filesystem_policy_installed": self.filesystem_policy_installed,
-            "network_policy_installed": self.network_policy_installed,
-            "process_policy_installed": self.process_policy_installed,
-            "timeout_enforced": self.timeout_enforced,
-            "cleanup_completed": self.cleanup_completed,
-            "resource_limits": dict(self.resource_limits),
-            "io_policy_violations": list(self.io_policy_violations),
+            "environment_digest": self.environment_digest,
+            "child_policy_attestation": (
+                self.child_policy_attestation.to_dict()
+            ),
+            "parent_lifecycle_attestation": (
+                self.parent_lifecycle_attestation.to_dict()
+            ),
             "limitations": list(self.limitations),
         }
 
@@ -681,12 +963,18 @@ class WorkerAttestation:
             "malformed_response",
         )
         return cls(
-            schema_version=_strict_string(payload["schema_version"], "attestation schema"),
+            schema_version=_strict_string(
+                payload["schema_version"],
+                "attestation schema",
+            ),
             protocol_version=_strict_string(
                 payload["protocol_version"],
                 "attestation protocol",
             ),
-            fixture_id=_strict_string(payload["fixture_id"], "attested fixture ID"),
+            fixture_id=_strict_string(
+                payload["fixture_id"],
+                "attested fixture ID",
+            ),
             fixture_registry_digest=_strict_string(
                 payload["fixture_registry_digest"],
                 "fixture registry digest",
@@ -694,6 +982,18 @@ class WorkerAttestation:
             fixture_source_digest=_strict_string(
                 payload["fixture_source_digest"],
                 "fixture source digest",
+            ),
+            fixture_descriptor_digest=_strict_string(
+                payload["fixture_descriptor_digest"],
+                "fixture descriptor digest",
+            ),
+            fixture_execution_bundle_digest=_strict_string(
+                payload["fixture_execution_bundle_digest"],
+                "fixture execution bundle digest",
+            ),
+            fixture_code_object_digest=_strict_string(
+                payload["fixture_code_object_digest"],
+                "fixture code-object digest",
             ),
             validation_plan_id=_strict_string(
                 payload["validation_plan_id"],
@@ -712,24 +1012,22 @@ class WorkerAttestation:
                 payload["framework_version"],
                 "framework version",
             ),
-            python_version=_strict_string(payload["python_version"], "Python version"),
-            platform=_strict_string(payload["platform"], "platform"),
-            environment_policy_installed=payload["environment_policy_installed"],
-            environment_secret_probe_passed=payload[
-                "environment_secret_probe_passed"
-            ],
-            filesystem_policy_installed=payload["filesystem_policy_installed"],
-            network_policy_installed=payload["network_policy_installed"],
-            process_policy_installed=payload["process_policy_installed"],
-            timeout_enforced=payload["timeout_enforced"],
-            cleanup_completed=payload["cleanup_completed"],
-            resource_limits=_strict_tristate_object(
-                payload["resource_limits"],
-                "resource limits",
+            python_version=_strict_string(
+                payload["python_version"],
+                "Python version",
             ),
-            io_policy_violations=_strict_string_sequence(
-                payload["io_policy_violations"],
-                "I/O policy violations",
+            platform=_strict_string(payload["platform"], "platform"),
+            environment_digest=_strict_string(
+                payload["environment_digest"],
+                "environment digest",
+            ),
+            child_policy_attestation=WorkerChildPolicyAttestation.from_dict(
+                payload["child_policy_attestation"]
+            ),
+            parent_lifecycle_attestation=(
+                WorkerParentLifecycleAttestation.from_dict(
+                    payload["parent_lifecycle_attestation"]
+                )
             ),
             limitations=_strict_string_sequence(
                 payload["limitations"],
@@ -742,11 +1040,11 @@ class WorkerAttestation:
         cls,
         payload: Mapping[str, Any],
     ) -> "WorkerAttestation":
-        """Verify the old attestation and return its v3 representation."""
+        """Verify a canonical v2 attestation and migrate it in memory."""
 
         _require_exact_fields(
             payload,
-            _ATTESTATION_FIELDS,
+            _ATTESTATION_V2_FIELDS,
             "worker attestation",
             "malformed_response",
         )
@@ -760,13 +1058,106 @@ class WorkerAttestation:
                 "malformed_response",
                 "worker v2 attestation version mismatch",
             )
-        migrated = dict(payload)
-        migrated["schema_version"] = WORKER_ATTESTATION_SCHEMA_VERSION
-        migrated["protocol_version"] = WORKER_RESPONSE_SCHEMA_VERSION
-        attestation = cls.from_dict(migrated)
-        legacy = attestation.to_dict()
-        legacy["schema_version"] = WORKER_ATTESTATION_V2_SCHEMA_VERSION
-        legacy["protocol_version"] = WORKER_RESPONSE_V2_SCHEMA_VERSION
+        child = WorkerChildPolicyAttestation(
+            environment_policy_installed=payload[
+                "environment_policy_installed"
+            ],
+            environment_secret_probe_passed=payload[
+                "environment_secret_probe_passed"
+            ],
+            filesystem_policy_installed=payload[
+                "filesystem_policy_installed"
+            ],
+            network_policy_installed=payload["network_policy_installed"],
+            process_policy_installed=payload["process_policy_installed"],
+            resource_limits=_strict_tristate_object(
+                payload["resource_limits"],
+                "resource limits",
+            ),
+            io_policy_violations=_strict_string_sequence(
+                payload["io_policy_violations"],
+                "I/O policy violations",
+            ),
+        )
+        parent = WorkerParentLifecycleAttestation(
+            timeout_enforced=payload["timeout_enforced"],
+            cleanup_completed=payload["cleanup_completed"],
+        )
+        attestation = cls(
+            fixture_id=_strict_string(
+                payload["fixture_id"],
+                "attested fixture ID",
+            ),
+            fixture_registry_digest=_strict_string(
+                payload["fixture_registry_digest"],
+                "fixture registry digest",
+            ),
+            fixture_source_digest=_strict_string(
+                payload["fixture_source_digest"],
+                "fixture source digest",
+            ),
+            fixture_descriptor_digest="0" * 64,
+            fixture_execution_bundle_digest="0" * 64,
+            fixture_code_object_digest="0" * 64,
+            validation_plan_id=_strict_string(
+                payload["validation_plan_id"],
+                "attested validation plan ID",
+            ),
+            validation_plan_digest=_strict_string(
+                payload["validation_plan_digest"],
+                "attested validation plan digest",
+            ),
+            source_revision=_strict_string(
+                payload["source_revision"],
+                "attested source revision",
+            ),
+            framework=_strict_string(payload["framework"], "framework"),
+            framework_version=_strict_string(
+                payload["framework_version"],
+                "framework version",
+            ),
+            python_version=_strict_string(
+                payload["python_version"],
+                "Python version",
+            ),
+            platform=_strict_string(payload["platform"], "platform"),
+            child_policy_attestation=child,
+            parent_lifecycle_attestation=parent,
+            limitations=_strict_string_sequence(
+                payload["limitations"],
+                "attestation limitations",
+            ),
+        )
+        legacy = {
+            "schema_version": WORKER_ATTESTATION_V2_SCHEMA_VERSION,
+            "protocol_version": WORKER_RESPONSE_V2_SCHEMA_VERSION,
+            "fixture_id": attestation.fixture_id,
+            "fixture_registry_digest": attestation.fixture_registry_digest,
+            "fixture_source_digest": attestation.fixture_source_digest,
+            "validation_plan_id": attestation.validation_plan_id,
+            "validation_plan_digest": attestation.validation_plan_digest,
+            "source_revision": attestation.source_revision,
+            "framework": attestation.framework,
+            "framework_version": attestation.framework_version,
+            "python_version": attestation.python_version,
+            "platform": attestation.platform,
+            "environment_policy_installed": (
+                attestation.environment_policy_installed
+            ),
+            "environment_secret_probe_passed": (
+                attestation.environment_secret_probe_passed
+            ),
+            "filesystem_policy_installed": (
+                attestation.filesystem_policy_installed
+            ),
+            "network_policy_installed": attestation.network_policy_installed,
+            "process_policy_installed": attestation.process_policy_installed,
+            "timeout_enforced": attestation.timeout_enforced,
+            "cleanup_completed": attestation.cleanup_completed,
+            "resource_limits": attestation.resource_limits,
+            "io_policy_violations": list(attestation.io_policy_violations),
+            "limitations": list(attestation.limitations),
+        }
         if legacy != dict(payload):
             raise WorkerProtocolError(
                 "malformed_response",
@@ -874,8 +1265,13 @@ def unavailable_attestation(
 
     return WorkerAttestation(
         fixture_id=request.fixture_id,
-        fixture_registry_digest="0" * 64,
-        fixture_source_digest="0" * 64,
+        fixture_registry_digest=request.fixture_registry_digest,
+        fixture_source_digest=request.fixture_source_digest,
+        fixture_descriptor_digest=request.fixture_descriptor_digest,
+        fixture_execution_bundle_digest=(
+            request.fixture_execution_bundle_digest
+        ),
+        fixture_code_object_digest=request.fixture_code_object_digest,
         validation_plan_id=request.validation_plan_id,
         validation_plan_digest=request.validation_plan_digest,
         source_revision=request.source_revision,
@@ -883,19 +1279,24 @@ def unavailable_attestation(
         framework_version="",
         python_version="",
         platform="",
-        environment_policy_installed=None,
-        environment_secret_probe_passed=None,
-        filesystem_policy_installed=None,
-        network_policy_installed=None,
-        process_policy_installed=None,
-        timeout_enforced=timeout_enforced,
-        cleanup_completed=cleanup_completed,
-        resource_limits={
-            "cpu": None,
-            "open_files": None,
-            "file_size": None,
-            "child_processes": None,
-        },
+        child_policy_attestation=WorkerChildPolicyAttestation(
+            environment_policy_installed=None,
+            environment_secret_probe_passed=None,
+            filesystem_policy_installed=None,
+            network_policy_installed=None,
+            process_policy_installed=None,
+            resource_limits={
+                "cpu": None,
+                "open_files": None,
+                "file_size": None,
+                "child_processes": None,
+            },
+            limitations=("child_attestation_unavailable",),
+        ),
+        parent_lifecycle_attestation=WorkerParentLifecycleAttestation(
+            timeout_enforced=timeout_enforced,
+            cleanup_completed=cleanup_completed,
+        ),
         limitations=("child_attestation_unavailable",),
     )
 
@@ -1711,17 +2112,22 @@ __all__ = [
     "MIN_WORKER_TIMEOUT_MS",
     "WORKER_ATTESTATION_SCHEMA_VERSION",
     "WORKER_ATTESTATION_V2_SCHEMA_VERSION",
+    "WORKER_CHILD_POLICY_SCHEMA_VERSION",
     "WORKER_DIAGNOSTICS_SCHEMA_VERSION",
     "WORKER_ERROR_CODES",
     "WORKER_REQUEST_SCHEMA_VERSION",
+    "WORKER_PARENT_LIFECYCLE_SCHEMA_VERSION",
+    "WORKER_ENVIRONMENT_SCHEMA_VERSION",
     "WORKER_RESPONSE_SCHEMA_VERSION",
     "WORKER_RESPONSE_V2_SCHEMA_VERSION",
     "WORKER_STATUSES",
     "WorkerAttestation",
+    "WorkerChildPolicyAttestation",
     "WorkerCapabilityAttestation",
     "WorkerDiagnostics",
     "WorkerError",
     "WorkerObservation",
+    "WorkerParentLifecycleAttestation",
     "WorkerProtocolError",
     "WorkerRequest",
     "WorkerResponse",

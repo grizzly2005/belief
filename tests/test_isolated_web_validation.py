@@ -260,11 +260,20 @@ def test_semantic_result_is_deterministic_across_spawned_runs():
 def test_raw_worker_response_attests_guards_without_claiming_os_sandbox():
     if not optional_framework_available("flask"):
         pytest.skip("optional dependency unavailable: flask")
+    from belief.validation.worker.registry import (
+        execution_bundle_identity,
+        prepare_execution_bundle,
+    )
+
+    identity = execution_bundle_identity(
+        prepare_execution_bundle("fx_18a4e9_v1")
+    )
     response = run_worker_request(WorkerRequest(
         fixture_id="fx_18a4e9_v1",
         validation_plan_id="vp_0123456789abcdef",
         validation_plan_digest="a" * 64,
         source_revision="fixture-source-v1",
+        **identity,
         correlation_id="corr_attestation",
     ))
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import inspect
 import json
 from pathlib import Path
 
@@ -18,9 +17,11 @@ from belief.validation.worker.contracts import (
     WORKER_RESPONSE_SCHEMA_VERSION,
     WORKER_RESPONSE_V2_SCHEMA_VERSION,
     WorkerAttestation,
+    WorkerChildPolicyAttestation,
     WorkerDiagnostics,
     WorkerObservation,
     WorkerProtocolError,
+    WorkerParentLifecycleAttestation,
     WorkerRequest,
     WorkerResponse,
     decode_worker_request,
@@ -30,11 +31,13 @@ from belief.validation.worker.contracts import (
 )
 from belief.validation.plan_models import canonical_digest
 from belief.validation.worker.registry import (
+    execution_bundle_identity,
     fixture_registry_digest,
     fixture_source_digest,
     fixture_source_documents,
     get_fixture_spec,
     load_fixture_runner,
+    prepare_execution_bundle,
     registered_fixture_ids,
     registered_fixture_metadata,
 )
@@ -54,6 +57,18 @@ def _request(**overrides):
         "correlation_id": "corr_contract",
     }
     values.update(overrides)
+    spec = get_fixture_spec(values["fixture_id"])
+    values.update(
+        execution_bundle_identity(prepare_execution_bundle(spec))
+        if spec is not None
+        else {
+            "fixture_registry_digest": "0" * 64,
+            "fixture_source_digest": "0" * 64,
+            "fixture_descriptor_digest": "0" * 64,
+            "fixture_execution_bundle_digest": "0" * 64,
+            "fixture_code_object_digest": "0" * 64,
+        }
+    )
     return WorkerRequest(**values)
 
 
@@ -86,7 +101,6 @@ def _response(request: WorkerRequest) -> WorkerResponse:
             evidence=("response_status:403",),
         ),
     )
-    spec = get_fixture_spec(request.fixture_id)
     return WorkerResponse(
         correlation_id=request.correlation_id,
         fixture_id=request.fixture_id,
@@ -99,7 +113,12 @@ def _response(request: WorkerRequest) -> WorkerResponse:
         attestation=WorkerAttestation(
             fixture_id=request.fixture_id,
             fixture_registry_digest=fixture_registry_digest(),
-            fixture_source_digest=fixture_source_digest(spec),
+            fixture_source_digest=request.fixture_source_digest,
+            fixture_descriptor_digest=request.fixture_descriptor_digest,
+            fixture_execution_bundle_digest=(
+                request.fixture_execution_bundle_digest
+            ),
+            fixture_code_object_digest=request.fixture_code_object_digest,
             validation_plan_id=request.validation_plan_id,
             validation_plan_digest=request.validation_plan_digest,
             source_revision=request.source_revision,
@@ -107,19 +126,25 @@ def _response(request: WorkerRequest) -> WorkerResponse:
             framework_version="3.1.3",
             python_version="3.12.0",
             platform="test-platform",
-            environment_policy_installed=True,
-            environment_secret_probe_passed=True,
-            filesystem_policy_installed=True,
-            network_policy_installed=True,
-            process_policy_installed=True,
-            timeout_enforced=True,
-            cleanup_completed=True,
-            resource_limits={
-                "cpu": None,
-                "open_files": None,
-                "file_size": None,
-                "child_processes": None,
-            },
+            child_policy_attestation=WorkerChildPolicyAttestation(
+                environment_policy_installed=True,
+                environment_secret_probe_passed=True,
+                filesystem_policy_installed=True,
+                network_policy_installed=True,
+                process_policy_installed=True,
+                resource_limits={
+                    "cpu": None,
+                    "open_files": None,
+                    "file_size": None,
+                    "child_processes": None,
+                },
+            ),
+            parent_lifecycle_attestation=(
+                WorkerParentLifecycleAttestation(
+                    timeout_enforced=True,
+                    cleanup_completed=True,
+                )
+            ),
         ),
         diagnostics=WorkerDiagnostics(summary="bounded diagnostic"),
     )
@@ -256,22 +281,26 @@ def test_opaque_fixture_sources_are_distinct_exact_and_label_free():
         spec = get_fixture_spec(fixture_id)
         documents = fixture_source_documents(spec)
         runner = load_fixture_runner(spec)
-        implementation_name = f"web/fixtures/{spec.implementation_id}.py"
-        runner_path = inspect.getsourcefile(runner)
+        implementation_name = (
+            f"web/fixtures/apps/{spec.implementation_id}.py"
+        )
 
-        assert runner_path is not None
-        assert Path(runner_path).name == f"{spec.implementation_id}.py"
+        assert runner.__module__ == "belief.validation.worker.registry"
         assert implementation_name in documents
-        assert "worker/contracts.py" in documents
+        assert "web/fixtures/apps/contracts.py" in documents
+        assert "web/fixtures/apps/support.py" in documents
         assert f"web/{spec.framework}_adapter.py" in documents
-        scanned_source = "\n".join(documents.values()).casefold()
+        assert all("ground_truth" not in name for name in documents)
+        assert all("oracles" not in name for name in documents)
+        scanned_source = b"\n".join(documents.values()).decode(
+            "utf-8",
+            errors="strict",
+        ).casefold()
         assert "vulnerable" not in scanned_source
         assert "protected" not in scanned_source
         assert documents[implementation_name] == (
-            Path(runner_path)
-            .read_text(encoding="utf-8")
-            .replace("\r\n", "\n")
-        )
+            Path("belief/validation") / implementation_name
+        ).read_bytes()
         digests[fixture_id] = fixture_source_digest(spec)
 
     assert len(set(digests.values())) == len(digests)
@@ -396,13 +425,51 @@ def test_v2_response_is_verified_then_migrated_and_never_rewritten_as_v2():
         legacy.pop("oracle_role")
         legacy.pop("required_for_conclusion")
         legacy_observations.append(legacy)
-    legacy_attestation = dict(current["attestation"])
-    legacy_attestation["schema_version"] = (
-        "belief.validation_worker_attestation.v2"
-    )
-    legacy_attestation["protocol_version"] = (
-        WORKER_RESPONSE_V2_SCHEMA_VERSION
-    )
+    current_attestation = current["attestation"]
+    child_policy = current_attestation["child_policy_attestation"]
+    parent_lifecycle = current_attestation[
+        "parent_lifecycle_attestation"
+    ]
+    legacy_attestation = {
+        "schema_version": "belief.validation_worker_attestation.v2",
+        "protocol_version": WORKER_RESPONSE_V2_SCHEMA_VERSION,
+        "fixture_id": current_attestation["fixture_id"],
+        "fixture_registry_digest": current_attestation[
+            "fixture_registry_digest"
+        ],
+        "fixture_source_digest": current_attestation[
+            "fixture_source_digest"
+        ],
+        "validation_plan_id": current_attestation["validation_plan_id"],
+        "validation_plan_digest": current_attestation[
+            "validation_plan_digest"
+        ],
+        "source_revision": current_attestation["source_revision"],
+        "framework": current_attestation["framework"],
+        "framework_version": current_attestation["framework_version"],
+        "python_version": current_attestation["python_version"],
+        "platform": current_attestation["platform"],
+        "environment_policy_installed": child_policy[
+            "environment_policy_installed"
+        ],
+        "environment_secret_probe_passed": child_policy[
+            "environment_secret_probe_passed"
+        ],
+        "filesystem_policy_installed": child_policy[
+            "filesystem_policy_installed"
+        ],
+        "network_policy_installed": child_policy[
+            "network_policy_installed"
+        ],
+        "process_policy_installed": child_policy[
+            "process_policy_installed"
+        ],
+        "timeout_enforced": parent_lifecycle["timeout_enforced"],
+        "cleanup_completed": parent_lifecycle["cleanup_completed"],
+        "resource_limits": child_policy["resource_limits"],
+        "io_policy_violations": child_policy["io_policy_violations"],
+        "limitations": current_attestation["limitations"],
+    }
     legacy = {
         key: value
         for key, value in current.items()

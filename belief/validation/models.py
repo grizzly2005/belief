@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass, field
 from typing import Any
+
+from belief.json_contracts import (
+    StrictJSONError,
+    require_finite_float,
+    strict_json_clone,
+    strict_json_dumps,
+)
 
 
 VALIDATION_RESULT_SCHEMA_VERSION = "belief.validation_result.v1"
@@ -76,6 +82,12 @@ class ValidationResult:
         schema = str(payload.get("schema_version") or VALIDATION_RESULT_SCHEMA_VERSION)
         if schema != VALIDATION_RESULT_SCHEMA_VERSION:
             raise ValueError(f"unsupported ValidationResult schema: {schema!r}")
+        tested = payload.get("tested", False)
+        human_validated = payload.get("human_validated", False)
+        if not isinstance(tested, bool) or not isinstance(human_validated, bool):
+            raise ValueError(
+                "ValidationResult tested and human_validated must be booleans"
+            )
         return cls(
             result_id=str(payload.get("result_id") or ""),
             subject_id=str(payload.get("subject_id") or ""),
@@ -83,8 +95,8 @@ class ValidationResult:
             source=str(payload.get("source") or ""),
             outcome=str(payload.get("outcome") or "unknown"),
             confidence=_clamp_float(payload.get("confidence"), default=0.5),
-            tested=bool(payload.get("tested", False)),
-            human_validated=bool(payload.get("human_validated", False)),
+            tested=tested,
+            human_validated=human_validated,
             method=str(payload.get("method") or ""),
             reason=str(payload.get("reason") or ""),
             evidence=tuple(str(item) for item in _as_list(payload.get("evidence")) if str(item)),
@@ -95,7 +107,11 @@ class ValidationResult:
 
 def _normalize_outcome(value: object) -> str:
     text = str(value or "").strip().lower()
-    return text if text in VALIDATION_OUTCOMES else "unknown"
+    if not text:
+        return "unknown"
+    if text not in VALIDATION_OUTCOMES:
+        raise ValueError(f"unsupported validation outcome: {text!r}")
+    return text
 
 
 def _stable_result_id(result: ValidationResult) -> str:
@@ -111,24 +127,28 @@ def _stable_result_id(result: ValidationResult) -> str:
         "evidence": list(result.evidence),
     }
     digest = hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        strict_json_dumps(
+            payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
     ).hexdigest()[:16]
     return f"vr_{digest}"
 
 
 def _clamp_float(value: object, default: float = 0.5) -> float:
+    if value is None or value == "":
+        return default
     try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        parsed = default
+        parsed = require_finite_float(value, field="confidence")
+    except StrictJSONError as exc:
+        raise ValueError(str(exc)) from exc
     return min(max(parsed, 0.0), 1.0)
 
 
 def _json_safe(value: Any) -> Any:
     try:
-        return json.loads(json.dumps(value, default=str))
-    except Exception:
-        return str(value)
+        return strict_json_clone(value)
+    except StrictJSONError as exc:
+        raise ValueError(f"validation metadata is not finite JSON: {exc}") from exc
 
 
 def _as_dict(value: Any) -> dict[str, Any]:

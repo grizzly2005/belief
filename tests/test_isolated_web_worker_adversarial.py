@@ -6,6 +6,7 @@ import ast
 import builtins
 import concurrent.futures
 import contextlib
+import hashlib
 import http.client
 import inspect
 import multiprocessing
@@ -19,12 +20,14 @@ import time
 import urllib.request
 from dataclasses import replace
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 import httpx
 import requests
 
 from belief.validation.worker import process as worker_process
+from belief.validation.worker import registry as registry_module
 from belief.validation.worker.bootstrap import (
     _BoundedTextCapture,
     _validated_worker_root,
@@ -51,8 +54,10 @@ from belief.validation.worker.process import (
     start_worker_request,
 )
 from belief.validation.worker.registry import (
+    execution_bundle_identity,
     get_fixture_spec,
     load_fixture_runner,
+    prepare_execution_bundle,
 )
 
 
@@ -68,6 +73,103 @@ def test_platform_attestation_label_never_requires_a_subprocess() -> None:
     assert label
     assert label.endswith(("32bit", "64bit"))
     assert state.io_policy_violations == []
+
+
+def test_captured_bundle_executes_without_live_web_source_reads(
+    monkeypatch,
+    tmp_path,
+):
+    spec = get_fixture_spec("fx_18a4e9_v1")
+    bundle = prepare_execution_bundle(spec)
+    runner = load_fixture_runner(spec, bundle)
+    web_root = (
+        Path(registry_module.__file__).resolve().parent.parent / "web"
+    ).resolve()
+    original_open = Path.open
+
+    def reject_live_web_read(path, *args, **kwargs):
+        try:
+            in_web_root = path.resolve(strict=False).is_relative_to(web_root)
+        except (OSError, RuntimeError):
+            in_web_root = False
+        if in_web_root:
+            raise AssertionError("captured bundle reread live web source")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", reject_live_web_read)
+
+    execute = runner(tmp_path / "bundle-run", {})
+    result = execute()
+
+    assert result.observations
+    assert result.capability_used == "flask_test_client"
+
+
+def test_stale_pyc_module_is_purged_and_restored_around_bundle_import(
+    monkeypatch,
+    tmp_path,
+):
+    spec = get_fixture_spec("fx_18a4e9_v1")
+    bundle = prepare_execution_bundle(spec)
+    runner = load_fixture_runner(spec, bundle)
+    module_name = "belief.validation.web.fixtures.runner"
+    stale = ModuleType(module_name)
+    stale.__file__ = str(tmp_path / "runner.pyc")
+    stale.__cached__ = stale.__file__
+
+    def stale_prepare(*_args, **_kwargs):
+        raise AssertionError("stale .pyc-backed module was used")
+
+    stale.prepare_fixture = stale_prepare
+    monkeypatch.setitem(sys.modules, module_name, stale)
+
+    execute = runner(tmp_path / "pyc-run", {})
+
+    assert sys.modules[module_name] is stale
+    assert execute().observations
+
+
+def test_new_capture_changes_identity_when_captured_source_changes(
+    monkeypatch,
+):
+    spec = get_fixture_spec("fx_18a4e9_v1")
+    first = prepare_execution_bundle(spec)
+    original_capture = registry_module._capture_module
+
+    def capture_changed(**kwargs):
+        document = original_capture(**kwargs)
+        if document.module_name.endswith(".apps.f02"):
+            source = (
+                document.source_bytes
+                + b"\n_SYNTHETIC_CAPTURE_MARKER = 1\n"
+            )
+            return registry_module._BundledModule(
+                module_name=document.module_name,
+                logical_name=document.logical_name,
+                source_bytes=source,
+                group=document.group,
+                is_package=document.is_package,
+                source_sha256=hashlib.sha256(source).hexdigest(),
+                code_object_sha256=(
+                    registry_module._compiled_source_digest(
+                        source,
+                        document.logical_name,
+                    )
+                ),
+            )
+        return document
+
+    monkeypatch.setattr(
+        registry_module,
+        "_capture_module",
+        capture_changed,
+    )
+    second = prepare_execution_bundle(spec)
+
+    assert second.descriptor_digest == first.descriptor_digest
+    assert second.source_digest != first.source_digest
+    assert second.code_object_digest != first.code_object_digest
+    assert second.execution_bundle_digest != first.execution_bundle_digest
 
 
 def test_path_resolve_allows_inside_without_exposing_parent_metadata(
@@ -97,11 +199,24 @@ def _request(
     *,
     timeout_ms: int = 5_000,
 ) -> WorkerRequest:
+    spec = get_fixture_spec(fixture_id)
+    identity = (
+        execution_bundle_identity(prepare_execution_bundle(spec))
+        if spec is not None
+        else {
+            "fixture_registry_digest": "0" * 64,
+            "fixture_source_digest": "0" * 64,
+            "fixture_descriptor_digest": "0" * 64,
+            "fixture_execution_bundle_digest": "0" * 64,
+            "fixture_code_object_digest": "0" * 64,
+        }
+    )
     return WorkerRequest(
         fixture_id=fixture_id,
         validation_plan_id="vp_0123456789abcdef",
         validation_plan_digest="a" * 64,
         source_revision="fixture-source-v1",
+        **identity,
         timeout_ms=timeout_ms,
         correlation_id="corr_adversarial",
     )
@@ -644,18 +759,36 @@ def _receive_request(request_connection):
         pass
 
 
-def _infinite_target(request_connection, _response, _root, _cancel):
+def _infinite_target(
+    request_connection,
+    _response,
+    _root,
+    _cancel,
+    _bundle,
+):
     _receive_request(request_connection)
     while True:
         pass
 
 
-def _sleep_target(request_connection, _response, _root, _cancel):
+def _sleep_target(
+    request_connection,
+    _response,
+    _root,
+    _cancel,
+    _bundle,
+):
     _receive_request(request_connection)
     time.sleep(30)
 
 
-def _exit_target(request_connection, _response, _root, _cancel):
+def _exit_target(
+    request_connection,
+    _response,
+    _root,
+    _cancel,
+    _bundle,
+):
     _receive_request(request_connection)
     os._exit(23)
 
@@ -665,6 +798,7 @@ def _rename_then_sleep_target(
     _response,
     root,
     _cancel,
+    _bundle,
 ):
     _receive_request(request_connection)
     child = Path(root)
@@ -677,6 +811,7 @@ def _rename_then_exit_target(
     _response,
     root,
     _cancel,
+    _bundle,
 ):
     _receive_request(request_connection)
     child = Path(root)
@@ -684,22 +819,46 @@ def _rename_then_exit_target(
     os._exit(23)
 
 
-def _exception_target(request_connection, _response, _root, _cancel):
+def _exception_target(
+    request_connection,
+    _response,
+    _root,
+    _cancel,
+    _bundle,
+):
     _receive_request(request_connection)
     raise RuntimeError("untrusted exception text must not cross")
 
 
-def _malformed_target(request_connection, response, _root, _cancel):
+def _malformed_target(
+    request_connection,
+    response,
+    _root,
+    _cancel,
+    _bundle,
+):
     _receive_request(request_connection)
     response.send_bytes(b"{}")
 
 
-def _oversized_target(request_connection, response, _root, _cancel):
+def _oversized_target(
+    request_connection,
+    response,
+    _root,
+    _cancel,
+    _bundle,
+):
     _receive_request(request_connection)
     response.send_bytes(b"x" * (MAX_WORKER_RESPONSE_BYTES + 1))
 
 
-def _multiple_target(request_connection, response, _root, _cancel):
+def _multiple_target(
+    request_connection,
+    response,
+    _root,
+    _cancel,
+    _bundle,
+):
     _receive_request(request_connection)
     response.send_bytes(b"{}")
     response.send_bytes(b"{}")
@@ -917,11 +1076,15 @@ def test_attestation_source_or_plan_binding_mismatch_is_rejected():
     )
 
     with pytest.raises(WorkerProtocolError) as error:
-        worker_process._validate_response_binding(_request(), tampered)
+        worker_process._validate_response_binding(
+            _request(),
+            tampered,
+            prepare_execution_bundle("fx_18a4e9_v1"),
+        )
     assert error.value.code == "binding_mismatch"
 
 
-def test_fixture_id_and_evaluator_label_swaps_do_not_change_observations(
+def test_modified_fixture_descriptor_is_rejected_by_closed_runner(
     tmp_path,
 ):
     original = get_fixture_spec("fx_01d7c2_v1")
@@ -930,27 +1093,17 @@ def test_fixture_id_and_evaluator_label_swaps_do_not_change_observations(
         fixture_id="fx_opaque_copy_v1",
     )
 
-    def execute(spec, root, evaluator_label):
-        del evaluator_label
-        return load_fixture_runner(spec)(root, {})()
-
-    original_result = execute(
-        original,
+    original_result = load_fixture_runner(original)(
         tmp_path / "original",
-        "bypassed",
-    )
-    renamed_result = execute(
-        renamed,
-        tmp_path / "renamed",
-        "bypassed",
-    )
-    relabelled_result = execute(
-        original,
-        tmp_path / "relabelled",
-        "enforced",
-    )
-    assert original_result.observations == renamed_result.observations
-    assert original_result.observations == relabelled_result.observations
+        {},
+    )()
+    repeated_result = load_fixture_runner(original)(
+        tmp_path / "repeated",
+        {},
+    )()
+    assert original_result.observations == repeated_result.observations
+    with pytest.raises(ValueError, match="unknown closed fixture identity"):
+        load_fixture_runner(renamed)(tmp_path / "renamed", {})
     failed = [
         item
         for item in original_result.observations

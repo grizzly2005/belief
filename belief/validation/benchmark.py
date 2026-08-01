@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
+from belief.json_contracts import (
+    StrictJSONError,
+    load_json_file,
+    require_finite_float,
+    strict_json_dumps,
+)
 
 from .evidence_policy import evaluate_evidence, infer_legacy_oracle_role
 from .execution_models import (
@@ -107,7 +113,7 @@ def write_local_validation_benchmark(
     try:
         with destination.open("x", encoding="utf-8") as handle:
             handle.write(
-                json.dumps(payload, indent=2, sort_keys=True) + "\n"
+                strict_json_dumps(payload, indent=2, sort_keys=True) + "\n"
             )
     except FileExistsError as exc:
         raise ValidationContractError(
@@ -122,8 +128,8 @@ def load_local_validation_benchmark_corpus(
     """Load the exact transparent eight-case corpus."""
 
     try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        payload = load_json_file(path)
+    except StrictJSONError as exc:
         raise ValidationContractError(
             f"invalid local validation benchmark corpus: {exc}"
         ) from exc
@@ -302,8 +308,9 @@ def _stage_metrics(
         "after_validation_result": _classification_metrics(
             cases,
             result_predictions,
-            evidence_gap_resolution_rate=float(
-                execution_metrics["evidence_gap_resolution_rate"]
+            evidence_gap_resolution_rate=require_finite_float(
+                execution_metrics["evidence_gap_resolution_rate"],
+                field="evidence_gap_resolution_rate",
             ),
             functional_regression_count=sum(
                 result["metadata"]["execution"]["baseline_passed"] is False

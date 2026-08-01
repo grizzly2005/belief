@@ -594,11 +594,11 @@ def load_validation_fixture_bundle(
 ) -> tuple[dict[str, Any], dict[str, ValidationExecutionContext]]:
     """Load and verify a canonical local-fixture bundle."""
 
-    import json
+    from belief.json_contracts import StrictJSONError, load_json_file
 
     try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        payload = load_json_file(path)
+    except StrictJSONError as exc:
         raise ValidationContractError(
             f"invalid validation fixture bundle: {exc}"
         ) from exc
@@ -664,7 +664,7 @@ def write_validation_fixture_bundle(
 ) -> dict[str, Any]:
     """Create a canonical fixture bundle without replacing an artifact."""
 
-    import json
+    from belief.json_contracts import strict_json_dumps
 
     payload = build_validation_fixture_bundle(contexts)
     destination = Path(output)
@@ -672,7 +672,7 @@ def write_validation_fixture_bundle(
     try:
         with destination.open("x", encoding="utf-8") as handle:
             handle.write(
-                json.dumps(payload, indent=2, sort_keys=True) + "\n"
+                strict_json_dumps(payload, indent=2, sort_keys=True) + "\n"
             )
     except FileExistsError as exc:
         raise ValidationContractError(

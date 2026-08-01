@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
+
+from belief.json_contracts import strict_json_clone, strict_json_dumps
 
 from .models import VALIDATION_OUTCOMES, VALIDATION_RESULT_SCHEMA_VERSION
 
@@ -314,12 +315,11 @@ def stable_plan_id(plan: ValidationPlan) -> str:
 
 
 def canonical_digest(payload: Any) -> str:
-    encoded = json.dumps(
+    encoded = strict_json_dumps(
         payload,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
-        default=str,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -330,13 +330,16 @@ def clean_text(value: Any) -> str:
 
 def normalize_priority(value: Any) -> str:
     normalized = clean_text(value).lower()
-    return normalized if normalized in {
+    allowed = {
         "critical",
         "high",
         "medium",
         "low",
         "info",
-    } else "medium"
+    }
+    if normalized not in allowed:
+        raise ValueError(f"unsupported validation priority: {normalized!r}")
+    return normalized
 
 
 def unique_strings(value: Any) -> tuple[str, ...]:
@@ -361,7 +364,10 @@ def unique_strings(value: Any) -> tuple[str, ...]:
 def json_object(value: Any) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         return {}
-    return json.loads(json.dumps(dict(value), sort_keys=True, default=str))
+    clone = strict_json_clone(dict(value))
+    if not isinstance(clone, dict):
+        raise ValueError("expected a JSON object")
+    return clone
 
 
 def object_list(value: Any) -> list[Mapping[str, Any]]:
