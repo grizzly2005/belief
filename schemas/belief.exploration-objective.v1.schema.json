@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/grizzly2005/belief/schemas/belief.exploration-objective.v1.schema.json",
+  "title": "BELIEF C exploration objective v1",
+  "description": "A deterministic, non-executing function-entry reachability objective for the research pilot.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "objective_id",
+    "subject_id",
+    "source_plan_id",
+    "language",
+    "function",
+    "entry_boundary",
+    "target",
+    "constraint",
+    "expected_outputs"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "belief.exploration_objective.v1"
+    },
+    "objective_id": {
+      "type": "string",
+      "pattern": "^eo_[0-9a-f]{16}$"
+    },
+    "subject_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,160}$"
+    },
+    "source_plan_id": {
+      "type": "string",
+      "pattern": "^vp_[0-9a-f]{16}$"
+    },
+    "language": {
+      "const": "c"
+    },
+    "function": {
+      "$ref": "#/$defs/cIdentifier"
+    },
+    "entry_boundary": {
+      "const": "function_entry"
+    },
+    "target": {
+      "$ref": "#/$defs/target"
+    },
+    "constraint": {
+      "$ref": "#/$defs/constraint"
+    },
+    "expected_outputs": {
+      "type": "array",
+      "prefixItems": [
+        {"const": "plausible_path_artifact"},
+        {"const": "no_plausible_path"},
+        {"const": "inconclusive"}
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    }
+  },
+  "$defs": {
+    "cIdentifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "relativeCPath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*[\\\\:]).+\\.c$",
+      "maxLength": 512
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "symbol"],
+      "properties": {
+        "file": {"$ref": "#/$defs/relativeCPath"},
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000
+        },
+        "symbol": {"$ref": "#/$defs/cIdentifier"}
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expression", "logic", "origin"],
+      "properties": {
+        "expression": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "logic": {
+          "const": "c_boolean_expression_v1"
+        },
+        "origin": {
+          "enum": [
+            "human_reviewed_candidate",
+            "llm_candidate_unverified",
+            "missing_security_evidence"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -9,6 +9,8 @@ SCHEMAS = [
     "belief-sft-v1.schema.json",
     "belief-reasoning-v1.schema.json",
     "belief-holdout-attestation-v1.schema.json",
+    "belief.exploration-objective.v1.schema.json",
+    "belief.path-artifact.v1.schema.json",
 ]
 
 
