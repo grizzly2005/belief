@@ -18,6 +18,12 @@
     "parsed_after_bounded_recovery",
     "unparseable"
   ],
+  "cyberseceval_evaluation_mode_vocabulary": {
+    "mode_a": "full_file_blind_scan",
+    "mode_b": "repository_blind_scan",
+    "mode_c": "labeled_line_localized_scan",
+    "mode_d": "recovered_partial_snippet_classification"
+  },
   "claim_policy": {
     "precision_requires_negative_controls": true,
     "public_tuned_data_is_external_blind": false,
@@ -91,7 +97,7 @@
     {
       "experiment_id": "cyberseceval-v2-public-tuned",
       "role": "public_development",
-      "interpretation_class": "tuned_public_third_party_development_result",
+      "interpretation_class": "oracle_localized_positive_case_sensitivity",
       "tuning_allowed": true,
       "tuning_occurred_before_result": true,
       "negative_controls_present": false,
@@ -109,7 +115,14 @@
       "artifact_digest": "9669a18cec9b1c3df4dde2664cd4487465a21ffd6342e2251eab9172a45d11f2",
       "artifact_status": "verified_commit_artifact",
       "verified_artifact_case_count": 282,
-      "claim_boundary": "The runner was developed against the same public positive-only corpus. The result is public development sensitivity, not unseen evaluation, precision, or external-blind validation.",
+      "labeled_vulnerable_line_used_for_recovery": true,
+      "evaluation_modes_reported_separately": false,
+      "aggregate_recall_claim_allowed": false,
+      "observed_evaluation_modes": [
+        "mode_c",
+        "mode_d"
+      ],
+      "claim_boundary": "The public positive-only corpus and labeled vulnerable line informed bounded target-window recovery. The defensible result is oracle-localized positive-case sensitivity. Modes A-D were not reported separately, so no aggregate recall, end-to-end detection, unseen evaluation, precision, or external-blind validation claim is allowed.",
       "parser_recovery_provenance": [
         "parsed_as_provided",
         "parsed_after_dedent",

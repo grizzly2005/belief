@@ -20,6 +20,11 @@ The manifest applies the following rules:
   evidence;
 - parser recovery provenance remains explicit and is never collapsed into the
   same evidence class as source parsed exactly as supplied.
+- labeled-line recovery is oracle-localized; it is not a blind file or
+  repository scan;
+- full-file blind, repository blind, labeled-line localized, and recovered
+  partial-snippet modes must be scored separately. Their recall must not be
+  aggregated.
 
 `precision_eligible` can be true only when negative controls are present. All
 recorded experiments set `secpass_comparable` and `external_blind` to false.
@@ -30,7 +35,7 @@ recorded experiments set `secpass_comparable` and `external_blind` to false.
 | --- | --- | --- |
 | Synthetic web development v2 | Internal public development fit | Precision is eligible only for the committed 32-case development artifact, which contains negative controls. |
 | CyberSecEval v1 | First-exposure positive-only sensitivity | Public positive-only cases; no precision, specificity, or unseen-evaluation claim. |
-| CyberSecEval v2 | Tuned public third-party development result | The same public corpus informed development; no precision or blind-evaluation claim. |
+| CyberSecEval v2 | Oracle-localized positive-case sensitivity | The public corpus and labeled vulnerable line informed bounded recovery. Modes A-D were not reported separately; no aggregate recall, end-to-end detection, precision, or blind-evaluation claim is allowed. |
 | SecCodeBench Python | Safety preflight only | A branch exists, but no SecCodeBench-specific committed artifact or score was found. |
 
 ## Synthetic journal discrepancy
@@ -54,6 +59,20 @@ Only these values are valid:
 
 The categories describe how a sample became available to static analysis. They
 do not imply equivalent source fidelity or equivalent proof strength.
+
+## CyberSecEval modes
+
+The classification vocabulary keeps four evaluation modes distinct:
+
+- Mode A: full-file blind scan;
+- Mode B: repository blind scan;
+- Mode C: labeled-line localized scan;
+- Mode D: recovered partial-snippet classification.
+
+The committed CyberSecEval v2 artifact used target-window recovery aligned to
+the labeled vulnerable line and did not publish separate mode-level metrics.
+It is therefore classified conservatively as oracle-localized positive-case
+sensitivity. Its combined count is not an aggregate-recall result.
 
 ## Operational constraints
 

@@ -75,10 +75,16 @@ def test_claim_eligibility_is_conservative() -> None:
     assert first_exposure["precision_eligible"] is False
 
     tuned = experiments["cyberseceval-v2-public-tuned"]
-    assert tuned["interpretation_class"] == "tuned_public_third_party_development_result"
+    assert tuned["interpretation_class"] == (
+        "oracle_localized_positive_case_sensitivity"
+    )
     assert tuned["tuning_occurred_before_result"] is True
     assert tuned["negative_controls_present"] is False
     assert tuned["precision_eligible"] is False
+    assert tuned["labeled_vulnerable_line_used_for_recovery"] is True
+    assert tuned["evaluation_modes_reported_separately"] is False
+    assert tuned["aggregate_recall_claim_allowed"] is False
+    assert set(tuned["observed_evaluation_modes"]) == {"mode_c", "mode_d"}
 
 
 def test_artifact_boundaries_record_missing_or_contradictory_evidence() -> None:

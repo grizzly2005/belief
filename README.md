@@ -649,12 +649,19 @@ The authoritative regression baseline is reported by the latest successful
 GitHub Actions CI run. Exact counts may vary by platform, Python version, and
 optional dependencies.
 
+The local mega-solidification review boundary, validation record, and explicit
+non-claims are frozen in
+[`docs/MEGA_SOLIDIFICATION_CHECKPOINT.md`](docs/MEGA_SOLIDIFICATION_CHECKPOINT.md).
+
 `ruff check belief tests` covers first-party code and test fixtures. Bundled
 compatibility assets, third-party rule data, and real-world snippets are kept
 outside that lint target so upstream syntax and provenance remain intact.
 The separate `python -m belief.source_classification --root .` gate compiles
-every declared Python 3 source while allowing only the exact, digest-pinned
-historical Z3 Python 2 inventory documented in
+every non-classified Python source under the declared `belief/` package root
+while allowing only the exact, digest-pinned historical Z3 Python 2 inventory
+as classified non-runtime reference assets. It does not claim compilation
+coverage for root files, `scripts/`, or `tests/`, and its declarative
+`execution = forbidden` policy is not technical execution prevention. See
 [`docs/PYTHON_SOURCE_CLASSIFICATION.md`](docs/PYTHON_SOURCE_CLASSIFICATION.md).
 
 ---
@@ -824,6 +831,7 @@ pyproject.toml
 - [`docs/AUTHORIZED_PROJECT_PILOT.md`](docs/AUTHORIZED_PROJECT_PILOT.md)
 - [`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md)
 - [`docs/PYTHON_SOURCE_CLASSIFICATION.md`](docs/PYTHON_SOURCE_CLASSIFICATION.md)
+- [`docs/MEGA_SOLIDIFICATION_CHECKPOINT.md`](docs/MEGA_SOLIDIFICATION_CHECKPOINT.md)
 - [`docs/ISOLATED_WEB_VALIDATION_WORKER.md`](docs/ISOLATED_WEB_VALIDATION_WORKER.md)
 - [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md)
 - [`benchmark_reportability/README.md`](benchmark_reportability/README.md)
