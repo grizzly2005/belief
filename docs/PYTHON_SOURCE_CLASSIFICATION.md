@@ -17,7 +17,9 @@ exclusion. It records:
 - the declarative `execution = forbidden` policy;
 - the expected number of Python files;
 - a canonical SHA-256 inventory over every relative path, byte length, and file
-  digest in that directory.
+  digest in that directory. CRLF line endings are canonicalized to LF before
+  byte length and digest calculation so an otherwise identical Git checkout
+  has the same identity on Windows and POSIX; bare CR bytes remain significant.
 
 Adding, deleting, renaming, or changing a classified file invalidates the
 inventory. A reviewer must then examine the change and explicitly update the

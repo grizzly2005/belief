@@ -218,6 +218,12 @@ def _resolved_inside(root: Path, candidate: Path, *, context: str) -> Path:
     return resolved_candidate
 
 
+def _canonical_source_bytes(data: bytes) -> bytes:
+    """Return the Git-platform-neutral representation used by the inventory."""
+
+    return data.replace(b"\r\n", b"\n")
+
+
 def build_python_inventory(repo_root: Path, path_prefix: str) -> tuple[int, str]:
     prefix = _resolved_inside(
         repo_root,
@@ -232,7 +238,7 @@ def build_python_inventory(repo_root: Path, path_prefix: str) -> tuple[int, str]
         if path.is_symlink():
             raise SourceClassificationError("classified Python source cannot be a symlink")
         resolved = _resolved_inside(prefix, path, context="classified Python source")
-        data = resolved.read_bytes()
+        data = _canonical_source_bytes(resolved.read_bytes())
         records.append(
             {
                 "path": resolved.relative_to(repo_root.resolve(strict=True)).as_posix(),

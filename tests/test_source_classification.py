@@ -92,6 +92,20 @@ def test_classified_inventory_change_fails_closed(tmp_path):
         check_python3_sources(tmp_path, manifest_path=manifest)
 
 
+def test_classified_inventory_is_stable_across_lf_and_crlf(tmp_path):
+    legacy = tmp_path / "belief" / "tools_bundled" / "z3_playground"
+    legacy.mkdir(parents=True)
+    source = legacy / "example.py"
+    source.write_bytes(b"print 'reference'\nprint 'second line'\n")
+    prefix = "belief/tools_bundled/z3_playground"
+
+    lf_inventory = build_python_inventory(tmp_path, prefix)
+    source.write_bytes(b"print 'reference'\r\nprint 'second line'\r\n")
+    crlf_inventory = build_python_inventory(tmp_path, prefix)
+
+    assert crlf_inventory == lf_inventory
+
+
 def test_manifest_rejects_path_traversal(tmp_path):
     (tmp_path / "belief").mkdir()
     entry = {
