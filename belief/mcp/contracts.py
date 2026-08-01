@@ -69,7 +69,10 @@ SERVER_INSTRUCTIONS = (
     "cryptographic authorization proof. This server has "
     "no live target network, shell, target-workspace write, caller-controlled "
     "import, Docker, or SusVibes holdout capability. It does spawn one bounded "
-    "worker and writes only inside a parent-owned temporary fixture root."
+    "worker and writes only inside a parent-owned temporary fixture root. "
+    "Source-derived output is minimally published by default; redacted and "
+    "explicit full-local-only modes remain bounded, path-normalized, and "
+    "secret-redacted."
 )
 
 _READ_ONLY_ANNOTATIONS = {
@@ -83,6 +86,24 @@ _LOCAL_EXECUTION_ANNOTATIONS = {
     "destructiveHint": False,
     "idempotentHint": True,
     "openWorldHint": False,
+}
+_STATEFUL_FILESYSTEM_READ_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": True,
+}
+_STATEFUL_LOCAL_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": False,
+}
+_STATEFUL_FILESYSTEM_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": True,
 }
 _NO_BACKGROUND_EXECUTION = {"taskSupport": "forbidden"}
 
@@ -243,7 +264,7 @@ VALIDATION_PLAN_SCHEMA: dict[str, Any] = {
 REGISTERED_FIXTURE_BINDING_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "belief://schemas/registered-fixture-binding",
-    "title": "BELIEF registered fixture binding v2",
+    "title": "BELIEF registered fixture binding v3",
     **_object(
         {
             "binding_kind": {
@@ -257,6 +278,18 @@ REGISTERED_FIXTURE_BINDING_SCHEMA: dict[str, Any] = {
                 "pattern": "^[0-9a-f]{64}$",
             },
             "fixture_source_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_descriptor_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_execution_bundle_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_code_object_digest": {
                 "type": "string",
                 "pattern": "^[0-9a-f]{64}$",
             },
@@ -287,6 +320,9 @@ REGISTERED_FIXTURE_BINDING_SCHEMA: dict[str, Any] = {
             "fixture_id",
             "fixture_registry_digest",
             "fixture_source_digest",
+            "fixture_descriptor_digest",
+            "fixture_execution_bundle_digest",
+            "fixture_code_object_digest",
             "fixture_case_type",
             "validation_plan_id",
             "validation_plan_digest",
@@ -368,7 +404,7 @@ AUTHORIZED_PROJECT_BINDING_SCHEMA: dict[str, Any] = {
 VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "belief://schemas/validation-result",
-    "title": "BELIEF MCP fixture validation result v3",
+    "title": "BELIEF MCP fixture validation result v4",
     **_object(
         {
             "schema_version": {"const": MCP_VALIDATION_RESULT_SCHEMA_VERSION},
@@ -396,6 +432,18 @@ VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
                 "type": "string",
                 "pattern": "^[0-9a-f]{64}$",
             },
+            "fixture_descriptor_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_execution_bundle_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_code_object_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
             "source_target_digest": {
                 "type": "string",
                 "pattern": "^[0-9a-f]{64}$",
@@ -406,6 +454,10 @@ VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
                 "pattern": "^[0-9a-f]{64}$",
             },
             "attestation_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "environment_digest": {
                 "type": "string",
                 "pattern": "^[0-9a-f]{64}$",
             },
@@ -463,10 +515,14 @@ VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
             "validation_plan_digest",
             "fixture_registry_digest",
             "fixture_source_digest",
+            "fixture_descriptor_digest",
+            "fixture_execution_bundle_digest",
+            "fixture_code_object_digest",
             "source_target_digest",
             "source_revision",
             "evidence_digest",
             "attestation_digest",
+            "environment_digest",
             "semantic_digest",
             "execution_status",
             "worker_status",
@@ -707,11 +763,23 @@ def tool_definitions() -> list[dict[str, Any]]:
             "outputSchema": _GENERIC_OUTPUT,
         },
     ]
+    annotations_by_tool = {
+        "belief_status": _READ_ONLY_ANNOTATIONS,
+        "belief_scan": _STATEFUL_FILESYSTEM_READ_ANNOTATIONS,
+        "belief_get_case": _READ_ONLY_ANNOTATIONS,
+        "belief_explain_case": _READ_ONLY_ANNOTATIONS,
+        "belief_build_validation_plan": _STATEFUL_LOCAL_ANNOTATIONS,
+        "belief_prepare_validation_fixture": _STATEFUL_LOCAL_ANNOTATIONS,
+        "belief_prepare_authorized_project_pilot": (
+            _STATEFUL_FILESYSTEM_ANNOTATIONS
+        ),
+        "belief_validate_plan": _STATEFUL_LOCAL_ANNOTATIONS,
+        "belief_compare_runs": _READ_ONLY_ANNOTATIONS,
+        "belief_run_local_benchmark": _LOCAL_EXECUTION_ANNOTATIONS,
+    }
     for definition in definitions:
         definition["annotations"] = dict(
-            _LOCAL_EXECUTION_ANNOTATIONS
-            if definition["name"] == "belief_validate_plan"
-            else _READ_ONLY_ANNOTATIONS
+            annotations_by_tool[definition["name"]]
         )
         definition["execution"] = dict(_NO_BACKGROUND_EXECUTION)
     return definitions
@@ -827,7 +895,9 @@ def status_payload(
         "target_workspace_writes": False,
         "dynamic_execution_enabled": True,
         "dynamic_execution_scope": REGISTERED_FIXTURE_EXECUTION_SCOPE,
-        "active_cancellation_scope": "dynamic_validation_only",
+        "active_cancellation_scope": (
+            "all_request_state_commits_and_dynamic_worker_termination"
+        ),
         "local_worker_execution_enabled": True,
         "max_concurrent_validations": MCP_MAX_CONCURRENT_VALIDATIONS,
         "max_in_flight_requests": MCP_MAX_IN_FLIGHT_REQUESTS,

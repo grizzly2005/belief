@@ -92,10 +92,10 @@ def test_pilot_tool_schema_has_no_dispatch_surface(tmp_path):
     }
     assert definition["inputSchema"]["additionalProperties"] is False
     assert definition["annotations"] == {
-        "readOnlyHint": True,
+        "readOnlyHint": False,
         "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
     }
     rendered = repr(definition["inputSchema"]).casefold()
     for forbidden in (

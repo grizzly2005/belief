@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import socket
 import subprocess
@@ -14,6 +15,7 @@ import pytest
 from belief.mcp.contracts import MCP_PROTOCOL_VERSION
 from belief.mcp.server import (
     BeliefMCPServer,
+    MCPLifecycleState,
     _decode_request,
     serve_stdio,
 )
@@ -84,24 +86,47 @@ def test_mcp_tool_surface_is_closed_and_fixture_bound(tmp_path):
         "belief_run_local_benchmark",
     }
     assert "belief_execute_command" not in names
-    validate = next(
-        item for item in tools if item["name"] == "belief_validate_plan"
-    )
-    read_tools = [
-        item for item in tools if item["name"] != "belief_validate_plan"
-    ]
-    assert all(
-        item["annotations"]["readOnlyHint"] is True
-        for item in read_tools
-    )
-    assert validate["annotations"] == {
-        "readOnlyHint": False,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
+    annotations = {
+        item["name"]: item["annotations"]
+        for item in tools
     }
+    assert annotations["belief_status"]["readOnlyHint"] is True
+    assert annotations["belief_get_case"]["readOnlyHint"] is True
+    assert annotations["belief_explain_case"]["readOnlyHint"] is True
+    assert annotations["belief_compare_runs"]["readOnlyHint"] is True
+    assert annotations["belief_scan"]["readOnlyHint"] is False
+    assert annotations["belief_scan"]["openWorldHint"] is True
+    for name in {
+        "belief_build_validation_plan",
+        "belief_prepare_validation_fixture",
+        "belief_prepare_authorized_project_pilot",
+        "belief_validate_plan",
+        "belief_run_local_benchmark",
+    }:
+        assert annotations[name]["readOnlyHint"] is False
+    assert (
+        annotations["belief_prepare_authorized_project_pilot"][
+            "openWorldHint"
+        ]
+        is True
+    )
     assert all(item["annotations"]["destructiveHint"] is False for item in tools)
-    assert all(item["annotations"]["openWorldHint"] is False for item in tools)
+    for name in {
+        "belief_scan",
+        "belief_build_validation_plan",
+        "belief_prepare_validation_fixture",
+        "belief_prepare_authorized_project_pilot",
+        "belief_validate_plan",
+    }:
+        assert annotations[name]["idempotentHint"] is False
+    for name in {
+        "belief_status",
+        "belief_get_case",
+        "belief_explain_case",
+        "belief_compare_runs",
+        "belief_run_local_benchmark",
+    }:
+        assert annotations[name]["idempotentHint"] is True
     assert all(item["execution"]["taskSupport"] == "forbidden" for item in tools)
     assert all(item["inputSchema"]["additionalProperties"] is False for item in tools)
 
@@ -123,7 +148,11 @@ def test_status_capabilities_and_schema_resources_are_explicit(tmp_path):
     assert status["caller_controlled_imports"] is False
     assert status["temporary_fixture_writes"] is True
     assert status["target_workspace_writes"] is False
-    assert status["active_cancellation_scope"] == "dynamic_validation_only"
+    assert status["active_cancellation_scope"] == (
+        "all_request_state_commits_and_dynamic_worker_termination"
+    )
+    assert status["state_commit_cancellation_safe"] is True
+    assert status["publication"]["mode"] == "minimal"
     assert status["dynamic_execution_enabled"] is True
     assert status["dynamic_execution_scope"] == (
         "registered_transparent_fixture_only"
@@ -266,6 +295,29 @@ def test_scan_never_opens_susvibes_directory(
         BeliefMCPTools(workspace_root=holdout)
 
 
+def test_mcp_digest_denylist_blocks_renamed_synthetic_source(tmp_path):
+    source = b"def hidden(value):\n    return eval(value)\n"
+    target = tmp_path / "ordinary.py"
+    target.write_bytes(source)
+    digest = hashlib.sha256(source).hexdigest()
+    service = BeliefMCPTools(
+        workspace_root=tmp_path,
+        holdout_source_sha256_denylist=frozenset({digest}),
+    )
+
+    scan = _scan(service)
+
+    assert scan["summary"]["audit_case_count"] == 0
+    assert any(
+        item["code"] == "reserved_source_digest_abstained"
+        for item in scan["diagnostics"]
+    )
+    assert (
+        service.status()["holdout_source_digest_denylist_count"]
+        == 1
+    )
+
+
 def test_scan_and_plan_do_not_use_network_or_processes(
     monkeypatch,
     tmp_path,
@@ -377,6 +429,9 @@ def test_protocol_dispatches_initialize_tools_resources_and_tool_errors(
     service = BeliefMCPTools(workspace_root=tmp_path)
     server = BeliefMCPServer(service)
 
+    premature = server.handle(
+        {"jsonrpc": "2.0", "id": 0, "method": "tools/list"}
+    )
     initialized = server.handle(
         {
             "jsonrpc": "2.0",
@@ -385,8 +440,18 @@ def test_protocol_dispatches_initialize_tools_resources_and_tool_errors(
             "params": {"protocolVersion": MCP_PROTOCOL_VERSION},
         }
     )
-    listed = server.handle(
+    before_ready = server.handle(
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
+    )
+    assert server.handle(
+        {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {},
+        }
+    ) is None
+    listed = server.handle(
+        {"jsonrpc": "2.0", "id": 6, "method": "tools/list"}
     )
     status = server.handle(
         {
@@ -411,8 +476,11 @@ def test_protocol_dispatches_initialize_tools_resources_and_tool_errors(
         {"jsonrpc": "2.0", "id": 5, "method": "unknown/method"}
     )
 
+    assert premature["error"]["code"] == -32002
     assert initialized["result"]["protocolVersion"] == MCP_PROTOCOL_VERSION
     assert initialized["result"]["capabilities"]["tools"]["listChanged"] is False
+    assert before_ready["error"]["code"] == -32002
+    assert server.lifecycle_state is MCPLifecycleState.READY
     assert listed["result"]["tools"]
     assert status["result"]["isError"] is False
     assert (
@@ -422,6 +490,7 @@ def test_protocol_dispatches_initialize_tools_resources_and_tool_errors(
     assert json.loads(status["result"]["content"][0]["text"]) == (
         status["result"]["structuredContent"]
     )
+    assert status["result"]["_meta"]["belief/publication"]["mode"] == "minimal"
     assert bad_call["result"]["isError"] is True
     assert unknown["error"]["code"] == -32601
 
@@ -448,6 +517,34 @@ def test_protocol_ignores_notifications_and_returns_standard_errors(tmp_path):
 
     assert invalid["error"]["code"] == -32600
     assert bad_params["error"]["code"] == -32602
+
+
+def test_protocol_rejects_repeat_initialize_and_operations_after_close(
+    tmp_path,
+):
+    server = BeliefMCPServer(BeliefMCPTools(workspace_root=tmp_path))
+    first = server.handle({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {"protocolVersion": MCP_PROTOCOL_VERSION},
+    })
+    repeated = server.handle({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "initialize",
+        "params": {"protocolVersion": MCP_PROTOCOL_VERSION},
+    })
+
+    assert first["result"]
+    assert repeated["error"]["code"] == -32002
+    assert server.lifecycle_state is MCPLifecycleState.INITIALIZE_RESPONDED
+    server.close()
+    assert server.lifecycle_state is MCPLifecycleState.CLOSED
+    closed = server.handle(
+        {"jsonrpc": "2.0", "id": 3, "method": "ping"}
+    )
+    assert closed["error"]["code"] == -32002
 
 
 def test_real_stdio_server_emits_only_newline_delimited_json():
@@ -542,6 +639,17 @@ def test_request_id_and_response_bytes_are_bounded(monkeypatch, tmp_path):
         "method": "ping",
     })
     assert invalid_id["error"]["code"] == -32600
+    server.handle({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {"protocolVersion": MCP_PROTOCOL_VERSION},
+    })
+    server.handle({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {},
+    })
 
     monkeypatch.setattr(
         service,

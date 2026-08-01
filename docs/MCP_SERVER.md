@@ -327,6 +327,30 @@ repository's exact `benchmark_validation/cases.json` and accepts no path
 argument. Fixture preparation reads only hardcoded first-party source
 documents.
 
+An optional comma-separated
+`BELIEF_MCP_HOLDOUT_SHA256_DENYLIST` rejects exact lowercase SHA-256 source
+matches before decoding, parsing, or analysis, even after a file is renamed.
+Computing a content digest necessarily performs one bounded byte read. It
+cannot prevent the process from opening those bytes. A strong sealed-holdout
+boundary still requires external controls such as a separate OS account,
+denied filesystem permissions, encryption, or an isolated machine/worktree
+with independent access logging. The repository tests use synthetic content
+only and do not inspect the real reserved holdout.
+
+## Publication boundary
+
+`BELIEF_MCP_PUBLICATION_MODE` supports `minimal` (the default), `redacted`, and
+`full-local-only`. The full mode is rejected unless
+`BELIEF_MCP_ALLOW_FULL_LOCAL_OUTPUT=true` is also set. Every mode bounds
+collections and strings, removes or relativizes absolute paths, and redacts
+token-like values. Tool and resource results expose
+`_meta["belief/publication"]`, including whether the result may contain
+untrusted source-derived content.
+
+The BELIEF server itself has no outbound network publication. An MCP client may
+still forward returned data to another process or remote model; that
+client-mediated disclosure is outside the server's no-network guarantee.
+
 The one real-project pilot is a hardcoded first-party adapter, not a custom
 adapter surface. It checks the exact revision and complete source digest twice,
 uses no Git subprocess, and never grants dynamic execution.

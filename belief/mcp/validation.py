@@ -31,20 +31,19 @@ from belief.validation.plan_models import (
 from belief.validation.plans import build_validation_plan
 from belief.validation.worker.registry import (
     FixtureSpec,
-    fixture_registry_digest,
-    fixture_source_digest,
-    fixture_source_documents,
+    execution_bundle_identity,
     get_fixture_spec,
+    prepare_execution_bundle,
 )
 
 
 REGISTERED_FIXTURE_BINDING_SCHEMA_VERSION = (
-    "belief.registered_fixture_binding.v2"
+    "belief.registered_fixture_binding.v3"
 )
 MCP_FIXTURE_PREPARATION_SCHEMA_VERSION = (
-    "belief.mcp_fixture_preparation.v2"
+    "belief.mcp_fixture_preparation.v3"
 )
-MCP_VALIDATION_RESULT_SCHEMA_VERSION = "belief.mcp_validation_result.v3"
+MCP_VALIDATION_RESULT_SCHEMA_VERSION = "belief.mcp_validation_result.v4"
 VALIDATION_CONTRACT_SEED_SCHEMA_VERSION = (
     "belief.validation_contract_seed.v1"
 )
@@ -93,6 +92,9 @@ class ValidationContractSeed:
     fixture_id: str
     fixture_registry_digest: str
     fixture_source_digest: str
+    fixture_descriptor_digest: str
+    fixture_execution_bundle_digest: str
+    fixture_code_object_digest: str
     source_target_digest: str
     source_revision: str
     case_type: str
@@ -147,6 +149,9 @@ class ValidationContractSeed:
         for field_name in (
             "fixture_registry_digest",
             "fixture_source_digest",
+            "fixture_descriptor_digest",
+            "fixture_execution_bundle_digest",
+            "fixture_code_object_digest",
             "source_target_digest",
         ):
             value = str(getattr(self, field_name))
@@ -193,6 +198,11 @@ class ValidationContractSeed:
             "fixture_id": self.fixture_id,
             "fixture_registry_digest": self.fixture_registry_digest,
             "fixture_source_digest": self.fixture_source_digest,
+            "fixture_descriptor_digest": self.fixture_descriptor_digest,
+            "fixture_execution_bundle_digest": (
+                self.fixture_execution_bundle_digest
+            ),
+            "fixture_code_object_digest": self.fixture_code_object_digest,
             "source_target_digest": self.source_target_digest,
             "source_revision": self.source_revision,
             "case_type": self.case_type,
@@ -253,6 +263,9 @@ class PreparedFixtureValidation:
     fixture_case_type: str
     fixture_registry_digest: str
     fixture_source_digest: str
+    fixture_descriptor_digest: str
+    fixture_execution_bundle_digest: str
+    fixture_code_object_digest: str
     source_target_digest: str
     source_revision: str
     contract_seed: ValidationContractSeed
@@ -271,6 +284,9 @@ class RegisteredFixtureBinding:
     fixture_id: str
     fixture_registry_digest: str
     fixture_source_digest: str
+    fixture_descriptor_digest: str
+    fixture_execution_bundle_digest: str
+    fixture_code_object_digest: str
     fixture_case_type: str
     validation_plan_id: str
     validation_plan_digest: str
@@ -290,6 +306,11 @@ class RegisteredFixtureBinding:
             "fixture_id": self.fixture_id,
             "fixture_registry_digest": self.fixture_registry_digest,
             "fixture_source_digest": self.fixture_source_digest,
+            "fixture_descriptor_digest": self.fixture_descriptor_digest,
+            "fixture_execution_bundle_digest": (
+                self.fixture_execution_bundle_digest
+            ),
+            "fixture_code_object_digest": self.fixture_code_object_digest,
             "fixture_case_type": self.fixture_case_type,
             "validation_plan_id": self.validation_plan_id,
             "validation_plan_digest": self.validation_plan_digest,
@@ -313,11 +334,21 @@ def prepare_registered_fixture(
     if spec is None:
         raise FixtureBindingError("fixture is not registered")
 
-    registry_digest = fixture_registry_digest()
-    source_digest = fixture_source_digest(spec)
-    documents = fixture_source_documents(spec)
+    bundle = prepare_execution_bundle(spec)
+    identity = execution_bundle_identity(bundle)
+    registry_digest = identity["fixture_registry_digest"]
+    source_digest = identity["fixture_source_digest"]
+    descriptor_digest = identity["fixture_descriptor_digest"]
+    execution_bundle_digest = identity[
+        "fixture_execution_bundle_digest"
+    ]
+    code_object_digest = identity["fixture_code_object_digest"]
+    documents = bundle.application_source_documents()
     target_digest = registered_source_target_digest(documents)
-    analysis = _scan_registered_source(documents)
+    analysis = _scan_registered_source(
+        documents,
+        target_identity=f"registered-fixture:{spec.fixture_id}",
+    )
     static_scan = _static_scan_projection(
         analysis,
         source_target_digest=target_digest,
@@ -328,6 +359,9 @@ def prepare_registered_fixture(
         spec,
         registry_digest=registry_digest,
         source_digest=source_digest,
+        descriptor_digest=descriptor_digest,
+        execution_bundle_digest=execution_bundle_digest,
+        code_object_digest=code_object_digest,
         source_target_digest=target_digest,
         source_revision=source_revision,
         static_scan=static_scan,
@@ -345,6 +379,9 @@ def prepare_registered_fixture(
         "registered_fixture_id": spec.fixture_id,
         "fixture_registry_digest": registry_digest,
         "fixture_source_digest": source_digest,
+        "fixture_descriptor_digest": descriptor_digest,
+        "fixture_execution_bundle_digest": execution_bundle_digest,
+        "fixture_code_object_digest": code_object_digest,
         "source_target_digest": target_digest,
         "source_revision": source_revision,
         "static_scan": copy.deepcopy(static_scan),
@@ -355,6 +392,9 @@ def prepare_registered_fixture(
         fixture_case_type=spec.case_type,
         fixture_registry_digest=registry_digest,
         fixture_source_digest=source_digest,
+        fixture_descriptor_digest=descriptor_digest,
+        fixture_execution_bundle_digest=execution_bundle_digest,
+        fixture_code_object_digest=code_object_digest,
         source_target_digest=target_digest,
         source_revision=source_revision,
         contract_seed=contract_seed,
@@ -378,6 +418,11 @@ def build_registered_fixture_binding(
         fixture_id=prepared.fixture_id,
         fixture_registry_digest=prepared.fixture_registry_digest,
         fixture_source_digest=prepared.fixture_source_digest,
+        fixture_descriptor_digest=prepared.fixture_descriptor_digest,
+        fixture_execution_bundle_digest=(
+            prepared.fixture_execution_bundle_digest
+        ),
+        fixture_code_object_digest=prepared.fixture_code_object_digest,
         fixture_case_type=prepared.fixture_case_type,
         validation_plan_id=prepared.plan.plan_id,
         validation_plan_digest=canonical_digest(
@@ -406,6 +451,9 @@ def validate_registered_fixture_binding(
         fixture_id="",
         fixture_registry_digest="",
         fixture_source_digest="",
+        fixture_descriptor_digest="",
+        fixture_execution_bundle_digest="",
+        fixture_code_object_digest="",
         fixture_case_type="",
         validation_plan_id="",
         validation_plan_digest="",
@@ -421,10 +469,12 @@ def validate_registered_fixture_binding(
     spec = get_fixture_spec(fixture_id)
     if spec is None:
         raise FixtureBindingError("fixture is not registered")
-    documents = fixture_source_documents(spec)
-    current_source_digest = fixture_source_digest(spec)
+    bundle = prepare_execution_bundle(spec)
+    current_identity = execution_bundle_identity(bundle)
+    documents = bundle.application_source_documents()
+    current_source_digest = current_identity["fixture_source_digest"]
     current_target_digest = registered_source_target_digest(documents)
-    current_registry_digest = fixture_registry_digest()
+    current_registry_digest = current_identity["fixture_registry_digest"]
     expected = RegisteredFixtureBinding(
         run_id=run_id,
         validation_contract_seed_id=str(
@@ -433,6 +483,15 @@ def validate_registered_fixture_binding(
         fixture_id=spec.fixture_id,
         fixture_registry_digest=current_registry_digest,
         fixture_source_digest=current_source_digest,
+        fixture_descriptor_digest=current_identity[
+            "fixture_descriptor_digest"
+        ],
+        fixture_execution_bundle_digest=current_identity[
+            "fixture_execution_bundle_digest"
+        ],
+        fixture_code_object_digest=current_identity[
+            "fixture_code_object_digest"
+        ],
         fixture_case_type=spec.case_type,
         validation_plan_id=plan.plan_id,
         validation_plan_digest=canonical_digest(plan.to_dict()),
@@ -456,17 +515,22 @@ def validate_registered_fixture_binding(
 
 
 def registered_source_target_digest(
-    documents: Mapping[str, str],
+    documents: Mapping[str, bytes],
 ) -> str:
     """Digest exact logical source bytes without retaining source in MCP state."""
 
     rows = []
     for logical_name in sorted(documents):
         source = documents[logical_name]
+        if not isinstance(source, bytes):
+            raise FixtureBindingError(
+                "registered fixture source must be exact bytes"
+            )
         rows.append(
             {
                 "logical_name": logical_name,
-                "sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                "size": len(source),
+                "sha256": hashlib.sha256(source).hexdigest(),
             }
         )
     return canonical_digest(
@@ -525,6 +589,11 @@ def project_validation_result(
         "fixture_id": binding.fixture_id,
         "fixture_registry_digest": binding.fixture_registry_digest,
         "fixture_source_digest": binding.fixture_source_digest,
+        "fixture_descriptor_digest": binding.fixture_descriptor_digest,
+        "fixture_execution_bundle_digest": (
+            binding.fixture_execution_bundle_digest
+        ),
+        "fixture_code_object_digest": binding.fixture_code_object_digest,
         "validation_plan_id": binding.validation_plan_id,
         "validation_plan_digest": binding.validation_plan_digest,
         "source_revision": binding.source_revision,
@@ -535,6 +604,17 @@ def project_validation_result(
     ):
         raise FixtureBindingError(
             "worker attestation does not match the trusted fixture binding"
+        )
+    child_policy = attestation.get("child_policy_attestation")
+    parent_lifecycle = attestation.get(
+        "parent_lifecycle_attestation"
+    )
+    if not isinstance(child_policy, Mapping) or not isinstance(
+        parent_lifecycle,
+        Mapping,
+    ):
+        raise FixtureBindingError(
+            "worker policy and lifecycle attestations are unavailable"
         )
 
     raw_observations = execution.get("observations")
@@ -624,11 +704,19 @@ def project_validation_result(
         "validation_plan_digest": binding.validation_plan_digest,
         "fixture_registry_digest": binding.fixture_registry_digest,
         "fixture_source_digest": binding.fixture_source_digest,
+        "fixture_descriptor_digest": binding.fixture_descriptor_digest,
+        "fixture_execution_bundle_digest": (
+            binding.fixture_execution_bundle_digest
+        ),
+        "fixture_code_object_digest": binding.fixture_code_object_digest,
         "source_target_digest": binding.source_target_digest,
         "source_revision": binding.source_revision,
         "evidence_digest": str(worker.get("evidence_digest") or ""),
         "attestation_digest": str(
             worker.get("attestation_digest") or ""
+        ),
+        "environment_digest": str(
+            attestation.get("environment_digest") or ""
         ),
         "semantic_digest": str(worker.get("semantic_digest") or ""),
         "execution_status": (
@@ -649,20 +737,22 @@ def project_validation_result(
             "subprocess_allowed": False,
             "shell_allowed": False,
             "custom_import_allowed": False,
-            "environment_policy_installed": attestation.get(
+            "environment_policy_installed": child_policy.get(
                 "environment_policy_installed"
             ),
-            "filesystem_policy_installed": attestation.get(
+            "filesystem_policy_installed": child_policy.get(
                 "filesystem_policy_installed"
             ),
-            "network_policy_installed": attestation.get(
+            "network_policy_installed": child_policy.get(
                 "network_policy_installed"
             ),
-            "process_policy_installed": attestation.get(
+            "process_policy_installed": child_policy.get(
                 "process_policy_installed"
             ),
-            "timeout_enforced": attestation.get("timeout_enforced"),
-            "cleanup_completed": attestation.get("cleanup_completed"),
+            "timeout_enforced": parent_lifecycle.get("timeout_enforced"),
+            "cleanup_completed": parent_lifecycle.get(
+                "cleanup_completed"
+            ),
         },
         "evidence_scope": REGISTERED_FIXTURE_EXECUTION_SCOPE,
         "maturity": maturity,
@@ -736,13 +826,19 @@ def _validation_maturity(
 
 
 def _scan_registered_source(
-    documents: Mapping[str, str],
+    documents: Mapping[str, bytes],
+    *,
+    target_identity: str,
 ) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(
         prefix="belief-mcp-registered-fixture-"
     ) as raw_root:
         root = Path(raw_root)
         for logical_name, source in sorted(documents.items()):
+            if not isinstance(source, bytes):
+                raise FixtureBindingError(
+                    "registered fixture source must be exact bytes"
+                )
             relative = PurePosixPath(logical_name)
             if (
                 relative.is_absolute()
@@ -754,11 +850,7 @@ def _scan_registered_source(
                 )
             destination = root.joinpath(*relative.parts)
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(
-                source,
-                encoding="utf-8",
-                newline="\n",
-            )
+            destination.write_bytes(source)
         result = analyze_static_target(
             root,
             StaticAnalysisOptions(
@@ -769,6 +861,7 @@ def _scan_registered_source(
                 reportability=True,
                 dedup_audit_cases=True,
             ),
+            target_identity=target_identity,
         )
         return result.to_dict()
 
@@ -828,6 +921,9 @@ def _registered_fixture_contract_seed(
     *,
     registry_digest: str,
     source_digest: str,
+    descriptor_digest: str,
+    execution_bundle_digest: str,
+    code_object_digest: str,
     source_target_digest: str,
     source_revision: str,
     static_scan: Mapping[str, Any],
@@ -849,6 +945,9 @@ def _registered_fixture_contract_seed(
         "fixture_id": spec.fixture_id,
         "fixture_registry_digest": registry_digest,
         "fixture_source_digest": source_digest,
+        "fixture_descriptor_digest": descriptor_digest,
+        "fixture_execution_bundle_digest": execution_bundle_digest,
+        "fixture_code_object_digest": code_object_digest,
         "source_target_digest": source_target_digest,
         "source_revision": source_revision,
         "case_type": spec.case_type,
@@ -859,6 +958,9 @@ def _registered_fixture_contract_seed(
         fixture_id=spec.fixture_id,
         fixture_registry_digest=registry_digest,
         fixture_source_digest=source_digest,
+        fixture_descriptor_digest=descriptor_digest,
+        fixture_execution_bundle_digest=execution_bundle_digest,
+        fixture_code_object_digest=code_object_digest,
         source_target_digest=source_target_digest,
         source_revision=source_revision,
         case_type=spec.case_type,

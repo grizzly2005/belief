@@ -18,6 +18,7 @@ from belief.static_analysis_pipeline import (
     StaticAnalysisOptions,
     analyze_static_target,
 )
+from belief.source_snapshot import canonical_json_digest
 from belief.validation.benchmark import run_local_validation_benchmark
 from belief.validation.execution_models import ValidationContractError
 from belief.validation.plan_models import ValidationPlan, canonical_digest
@@ -46,7 +47,8 @@ from .contracts import (
     status_payload,
     tool_definitions,
 )
-from .execution import MCPRequestExecution
+from .execution import MCPRequestCancelled, MCPRequestExecution
+from .publication import MCPPublicationError, MCPPublicationPolicy
 from .validation import (
     FixtureBindingError,
     MCP_FIXTURE_PREPARATION_SCHEMA_VERSION,
@@ -79,6 +81,16 @@ _RUN_ID = re.compile(r"^run_[0-9a-f]{64}$")
 _SENSITIVE_DIRECTORY_NAMES = frozenset({"benchmark_susvibes"})
 _MAX_WORKSPACE_ARGUMENT_LENGTH = 4096
 _MAX_IDENTIFIER_LENGTH = 512
+_SOURCE_DERIVED_TOOLS = frozenset({
+    "belief_build_validation_plan",
+    "belief_compare_runs",
+    "belief_explain_case",
+    "belief_get_case",
+    "belief_prepare_authorized_project_pilot",
+    "belief_prepare_validation_fixture",
+    "belief_scan",
+    "belief_validate_plan",
+})
 
 
 class BeliefMCPError(ValueError):
@@ -103,6 +115,12 @@ class _StoredRun:
     project_bindings: dict[str, dict[str, Any]] = field(default_factory=dict)
     serialized_bytes: int = 0
     memory_bytes: int = 0
+    source_snapshot_id: str = ""
+    source_manifest_digest: str = ""
+    analysis_options_digest: str = ""
+    engine_revision: str = ""
+    analysis_id: str = ""
+    coverage: dict[str, Any] = field(default_factory=dict)
 
 
 class _RunStore:
@@ -173,7 +191,10 @@ class _RunStore:
 
     def put(self, analysis: Mapping[str, Any]) -> _StoredRun:
         snapshot = copy.deepcopy(dict(analysis))
-        run_id = f"run_{canonical_digest(snapshot)}"
+        identity = _validated_analysis_identity(snapshot)
+        run_id = "run_" + identity["analysis_id"].removeprefix(
+            "analysis_"
+        )
         with self._lock:
             existing = self._runs.get(run_id)
             if existing is not None:
@@ -246,6 +267,16 @@ class _RunStore:
                 authorized_project_adapter_id=str(
                     snapshot.get("authorized_project_adapter_id") or ""
                 ),
+                source_snapshot_id=identity["source_snapshot_id"],
+                source_manifest_digest=identity[
+                    "source_manifest_digest"
+                ],
+                analysis_options_digest=identity[
+                    "analysis_options_digest"
+                ],
+                engine_revision=identity["engine_revision"],
+                analysis_id=identity["analysis_id"],
+                coverage=copy.deepcopy(snapshot.get("coverage") or {}),
             )
             stored.serialized_bytes = _stored_run_size(stored)
             if stored.serialized_bytes > self._max_bytes_per_run:
@@ -380,6 +411,32 @@ class _RunStore:
                 "current_total_memory_bytes": self._total_memory_bytes,
             }
 
+    def clear(self) -> None:
+        """Drop all process-local published state."""
+
+        with self._lock:
+            self._runs.clear()
+            self._result_order.clear()
+            self._total_bytes = 0
+            self._recalculate_memory_usage()
+
+    def atomic(self, callback: Callable[[], Any]) -> Any:
+        """Apply a multi-step publication or restore the exact prior store."""
+
+        with self._lock:
+            runs_before = copy.deepcopy(self._runs)
+            result_order_before = copy.deepcopy(self._result_order)
+            total_bytes_before = self._total_bytes
+            total_memory_before = self._total_memory_bytes
+            try:
+                return callback()
+            except BaseException:
+                self._runs = runs_before
+                self._result_order = result_order_before
+                self._total_bytes = total_bytes_before
+                self._total_memory_bytes = total_memory_before
+                raise
+
     def _stored(self, run_id: str) -> _StoredRun:
         try:
             return self._runs[run_id]
@@ -458,6 +515,9 @@ class BeliefMCPTools:
         max_total_store_bytes: int = MCP_MAX_TOTAL_STORE_BYTES,
         max_total_memory_bytes: int = MCP_MAX_TOTAL_MEMORY_BYTES,
         authorized_project_grant: AuthorizedProjectGrant | None = None,
+        publication_mode: str = "minimal",
+        allow_full_local_output: bool = False,
+        holdout_source_sha256_denylist: frozenset[str] = frozenset(),
     ) -> None:
         root = Path.cwd() if workspace_root is None else Path(workspace_root)
         try:
@@ -475,6 +535,18 @@ class BeliefMCPTools:
             raise BeliefMCPError(
                 "MCP workspace root cannot be inside a reserved holdout location"
             )
+        try:
+            self._publication = MCPPublicationPolicy(
+                workspace_root=self.workspace_root,
+                mode=publication_mode,
+                allow_full_local_output=allow_full_local_output,
+            )
+        except MCPPublicationError as exc:
+            raise BeliefMCPError(str(exc)) from exc
+        self._holdout_source_sha256_denylist = _sha256_set(
+            holdout_source_sha256_denylist,
+            field_name="holdout_source_sha256_denylist",
+        )
         if authorized_project_grant is not None:
             try:
                 expected_grant = make_authorized_project_grant(
@@ -506,16 +578,8 @@ class BeliefMCPTools:
         )
         self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
             "belief_status": self._status,
-            "belief_scan": self._scan,
             "belief_get_case": self._get_case,
             "belief_explain_case": self._explain_case,
-            "belief_build_validation_plan": self._build_validation_plan,
-            "belief_prepare_validation_fixture": (
-                self._prepare_validation_fixture
-            ),
-            "belief_prepare_authorized_project_pilot": (
-                self._prepare_authorized_project_pilot
-            ),
             "belief_compare_runs": self._compare_runs,
             "belief_run_local_benchmark": self._run_local_benchmark,
         }
@@ -532,11 +596,61 @@ class BeliefMCPTools:
         if not isinstance(arguments, dict):
             raise BeliefMCPError("tool arguments must be a JSON object")
         if name == "belief_validate_plan":
-            return self._validate_plan(arguments, execution=execution)
-        handler = self._handlers.get(name)
-        if handler is None:
-            raise BeliefMCPError(f"unknown BELIEF MCP tool: {name}")
-        return handler(arguments)
+            payload = self._validate_plan(arguments, execution=execution)
+        elif name == "belief_scan":
+            payload = self._scan(arguments, execution=execution)
+        elif name == "belief_build_validation_plan":
+            payload = self._build_validation_plan(
+                arguments,
+                execution=execution,
+            )
+        elif name == "belief_prepare_validation_fixture":
+            payload = self._prepare_validation_fixture(
+                arguments,
+                execution=execution,
+            )
+        elif name == "belief_prepare_authorized_project_pilot":
+            payload = self._prepare_authorized_project_pilot(
+                arguments,
+                execution=execution,
+            )
+        else:
+            handler = self._handlers.get(name)
+            if handler is None:
+                raise BeliefMCPError(f"unknown BELIEF MCP tool: {name}")
+            payload = handler(arguments)
+        return self._publication.publish(payload)
+
+    def publication_metadata(
+        self,
+        *,
+        contains_untrusted_source_content: bool,
+    ) -> dict[str, Any]:
+        return self._publication.metadata(
+            contains_untrusted_source_content=(
+                contains_untrusted_source_content
+            )
+        )
+
+    def tool_contains_untrusted_source_content(self, name: object) -> bool:
+        return isinstance(name, str) and name in _SOURCE_DERIVED_TOOLS
+
+    def close(self) -> None:
+        """Clear retained process-local results during MCP shutdown."""
+
+        self._runs.clear()
+
+    @staticmethod
+    def _commit(
+        execution: MCPRequestExecution | None,
+        callback: Callable[[], Any],
+    ) -> Any:
+        try:
+            if execution is None:
+                return callback()
+            return execution.commit_if_active(callback)
+        except MCPRequestCancelled as exc:
+            raise BeliefMCPError("MCP request was cancelled before commit") from exc
 
     def list_tools(self) -> list[dict[str, Any]]:
         return copy.deepcopy(tool_definitions())
@@ -553,9 +667,12 @@ class BeliefMCPTools:
     def read_resource(self, uri: object) -> tuple[dict[str, Any], str]:
         normalized = _identifier(uri, field_name="resource URI")
         if normalized == "belief://status":
-            return self.status(), "application/json"
+            return self._publication.publish(self.status()), "application/json"
         if normalized == "belief://capabilities":
-            return self.capabilities(), "application/json"
+            return (
+                self._publication.publish(self.capabilities()),
+                "application/json",
+            )
         if normalized in PUBLIC_SCHEMAS:
             return copy.deepcopy(PUBLIC_SCHEMAS[normalized]), "application/schema+json"
 
@@ -569,7 +686,10 @@ class BeliefMCPTools:
                 raise BeliefMCPError(
                     "pagination is available only for collection resources"
                 )
-            return copy.deepcopy(stored.summary), "application/json"
+            return (
+                self._publication.publish(copy.deepcopy(stored.summary)),
+                "application/json",
+            )
         cursor, limit = _resource_page(match.group("query"))
         base_uri = f"belief://runs/{stored.run_id}/{kind}"
         if kind == "audit-cases":
@@ -582,7 +702,7 @@ class BeliefMCPTools:
                 cursor=cursor,
                 limit=limit,
             )
-            return payload, "application/json"
+            return self._publication.publish(payload), "application/json"
         if kind == "validation-plans":
             plans = []
             for plan_id in sorted(stored.plans):
@@ -621,7 +741,7 @@ class BeliefMCPTools:
                 ),
                 "authorized_project_dynamic_execution_enabled": False,
             })
-            return payload, "application/json"
+            return self._publication.publish(payload), "application/json"
         payload = _paginated_collection(
             list(stored.results.values()),
             schema_version="belief.mcp_validation_result_collection.v2",
@@ -639,11 +759,11 @@ class BeliefMCPTools:
                 else None
             ),
         })
-        return payload, "application/json"
+        return self._publication.publish(payload), "application/json"
 
     def status(self) -> dict[str, Any]:
         storage_limits = self._runs.capacities()
-        return status_payload(
+        payload = status_payload(
             workspace_root=self.workspace_root.as_posix(),
             benchmark_available=self._benchmark_corpus is not None,
             authorized_project_pilot_available=(
@@ -651,6 +771,17 @@ class BeliefMCPTools:
             ),
             storage_limits=storage_limits,
         )
+        payload["publication"] = self.publication_metadata(
+            contains_untrusted_source_content=False
+        )
+        payload["state_commit_cancellation_safe"] = True
+        payload["holdout_source_digest_denylist_count"] = len(
+            self._holdout_source_sha256_denylist
+        )
+        payload["active_cancellation_scope"] = (
+            "all_request_state_commits_and_dynamic_worker_termination"
+        )
+        return payload
 
     def capabilities(self) -> dict[str, Any]:
         tools = self.list_tools()
@@ -691,6 +822,7 @@ class BeliefMCPTools:
                 "docker": False,
                 "allowlisted_framework_imports": True,
                 "caller_controlled_imports": False,
+                "outbound_network_publication": False,
                 "temporary_fixture_writes": True,
                 "target_workspace_writes": False,
                 "dynamic_execution": True,
@@ -701,14 +833,22 @@ class BeliefMCPTools:
                     MCP_MAX_CONCURRENT_VALIDATIONS
                 ),
                 "custom_adapters": False,
-                "active_cancellation_scope": "dynamic_validation_only",
+                "active_cancellation_scope": (
+                    "all_request_state_commits_and_dynamic_worker_termination"
+                ),
                 "cancelled_non_worker_response_suppressed": True,
+                "state_commit_cancellation_safe": True,
                 "authorized_project_pilot": True,
                 "authorized_project_pilot_configured": (
                     self._authorized_project_grant is not None
                 ),
                 "authorized_project_dynamic_execution": False,
                 "susvibes_holdout": False,
+                "holdout_name_guard": True,
+                "holdout_source_digest_denylist_count": len(
+                    self._holdout_source_sha256_denylist
+                ),
+                "holdout_strong_os_isolation": False,
                 "confirmed_vulnerability_verdict": False,
             },
             "limitations": [
@@ -730,18 +870,31 @@ class BeliefMCPTools:
                 "Only the transparent local_validation_v2 benchmark is callable.",
                 "Runs are evicted after the in-memory capacity is reached.",
                 (
-                    "Active cancellation terminates only the isolated dynamic "
-                    "validation worker; other tools may finish internally while "
-                    "their cancelled response is suppressed."
+                    "Digest denial prevents parsing and analysis after the "
+                    "bounded digest read; preventing even byte access requires "
+                    "external OS permissions, encryption, or account isolation."
+                ),
+                (
+                    "Cancellation suppresses every cancelled request response "
+                    "and prevents later state publication; only isolated dynamic "
+                    "validation has a worker process to terminate."
                 ),
             ],
+            "publication": self.publication_metadata(
+                contains_untrusted_source_content=False
+            ),
         }
 
     def _status(self, arguments: dict[str, Any]) -> dict[str, Any]:
         _arguments(arguments, allowed=())
         return self.status()
 
-    def _scan(self, arguments: dict[str, Any]) -> dict[str, Any]:
+    def _scan(
+        self,
+        arguments: dict[str, Any],
+        *,
+        execution: MCPRequestExecution | None,
+    ) -> dict[str, Any]:
         _arguments(
             arguments,
             allowed=("workspace", "audit_mode", "reportability", "max_files"),
@@ -770,10 +923,16 @@ class BeliefMCPTools:
                 include_routes=True,
                 reportability=reportability,
                 dedup_audit_cases=True,
+                denied_source_sha256=(
+                    self._holdout_source_sha256_denylist
+                ),
             ),
         )
         analysis = result.to_dict()
-        stored = self._runs.put(analysis)
+        stored = self._commit(
+            execution,
+            lambda: self._runs.put(analysis),
+        )
         return {
             "schema_version": MCP_SCAN_RESPONSE_SCHEMA_VERSION,
             "run_id": stored.run_id,
@@ -857,16 +1016,24 @@ class BeliefMCPTools:
         }
 
     def _build_validation_plan(
-        self, arguments: dict[str, Any]
+        self,
+        arguments: dict[str, Any],
+        *,
+        execution: MCPRequestExecution | None,
     ) -> dict[str, Any]:
         stored, case = self._case_arguments(arguments)
         plan = build_validation_plan(case).to_dict()
-        self._runs.store_plan(stored.run_id, plan)
+        self._commit(
+            execution,
+            lambda: self._runs.store_plan(stored.run_id, plan),
+        )
         return plan
 
     def _prepare_validation_fixture(
         self,
         arguments: dict[str, Any],
+        *,
+        execution: MCPRequestExecution | None,
     ) -> dict[str, Any]:
         _arguments(
             arguments,
@@ -879,16 +1046,24 @@ class BeliefMCPTools:
         )
         try:
             prepared = prepare_registered_fixture(fixture_id)
-            stored = self._runs.put(prepared.analysis_snapshot)
-            binding = build_registered_fixture_binding(
-                prepared,
-                run_id=stored.run_id,
-            )
-            self._runs.store_plan(
-                stored.run_id,
-                prepared.plan.to_dict(),
-                binding=binding.to_dict(),
-            )
+
+            def publish_fixture() -> tuple[_StoredRun, Any]:
+                def transaction() -> tuple[_StoredRun, Any]:
+                    stored_run = self._runs.put(prepared.analysis_snapshot)
+                    fixture_binding = build_registered_fixture_binding(
+                        prepared,
+                        run_id=stored_run.run_id,
+                    )
+                    self._runs.store_plan(
+                        stored_run.run_id,
+                        prepared.plan.to_dict(),
+                        binding=fixture_binding.to_dict(),
+                    )
+                    return stored_run, fixture_binding
+
+                return self._runs.atomic(transaction)
+
+            stored, binding = self._commit(execution, publish_fixture)
         except FixtureBindingError as exc:
             raise BeliefMCPError(str(exc)) from exc
         except (OSError, UnicodeError, ValueError) as exc:
@@ -1084,9 +1259,10 @@ class BeliefMCPTools:
                 )
             except FixtureBindingError as exc:
                 raise BeliefMCPError(str(exc)) from exc
-            if execution is not None and execution.cancelled:
-                raise BeliefMCPError("validation request was cancelled")
-            return self._runs.store_result(stored.run_id, projected)
+            return self._commit(
+                execution,
+                lambda: self._runs.store_result(stored.run_id, projected),
+            )
         except ValidationContractError as exc:
             raise BeliefMCPError(
                 "the hardened validation worker rejected the bound plan"
@@ -1099,6 +1275,8 @@ class BeliefMCPTools:
     def _prepare_authorized_project_pilot(
         self,
         arguments: dict[str, Any],
+        *,
+        execution: MCPRequestExecution | None,
     ) -> dict[str, Any]:
         _arguments(
             arguments,
@@ -1133,35 +1311,58 @@ class BeliefMCPTools:
                 self.workspace_root,
                 grant,
             )
-            stored = self._runs.put(prepared.analysis_snapshot)
-            bindings = []
-            abstentions = []
-            for plan in prepared.plans:
-                binding = build_authorized_project_binding(
-                    prepared,
-                    run_id=stored.run_id,
-                    plan=plan,
-                    grant=grant,
-                )
-                self._runs.store_plan(
-                    stored.run_id,
-                    plan.to_dict(),
-                    project_binding=binding.to_dict(),
-                )
-                bindings.append(
-                    {
-                        "plan_id": plan.plan_id,
-                        "binding": binding.to_dict(),
-                        "binding_digest": binding.digest,
-                    }
-                )
-                abstentions.append(
-                    project_authorized_project_abstention(
-                        run_id=stored.run_id,
-                        plan=plan,
-                        binding=binding,
+
+            def publish_authorized_project() -> tuple[
+                _StoredRun,
+                list[dict[str, Any]],
+                list[dict[str, Any]],
+            ]:
+                def transaction() -> tuple[
+                    _StoredRun,
+                    list[dict[str, Any]],
+                    list[dict[str, Any]],
+                ]:
+                    stored_run = self._runs.put(prepared.analysis_snapshot)
+                    published_bindings: list[dict[str, Any]] = []
+                    published_abstentions: list[dict[str, Any]] = []
+                    for plan in prepared.plans:
+                        project_binding = build_authorized_project_binding(
+                            prepared,
+                            run_id=stored_run.run_id,
+                            plan=plan,
+                            grant=grant,
+                        )
+                        self._runs.store_plan(
+                            stored_run.run_id,
+                            plan.to_dict(),
+                            project_binding=project_binding.to_dict(),
+                        )
+                        published_bindings.append(
+                            {
+                                "plan_id": plan.plan_id,
+                                "binding": project_binding.to_dict(),
+                                "binding_digest": project_binding.digest,
+                            }
+                        )
+                        published_abstentions.append(
+                            project_authorized_project_abstention(
+                                run_id=stored_run.run_id,
+                                plan=plan,
+                                binding=project_binding,
+                            )
+                        )
+                    return (
+                        stored_run,
+                        published_bindings,
+                        published_abstentions,
                     )
-                )
+
+                return self._runs.atomic(transaction)
+
+            stored, bindings, abstentions = self._commit(
+                execution,
+                publish_authorized_project,
+            )
         except AuthorizedProjectError as exc:
             raise BeliefMCPError(str(exc)) from exc
         except (OSError, UnicodeError, ValueError) as exc:
@@ -1340,6 +1541,21 @@ def _run_summary(
     return {
         "schema_version": MCP_RUN_SCHEMA_VERSION,
         "run_id": run_id,
+        "source_snapshot_id": analysis.get(
+            "analysis_identity", {}
+        ).get("source_snapshot_id"),
+        "source_manifest_digest": analysis.get(
+            "analysis_identity", {}
+        ).get("source_manifest_digest"),
+        "analysis_options_digest": analysis.get(
+            "analysis_identity", {}
+        ).get("analysis_options_digest"),
+        "engine_revision": analysis.get(
+            "analysis_identity", {}
+        ).get("engine_revision"),
+        "analysis_id": analysis.get(
+            "analysis_identity", {}
+        ).get("analysis_id"),
         "analysis_schema_version": analysis.get("schema_version"),
         "target": analysis.get("target"),
         "files_scanned": len(files) if isinstance(files, list) else 0,
@@ -1349,6 +1565,7 @@ def _run_summary(
             len(diagnostics) if isinstance(diagnostics, list) else 0
         ),
         "totals": copy.deepcopy(analysis.get("totals", {})),
+        "coverage": copy.deepcopy(analysis.get("coverage", {})),
         "resources": {
             "run": f"belief://runs/{run_id}",
             "audit_cases": f"belief://runs/{run_id}/audit-cases",
@@ -1356,6 +1573,86 @@ def _run_summary(
             "validation_results": f"belief://runs/{run_id}/validation-results",
         },
     }
+
+
+def _validated_analysis_identity(
+    analysis: Mapping[str, Any],
+) -> dict[str, str]:
+    """Reject runs that are not bound to exact source, options, and engine."""
+
+    raw_identity = analysis.get("analysis_identity")
+    raw_manifest = analysis.get("source_snapshot")
+    raw_options = analysis.get("analysis_options")
+    if (
+        not isinstance(raw_identity, Mapping)
+        or not isinstance(raw_manifest, Mapping)
+        or not isinstance(raw_options, Mapping)
+    ):
+        raise BeliefMCPError(
+            "analysis is missing its exact source identity contract"
+        )
+    fields = {
+        name: str(raw_identity.get(name) or "")
+        for name in (
+            "source_snapshot_id",
+            "source_manifest_digest",
+            "analysis_options_digest",
+            "engine_revision",
+            "analysis_id",
+        )
+    }
+    digest_fields = (
+        "source_manifest_digest",
+        "analysis_options_digest",
+        "engine_revision",
+    )
+    if any(
+        re.fullmatch(r"[0-9a-f]{64}", fields[name]) is None
+        for name in digest_fields
+    ):
+        raise BeliefMCPError("analysis identity contains an invalid digest")
+    if fields["source_snapshot_id"] != (
+        "src_" + fields["source_manifest_digest"]
+    ):
+        raise BeliefMCPError(
+            "analysis source snapshot identifier does not match its manifest"
+        )
+    expected_options_digest = canonical_json_digest(dict(raw_options))
+    if fields["analysis_options_digest"] != expected_options_digest:
+        raise BeliefMCPError(
+            "analysis options digest does not match the effective options"
+        )
+    for name, value in (
+        ("source_snapshot_id", fields["source_snapshot_id"]),
+        ("source_manifest_digest", fields["source_manifest_digest"]),
+        ("analysis_options_digest", fields["analysis_options_digest"]),
+        ("engine_revision", fields["engine_revision"]),
+        ("analysis_id", fields["analysis_id"]),
+    ):
+        if str(raw_manifest.get(name) or "") != value:
+            raise BeliefMCPError(
+                f"analysis identity disagrees with source manifest field: {name}"
+            )
+    expected_analysis_id = "analysis_" + canonical_json_digest({
+        "source_manifest_digest": fields["source_manifest_digest"],
+        "analysis_options_digest": fields["analysis_options_digest"],
+        "engine_revision": fields["engine_revision"],
+    })
+    if fields["analysis_id"] != expected_analysis_id:
+        raise BeliefMCPError(
+            "analysis identifier does not bind source, options, and engine"
+        )
+    unsigned_manifest = dict(raw_manifest)
+    observed_manifest_digest = str(
+        unsigned_manifest.pop("manifest_digest", "")
+    )
+    if (
+        re.fullmatch(r"[0-9a-f]{64}", observed_manifest_digest) is None
+        or canonical_json_digest(unsigned_manifest)
+        != observed_manifest_digest
+    ):
+        raise BeliefMCPError("source snapshot manifest digest is invalid")
+    return fields
 
 
 def _stored_run_size(stored: _StoredRun) -> int:
@@ -1390,6 +1687,12 @@ def _stored_run_payload(stored: _StoredRun) -> dict[str, Any]:
         "registered_fixture_id": stored.registered_fixture_id,
         "authorized_project_adapter_id": stored.authorized_project_adapter_id,
         "project_bindings": stored.project_bindings,
+        "source_snapshot_id": stored.source_snapshot_id,
+        "source_manifest_digest": stored.source_manifest_digest,
+        "analysis_options_digest": stored.analysis_options_digest,
+        "engine_revision": stored.engine_revision,
+        "analysis_id": stored.analysis_id,
+        "coverage": stored.coverage,
     }
 
 
@@ -1600,6 +1903,17 @@ def _compare_stored_runs(
         "schema_version": MCP_COMPARISON_SCHEMA_VERSION,
         "before_run_id": before.run_id,
         "after_run_id": after.run_id,
+        "before_source_snapshot_id": before.source_snapshot_id,
+        "after_source_snapshot_id": after.source_snapshot_id,
+        "source_changed": (
+            before.source_manifest_digest
+            != after.source_manifest_digest
+        ),
+        "engine_changed": before.engine_revision != after.engine_revision,
+        "analysis_options_changed": (
+            before.analysis_options_digest
+            != after.analysis_options_digest
+        ),
         "target": before.target,
         "counts": {
             "before": len(before.cases),
@@ -1723,6 +2037,28 @@ def _arguments(
         raise BeliefMCPError(
             f"missing required argument(s): {', '.join(missing)}"
         )
+
+
+def _sha256_set(
+    values: frozenset[str],
+    *,
+    field_name: str,
+) -> frozenset[str]:
+    if not isinstance(values, frozenset):
+        raise BeliefMCPError(f"{field_name} must be a frozenset")
+    for value in values:
+        if (
+            not isinstance(value, str)
+            or len(value) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in value
+            )
+        ):
+            raise BeliefMCPError(
+                f"{field_name} entries must be lowercase SHA-256 values"
+            )
+    return values
 
 
 def _identifier(value: object, *, field_name: str) -> str:

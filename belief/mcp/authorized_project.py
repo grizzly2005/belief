@@ -24,6 +24,7 @@ from belief.static_analysis_pipeline import (
     StaticAnalysisOptions,
     analyze_static_target,
 )
+from belief.source_snapshot import rebind_source_manifest_payload
 from belief.validation.plan_models import ValidationPlan, canonical_digest
 from belief.validation.plans import build_validation_plan
 
@@ -291,6 +292,13 @@ def prepare_authorized_project(
                 include_routes=True,
                 reportability=True,
                 dedup_audit_cases=True,
+            ),
+        )
+        result.source_snapshot_manifest = rebind_source_manifest_payload(
+            result.source_snapshot_manifest,
+            (
+                f"authorized-project:{before.project_id}"
+                f"@{before.source_revision}"
             ),
         )
         _verify_materialized_snapshot(captured, snapshot_root)

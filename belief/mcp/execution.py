@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
     from belief.validation.worker import WorkerRunHandle
+
+_T = TypeVar("_T")
+
+
+class MCPRequestCancelled(RuntimeError):
+    """Raised when a cancelled request attempts to publish mutable state."""
 
 
 class MCPRequestExecution:
@@ -67,6 +74,24 @@ class MCPRequestExecution:
             worker.cancel(self._reason or "MCP request cancelled")
         return True
 
+    def commit_if_active(self, callback: Callable[[], _T]) -> _T:
+        """Linearize one state mutation and request completion against cancel.
+
+        The callback runs while the request-state lock is held. Cancellation
+        therefore either wins first (and no mutation occurs) or the mutation
+        and completion win together, making every later cancellation too late.
+        """
+
+        with self._lock:
+            if self._completed or self._cancelled.is_set():
+                raise MCPRequestCancelled(
+                    self._reason or "MCP request cancelled"
+                )
+            result = callback()
+            self._completed = True
+            self._worker = None
+            return result
+
     def mark_completed(self) -> bool:
         """Seal the request and return whether a cancellation won the race."""
 
@@ -87,4 +112,4 @@ def _bounded_reason(value: object) -> str:
     return " ".join(sanitized.split())[:256]
 
 
-__all__ = ["MCPRequestExecution"]
+__all__ = ["MCPRequestCancelled", "MCPRequestExecution"]

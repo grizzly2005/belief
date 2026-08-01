@@ -14,6 +14,7 @@ import sys
 import threading
 from collections.abc import Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
+from enum import Enum
 from io import TextIOBase
 from typing import Any
 
@@ -54,22 +55,54 @@ class _DuplicateJSONKey(ValueError):
     pass
 
 
+class MCPLifecycleState(str, Enum):
+    NEW = "new"
+    INITIALIZE_RESPONDED = "initialize_responded"
+    READY = "ready"
+    CLOSED = "closed"
+
+
 class BeliefMCPServer:
     """MCP request dispatcher with transport-independent domain behavior."""
 
     def __init__(self, tools: BeliefMCPTools | None = None) -> None:
+        self._state_lock = threading.Lock()
+        self._state = MCPLifecycleState.NEW
         if tools is not None:
             self.tools = tools
             return
         try:
             grant = authorized_project_grant_from_environment(os.environ)
+            publication_mode = os.environ.get(
+                "BELIEF_MCP_PUBLICATION_MODE",
+                "minimal",
+            )
+            allow_full_local_output = _strict_environment_flag(
+                os.environ,
+                "BELIEF_MCP_ALLOW_FULL_LOCAL_OUTPUT",
+            )
+            holdout_source_sha256_denylist = (
+                _strict_digest_set_environment(
+                    os.environ,
+                    "BELIEF_MCP_HOLDOUT_SHA256_DENYLIST",
+                )
+            )
         except AuthorizedProjectError as exc:
             raise BeliefMCPError(
                 "authorized project startup configuration is invalid"
             ) from exc
+        except ValueError as exc:
+            raise BeliefMCPError(
+                "MCP publication startup configuration is invalid"
+            ) from exc
         self.tools = BeliefMCPTools(
             workspace_root=os.environ.get("BELIEF_MCP_WORKSPACE_ROOT"),
             authorized_project_grant=grant,
+            publication_mode=publication_mode,
+            allow_full_local_output=allow_full_local_output,
+            holdout_source_sha256_denylist=(
+                holdout_source_sha256_denylist
+            ),
         )
 
     def handle(
@@ -104,7 +137,11 @@ class BeliefMCPServer:
             )
 
         if is_notification:
+            self._handle_notification(method, params)
             return None
+        lifecycle_error = self._request_lifecycle_error(method)
+        if lifecycle_error is not None:
+            return _error(request_id, -32002, lifecycle_error)
         try:
             result = self._dispatch(
                 method,
@@ -138,6 +175,10 @@ class BeliefMCPServer:
         execution: MCPRequestExecution | None,
     ) -> dict[str, Any]:
         if method == "initialize":
+            with self._state_lock:
+                if self._state is not MCPLifecycleState.NEW:
+                    raise BeliefMCPError("MCP initialize is only valid once")
+                self._state = MCPLifecycleState.INITIALIZE_RESPONDED
             requested = params.get("protocolVersion")
             protocol = (
                 requested
@@ -179,6 +220,54 @@ class BeliefMCPServer:
             return self._read_resource(params)
         raise _MethodNotFound(method)
 
+    @property
+    def lifecycle_state(self) -> MCPLifecycleState:
+        with self._state_lock:
+            return self._state
+
+    def close(self) -> None:
+        """Close the dispatcher and release process-local retained state."""
+
+        with self._state_lock:
+            if self._state is MCPLifecycleState.CLOSED:
+                return
+            self._state = MCPLifecycleState.CLOSED
+        close = getattr(self.tools, "close", None)
+        if callable(close):
+            close()
+
+    def _request_lifecycle_error(self, method: str) -> str | None:
+        with self._state_lock:
+            state = self._state
+        if state is MCPLifecycleState.CLOSED:
+            return "MCP server is closed"
+        if method == "ping":
+            return None
+        if method == "initialize":
+            return (
+                None
+                if state is MCPLifecycleState.NEW
+                else "MCP initialize is only valid once"
+            )
+        if state is not MCPLifecycleState.READY:
+            return (
+                "MCP server is not ready; initialize and send "
+                "notifications/initialized first"
+            )
+        return None
+
+    def _handle_notification(
+        self,
+        method: str,
+        params: Mapping[str, Any],
+    ) -> None:
+        del params
+        if method != "notifications/initialized":
+            return
+        with self._state_lock:
+            if self._state is MCPLifecycleState.INITIALIZE_RESPONDED:
+                self._state = MCPLifecycleState.READY
+
     def _call_tool(
         self,
         params: Mapping[str, Any],
@@ -187,6 +276,11 @@ class BeliefMCPServer:
     ) -> dict[str, Any]:
         name = params.get("name")
         arguments = params.get("arguments", {})
+        publication = self.tools.publication_metadata(
+            contains_untrusted_source_content=(
+                self.tools.tool_contains_untrusted_source_content(name)
+            )
+        )
         try:
             payload = self.tools.call_tool(
                 name,
@@ -197,6 +291,7 @@ class BeliefMCPServer:
             return {
                 "content": [{"type": "text", "text": str(exc)}],
                 "isError": True,
+                "_meta": {"belief/publication": publication},
             }
         return {
             "content": [
@@ -207,6 +302,7 @@ class BeliefMCPServer:
             ],
             "structuredContent": payload,
             "isError": False,
+            "_meta": {"belief/publication": publication},
         }
 
     def _read_resource(self, params: Mapping[str, Any]) -> dict[str, Any]:
@@ -215,12 +311,20 @@ class BeliefMCPServer:
         if "uri" not in params:
             raise BeliefMCPError("resources/read requires uri")
         payload, mime_type = self.tools.read_resource(params["uri"])
+        uri = params["uri"]
+        contains_untrusted = (
+            isinstance(uri, str) and uri.startswith("belief://runs/")
+        )
+        publication = self.tools.publication_metadata(
+            contains_untrusted_source_content=contains_untrusted
+        )
         return {
             "contents": [
                 {
-                    "uri": params["uri"],
+                    "uri": uri,
                     "mimeType": mime_type,
                     "text": _json_text(payload),
+                    "_meta": {"belief/publication": publication},
                 }
             ]
         }
@@ -317,9 +421,11 @@ class _StdioRuntime:
             return
         self._closed = True
         with self._active_lock:
-            for execution in self._active.values():
-                execution.cancel("MCP server shutdown")
+            active = list(self._active.values())
+        for execution in active:
+            execution.cancel("MCP server shutdown")
         self._executor.shutdown(wait=True, cancel_futures=True)
+        self._dispatcher.close()
 
     def _submit(
         self,
@@ -327,27 +433,30 @@ class _StdioRuntime:
         key: tuple[str, object],
     ) -> None:
         request_id = request["id"]
+        rejection: dict[str, Any] | None = None
+        execution: MCPRequestExecution | None = None
         with self._active_lock:
             if key in self._active:
-                self._write(
-                    _error(
-                        request_id,
-                        -32600,
-                        "Duplicate active request id",
-                    )
+                rejection = _error(
+                    request_id,
+                    -32600,
+                    "Duplicate active request id",
                 )
-                return
-            if not self._capacity.acquire(blocking=False):
-                self._write(
-                    _error(
-                        request_id,
-                        -32001,
-                        "Server busy; retry after an in-flight request completes",
-                    )
+            elif not self._capacity.acquire(blocking=False):
+                rejection = _error(
+                    request_id,
+                    -32001,
+                    "Server busy; retry after an in-flight request completes",
                 )
-                return
-            execution = MCPRequestExecution(request_id)
-            self._active[key] = execution
+            else:
+                execution = MCPRequestExecution(request_id)
+                self._active[key] = execution
+        if rejection is not None:
+            self._write(rejection)
+            return
+        if execution is None:
+            self._write(_error(request_id, -32603, "Internal error"))
+            return
         try:
             future = self._executor.submit(
                 self._dispatcher.handle,
@@ -415,8 +524,8 @@ class _StdioRuntime:
             reason = ""
         with self._active_lock:
             execution = self._active.get(key)
-            if execution is not None:
-                execution.cancel(reason)
+        if execution is not None:
+            execution.cancel(reason)
         return True
 
     def _write(self, response: Mapping[str, Any]) -> None:
@@ -606,6 +715,47 @@ def _serialized_json_size(value: object) -> int:
         return MCP_MAX_RESPONSE_BYTES + 1
 
 
+def _strict_environment_flag(
+    environment: Mapping[str, str],
+    name: str,
+) -> bool:
+    value = environment.get(name)
+    if value is None:
+        return False
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise ValueError(f"{name} must be exactly true or false")
+
+
+def _strict_digest_set_environment(
+    environment: Mapping[str, str],
+    name: str,
+) -> frozenset[str]:
+    value = environment.get(name)
+    if value is None or not value.strip():
+        return frozenset()
+    digests = frozenset(
+        item.strip()
+        for item in value.split(",")
+        if item.strip()
+    )
+    for digest in digests:
+        if (
+            len(digest) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in digest
+            )
+        ):
+            raise ValueError(
+                f"{name} entries must be lowercase SHA-256 values"
+            )
+    return digests
+
+
 def main() -> int:
     try:
         return serve_stdio()
@@ -637,4 +787,9 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["BeliefMCPServer", "main", "serve_stdio"]
+__all__ = [
+    "BeliefMCPServer",
+    "MCPLifecycleState",
+    "main",
+    "serve_stdio",
+]
