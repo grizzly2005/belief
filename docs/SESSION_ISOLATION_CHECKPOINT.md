@@ -3,9 +3,9 @@
 This document freezes the review checkpoint for
 `harden/session-isolation-and-triage-hygiene`, released as version `0.2.0`.
 
-The checkpoint is local. It has not been pushed, and no pull request, merge,
-release, leaderboard submission, or reserved-holdout evaluation is part of this
-pass. It builds on
+The branch is published on `origin` for independent review. No pull request,
+merge, release, leaderboard submission, or reserved-holdout evaluation is part
+of this pass, and no tag was published. It builds on
 [`MEGA_SOLIDIFICATION_CHECKPOINT.md`](MEGA_SOLIDIFICATION_CHECKPOINT.md), whose
 commit `a24038c` is an ancestor of this one, so this branch is a strict superset
 of the line published for review there.
@@ -71,8 +71,9 @@ The static benchmark returns deterministic digest
 across this checkpoint including the research merge. Two consecutive runs
 differ only in `duration_seconds`, which the digest excludes by design.
 
-These are local results. No CI run is attached, because the branch has not been
-pushed.
+These are local results, measured before the branch was pushed. Any GitHub
+Actions run attached to the published head is authoritative for that head and
+is intentionally not duplicated here as a mutable status snapshot.
 
 ## Residual boundaries
 
@@ -96,9 +97,10 @@ pushed.
 - The external artifact index detects loss and corruption. It is not a backup
   and cannot repair either. A single external volume remains a single point of
   failure for evidence that cannot be regenerated.
-- Thirteen commits in this line exist only on this machine. The untracked
-  bundles sit on the same disk as the repository, so they are not off-site
-  redundancy.
+- The measurement artifacts this line depends on remain on one external volume
+  and are not published anywhere. Pushing the branch gave the *code* off-site
+  redundancy; it gave the recorded results none. The untracked bundles sit on
+  the same disk as the repository and are not a backup either.
 
 ## Review and reproduction
 
