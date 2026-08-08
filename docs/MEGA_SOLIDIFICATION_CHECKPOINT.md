@@ -2,7 +2,15 @@
 
 This document freezes the review checkpoint for
 `harden/mega-solidification-v1`, based on commit
-`fe56a189048021b0b5fecfdd45fc9201197f98c0`.
+`a24038ce81ffefed2c570b5690d4fde69ef3f6ab`.
+
+The commit reference was corrected on 2026-08-08. It still named
+`fe56a189048021b0b5fecfdd45fc9201197f98c0`, the commit the document was first
+written against, after five further commits landed and the validation record
+below was re-measured. The record describes `a24038c`, not `fe56a18`: it counts
+878 compiled Python 3 files, and the `belief/` tree holds 878 non-legacy Python
+files at `a24038c` against 864 at `fe56a18`. Only the identity line moved; no
+measured value in this document was altered.
 
 The branch is published for independent review in
 [GitHub pull request #6](https://github.com/grizzly2005/belief/pull/6). No merge,
@@ -88,8 +96,22 @@ as a mutable status snapshot in this document.
 Reviewers should fetch the final bundle named
 `belief-mega-solidification-final-checkpoint.bundle`, run `git bundle verify`,
 check out its advertised branch, install the pinned project dependencies, and
-repeat the gates above. The bundle digest reported with the checkpoint is the
-identity of the review artifact.
+repeat the gates above.
+
+The bundle is a local review artifact. It is not tracked in this repository, so
+it has to be obtained out of band, and its digest is the only way to confirm
+the copy received is the intended one. That digest was previously described as
+"reported with the checkpoint" but recorded nowhere, which left a reviewer with
+nothing to compare against. Verified and recorded on 2026-08-08:
+
+| Bundle | Advertised ref | SHA-256 |
+|---|---|---|
+| `belief-mega-solidification-final-checkpoint.bundle` | `a24038ce81ffefed2c570b5690d4fde69ef3f6ab`, complete history | `0998bd9861d9542e729f57138bf92d797000382e79b5c0ab9f85e605b6f86f6b` |
+| `belief-mega-solidification-v1.bundle` | `fe56a189048021b0b5fecfdd45fc9201197f98c0`, requires `f42d07c3` | `ec3ee546311aa6e9255a7de60fb4c9c47fedf655443a2c0646fcebaa4fa0ea85` |
+
+Both pass `git bundle verify`. The first advertises this document's checkpoint
+commit; the second advertises the earlier commit the document was originally
+written against and is not self-contained.
 
 GitHub reviewers can instead use pull request #6, whose head branch preserves
 the same unsquashed research and hardening chronology.
