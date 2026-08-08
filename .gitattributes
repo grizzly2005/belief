@@ -1,0 +1,6 @@
+# Sealed corpora whose SHA-256 is recorded in a preregistration must reach the
+# working tree byte for byte. Without this, a clone with core.autocrlf=true
+# (the Windows default) rewrites LF to CRLF on checkout, every recorded source
+# digest stops matching, and the fail-closed integrity gate refuses the corpus
+# on a tree nobody actually modified.
+benchmark_web_validation/development/sources/** -text
