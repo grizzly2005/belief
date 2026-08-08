@@ -3,12 +3,23 @@
 This document freezes the review checkpoint for
 `harden/session-isolation-and-triage-hygiene`, released as version `0.2.0`.
 
-The branch is published on `origin` for independent review. No pull request,
-merge, release, leaderboard submission, or reserved-holdout evaluation is part
-of this pass, and no tag was published. It builds on
+The branch was merged into `main` through pull request #8, which also merged #6
+as a consequence: the head of `harden/mega-solidification-v1` (`a24038c`) is an
+ancestor of this branch, so `main` reaching this commit made #6 merged too. #7
+was closed for the same reason, its base being #6 rather than `main`. Tag
+`v0.2.0` is published on `origin`.
+
+No release, leaderboard submission, or reserved-holdout evaluation is part of
+this pass.
+
+This document builds on
 [`MEGA_SOLIDIFICATION_CHECKPOINT.md`](MEGA_SOLIDIFICATION_CHECKPOINT.md), whose
 commit `a24038c` is an ancestor of this one, so this branch is a strict superset
-of the line published for review there.
+of the line reviewed there.
+
+The three paragraphs above replace a claim, written between the push and the
+merge and left stale afterwards, that no pull request, merge, or tag was part of
+this pass. All three had happened by the time the pass ended.
 
 ## Completed scope
 
@@ -35,7 +46,11 @@ of the line published for review there.
   [`REVIEWER_PROVENANCE_CHANGES.md`](REVIEWER_PROVENANCE_CHANGES.md).
 - The CyberSecEval static preflight, the web validation generalization corpus
   and runner, bounded partial-Python recovery, the web security semantics pass,
-  and the paired SusVibes execution hardening are merged into the line.
+  and the paired SusVibes execution hardening are merged into the line, and
+  therefore into `main`. `codex/susvibes-execution-hardening` and
+  `research/cyberseceval-static-preflight-v1` remain published on `origin` as
+  ancestors of `main`: they carry the unsquashed chronology, they are not
+  awaiting review, and nothing on them is outstanding.
 - `.gitattributes` pins the sealed web-validation corpus to byte-exact
   checkout. Without it, a clone with `core.autocrlf=true` rewrote all 32
   sources to CRLF and the fail-closed integrity gate refused a corpus nobody
