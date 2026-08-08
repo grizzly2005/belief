@@ -50,6 +50,7 @@ def download():
 
 def _ready_server(monkeypatch, root: Path, **kwargs) -> BeliefMCPServer:
     monkeypatch.setenv("BELIEF_MCP_WORKSPACE_ROOT", str(root))
+    kwargs.setdefault("max_sessions", MCP_MAX_SESSIONS)
     server = BeliefMCPServer(**kwargs)
     server.handle(
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
@@ -232,6 +233,35 @@ def test_default_session_is_unchanged_when_no_session_id_is_given(
 
     assert "error" not in _read(server, f"belief://runs/{run_id}")
     assert server.sessions.active_session_ids() == [DEFAULT_SESSION_ID]
+
+
+def test_a_default_dispatcher_keeps_the_whole_reviewed_budget(
+    monkeypatch,
+    tmp_path,
+):
+    """stdio serves one caller, so isolation must not shrink its store.
+
+    Regression guard: defaulting to the multi-session count would silently cut
+    the single-caller budget to a quarter.
+    """
+    monkeypatch.setenv("BELIEF_MCP_WORKSPACE_ROOT", str(tmp_path))
+    server = BeliefMCPServer()
+
+    storage = server.tools.capabilities()["storage"]
+
+    assert storage["isolation"] == "per_session_store"
+    assert storage["max_runs"] == MCP_MAX_STORED_RUNS
+    assert storage["max_total_results"] == MCP_MAX_TOTAL_RESULTS
+    assert storage["max_total_store_bytes"] == MCP_MAX_TOTAL_STORE_BYTES
+    assert storage["max_total_memory_bytes"] == MCP_MAX_TOTAL_MEMORY_BYTES
+
+
+def test_a_default_dispatcher_refuses_a_second_session(monkeypatch, tmp_path):
+    monkeypatch.setenv("BELIEF_MCP_WORKSPACE_ROOT", str(tmp_path))
+    server = BeliefMCPServer()
+
+    with pytest.raises(BeliefMCPError, match="session capacity"):
+        server.sessions.resolve("agent-a")
 
 
 # --------------------------------------------------------------------------

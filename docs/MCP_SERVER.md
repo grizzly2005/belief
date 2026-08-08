@@ -242,25 +242,31 @@ object. There is no shared mutable run state on which a missing guard could
 leak.
 
 `BeliefMCPServer.handle()` accepts an optional `session_id`. Omitting it
-selects the session named `default`, which is what the stdio transport uses:
-one process serves one caller, so stdio behavior is unchanged. A transport or
-embedding orchestrator that multiplexes several callers passes a distinct
-`session_id` per caller and gets a distinct store per caller.
+selects the session named `default`.
 
+`BeliefMCPServer(max_sessions=...)` defaults to **1**. That is the stdio case:
+one process serves one caller, the single session holds the entire store
+budget listed above, and behavior is exactly what it was before sessions
+existed. A default dispatcher refuses to open a second session rather than
+quietly sharing the first.
+
+A transport or embedding orchestrator that multiplexes several callers raises
+`max_sessions` to at most 4 and passes a distinct `session_id` per caller.
 Session identifiers must match `[A-Za-z0-9][A-Za-z0-9._:-]{0,63}`.
 
-Two bounds stay global rather than per session:
+Raising `max_sessions` **divides** the store maxima listed above; it never
+multiplies them. Four isolated sessions therefore cost no more than the single
+session reviewed above, and each one is correspondingly smaller. The
+`default` session occupies one of the slots. `belief_status` and
+`belief://capabilities` publish the effective per-session values, so a caller
+reads its real capacity rather than the global maximum.
 
-- the store maxima listed above are **divided** by the session count, so four
-  isolated sessions never cost more than the single-session budget reviewed
-  above — they do not multiply it;
-- the local validation semaphore is shared, so "one concurrent local
-  validation" remains true for the process rather than for each session.
+The local validation semaphore is shared across sessions, so "one concurrent
+local validation" stays true for the process rather than for each session.
 
-At most 4 sessions may exist at once, and the `default` session occupies one of
-those slots. Exceeding the bound is refused rather than queued. Closing a
-session drops its retained state; the `default` session is cleared rather than
-removed. Server shutdown clears every session.
+Exceeding the session bound is refused rather than queued. Closing a session
+drops its retained state; the `default` session is cleared rather than removed.
+Server shutdown clears every session.
 
 A dispatcher constructed with an externally injected `BeliefMCPTools` serves
 only the `default` session. Opening a second session against it is refused,
