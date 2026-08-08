@@ -203,7 +203,7 @@ authorized-project bindings, and projected validation results. It does not
 retain fixture source text, the complete static analysis, the complete
 environment, raw child output, tracebacks, or temporary paths.
 
-Reviewed maxima are:
+Reviewed maxima are, for the whole process:
 
 - 32 stored runs;
 - 32 validation results per run;
@@ -227,6 +227,48 @@ Repeated semantically identical validation produces the same content-derived
 result ID and replaces the existing entry. Validation results use deterministic
 insertion-order eviction; runs use deterministic least-recently-accessed
 eviction.
+
+## Sessions and isolation
+
+A run identifier is derived from analysed content, so two callers that scan the
+same bytes obtain the same `run_id`. A shared store would therefore let one
+caller read, extend, and evict another caller's run by supplying an identifier
+it never created.
+
+Each caller session owns a separate store. Isolation is structural, not
+checked: a session resolves to its own `BeliefMCPTools`, so a cross-session
+read cannot succeed, because the other session's runs live in a different
+object. There is no shared mutable run state on which a missing guard could
+leak.
+
+`BeliefMCPServer.handle()` accepts an optional `session_id`. Omitting it
+selects the session named `default`, which is what the stdio transport uses:
+one process serves one caller, so stdio behavior is unchanged. A transport or
+embedding orchestrator that multiplexes several callers passes a distinct
+`session_id` per caller and gets a distinct store per caller.
+
+Session identifiers must match `[A-Za-z0-9][A-Za-z0-9._:-]{0,63}`.
+
+Two bounds stay global rather than per session:
+
+- the store maxima listed above are **divided** by the session count, so four
+  isolated sessions never cost more than the single-session budget reviewed
+  above — they do not multiply it;
+- the local validation semaphore is shared, so "one concurrent local
+  validation" remains true for the process rather than for each session.
+
+At most 4 sessions may exist at once, and the `default` session occupies one of
+those slots. Exceeding the bound is refused rather than queued. Closing a
+session drops its retained state; the `default` session is cleared rather than
+removed. Server shutdown clears every session.
+
+A dispatcher constructed with an externally injected `BeliefMCPTools` serves
+only the `default` session. Opening a second session against it is refused,
+because silently sharing the injected instance would defeat the isolation.
+
+The lifecycle state machine (`initialize`, `notifications/initialized`) remains
+per dispatcher, not per session. `belief://capabilities` reports
+`storage.isolation = per_session_store` and the effective per-session bounds.
 
 At the JSON-RPC boundary, each input line is limited to 1 MiB in both
 characters and UTF-8 bytes. JSON is rejected above depth 12, 4,096 nodes, 128
