@@ -67,6 +67,10 @@ MCP_MAX_CONCURRENT_VALIDATIONS = 1
 MCP_MAX_IN_FLIGHT_REQUESTS = 4
 MCP_MIN_VALIDATION_TIMEOUT_MS = 100
 MCP_MAX_VALIDATION_TIMEOUT_MS = 10_000
+# Distinct caller sessions a single dispatcher may serve. Each session owns a
+# separate store, so the reviewed global byte and run bounds above are divided
+# by this number rather than multiplied by it.
+MCP_MAX_SESSIONS = 4
 
 _SOURCE_TARGET_SCHEMA_VERSION = "belief.registered_fixture_source_target.v1"
 _STATIC_SCAN_SCHEMA_VERSION = "belief.registered_fixture_static_scan.v2"

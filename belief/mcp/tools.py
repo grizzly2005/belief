@@ -518,6 +518,7 @@ class BeliefMCPTools:
         publication_mode: str = "minimal",
         allow_full_local_output: bool = False,
         holdout_source_sha256_denylist: frozenset[str] = frozenset(),
+        validation_capacity: threading.BoundedSemaphore | None = None,
     ) -> None:
         root = Path.cwd() if workspace_root is None else Path(workspace_root)
         try:
@@ -573,8 +574,12 @@ class BeliefMCPTools:
             max_total_store_bytes=max_total_store_bytes,
             max_total_memory_bytes=max_total_memory_bytes,
         )
-        self._validation_capacity = threading.BoundedSemaphore(
-            MCP_MAX_CONCURRENT_VALIDATIONS
+        # A shared semaphore keeps the reviewed one-validation-at-a-time bound
+        # global when several sessions each own a separate tools instance.
+        self._validation_capacity = (
+            threading.BoundedSemaphore(MCP_MAX_CONCURRENT_VALIDATIONS)
+            if validation_capacity is None
+            else validation_capacity
         )
         self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
             "belief_status": self._status,
@@ -798,6 +803,9 @@ class BeliefMCPTools:
             ],
             "storage": {
                 "kind": "process_memory",
+                # One store per caller session; a run is never visible to a
+                # session that did not create it.
+                "isolation": "per_session_store",
                 **storage_limits,
                 "max_resource_page_size": MCP_MAX_RESOURCE_PAGE_SIZE,
                 "max_mcp_response_bytes": MCP_MAX_RESPONSE_BYTES,

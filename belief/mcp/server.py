@@ -30,10 +30,15 @@ from .contracts import (
     SUPPORTED_PROTOCOL_VERSIONS,
 )
 from .execution import MCPRequestExecution
+from .session import (
+    DEFAULT_SESSION_ID,
+    MCPSessionRegistry,
+)
 from .tools import BeliefMCPError, BeliefMCPTools
 from .validation import (
     MCP_MAX_IN_FLIGHT_REQUESTS,
     MCP_MAX_RESPONSE_BYTES,
+    MCP_MAX_SESSIONS,
 )
 
 _JSONRPC_VERSION = "2.0"
@@ -65,11 +70,16 @@ class MCPLifecycleState(str, Enum):
 class BeliefMCPServer:
     """MCP request dispatcher with transport-independent domain behavior."""
 
-    def __init__(self, tools: BeliefMCPTools | None = None) -> None:
+    def __init__(
+        self,
+        tools: BeliefMCPTools | None = None,
+        *,
+        max_sessions: int = MCP_MAX_SESSIONS,
+    ) -> None:
         self._state_lock = threading.Lock()
         self._state = MCPLifecycleState.NEW
         if tools is not None:
-            self.tools = tools
+            self._sessions = MCPSessionRegistry.pinned(tools)
             return
         try:
             grant = authorized_project_grant_from_environment(os.environ)
@@ -95,21 +105,44 @@ class BeliefMCPServer:
             raise BeliefMCPError(
                 "MCP publication startup configuration is invalid"
             ) from exc
-        self.tools = BeliefMCPTools(
-            workspace_root=os.environ.get("BELIEF_MCP_WORKSPACE_ROOT"),
-            authorized_project_grant=grant,
-            publication_mode=publication_mode,
-            allow_full_local_output=allow_full_local_output,
-            holdout_source_sha256_denylist=(
-                holdout_source_sha256_denylist
-            ),
+        workspace_root = os.environ.get("BELIEF_MCP_WORKSPACE_ROOT")
+
+        def build_session_tools(**capacity: Any) -> BeliefMCPTools:
+            return BeliefMCPTools(
+                workspace_root=workspace_root,
+                authorized_project_grant=grant,
+                publication_mode=publication_mode,
+                allow_full_local_output=allow_full_local_output,
+                holdout_source_sha256_denylist=(
+                    holdout_source_sha256_denylist
+                ),
+                **capacity,
+            )
+
+        self._sessions = MCPSessionRegistry(
+            build_session_tools,
+            max_sessions=max_sessions,
         )
+
+    @property
+    def tools(self) -> BeliefMCPTools:
+        """Tools owning the default session.
+
+        Retained so single-session callers and the stdio transport keep the
+        pre-session attribute access.
+        """
+        return self._sessions.resolve(DEFAULT_SESSION_ID)
+
+    @property
+    def sessions(self) -> MCPSessionRegistry:
+        return self._sessions
 
     def handle(
         self,
         request: object,
         *,
         execution: MCPRequestExecution | None = None,
+        session_id: object = None,
     ) -> dict[str, Any] | None:
         try:
             _validate_json_structure(request)
@@ -147,6 +180,7 @@ class BeliefMCPServer:
                 method,
                 params,
                 execution=execution,
+                session_id=session_id,
             )
         except _MethodNotFound:
             return _error(request_id, -32601, "Method not found")
@@ -173,6 +207,7 @@ class BeliefMCPServer:
         params: dict[str, Any],
         *,
         execution: MCPRequestExecution | None,
+        session_id: object = None,
     ) -> dict[str, Any]:
         if method == "initialize":
             with self._state_lock:
@@ -206,18 +241,28 @@ class BeliefMCPServer:
             }
         if method == "ping":
             return {}
+        # Tool and template definitions are static, so they never consume a
+        # session slot. Everything below reaches session-owned state.
         if method == "tools/list":
             return {"tools": self.tools.list_tools()}
-        if method == "tools/call":
-            return self._call_tool(params, execution=execution)
-        if method == "resources/list":
-            return {"resources": self.tools.list_resources()}
         if method == "resources/templates/list":
             return {
                 "resourceTemplates": self.tools.list_resource_templates()
             }
+        if method == "tools/call":
+            return self._call_tool(
+                params,
+                execution=execution,
+                tools=self._sessions.resolve(session_id),
+            )
+        if method == "resources/list":
+            tools = self._sessions.resolve(session_id)
+            return {"resources": tools.list_resources()}
         if method == "resources/read":
-            return self._read_resource(params)
+            return self._read_resource(
+                params,
+                tools=self._sessions.resolve(session_id),
+            )
         raise _MethodNotFound(method)
 
     @property
@@ -232,9 +277,7 @@ class BeliefMCPServer:
             if self._state is MCPLifecycleState.CLOSED:
                 return
             self._state = MCPLifecycleState.CLOSED
-        close = getattr(self.tools, "close", None)
-        if callable(close):
-            close()
+        self._sessions.close_all()
 
     def _request_lifecycle_error(self, method: str) -> str | None:
         with self._state_lock:
@@ -273,16 +316,17 @@ class BeliefMCPServer:
         params: Mapping[str, Any],
         *,
         execution: MCPRequestExecution | None,
+        tools: BeliefMCPTools,
     ) -> dict[str, Any]:
         name = params.get("name")
         arguments = params.get("arguments", {})
-        publication = self.tools.publication_metadata(
+        publication = tools.publication_metadata(
             contains_untrusted_source_content=(
-                self.tools.tool_contains_untrusted_source_content(name)
+                tools.tool_contains_untrusted_source_content(name)
             )
         )
         try:
-            payload = self.tools.call_tool(
+            payload = tools.call_tool(
                 name,
                 arguments,
                 execution=execution,
@@ -305,17 +349,22 @@ class BeliefMCPServer:
             "_meta": {"belief/publication": publication},
         }
 
-    def _read_resource(self, params: Mapping[str, Any]) -> dict[str, Any]:
+    def _read_resource(
+        self,
+        params: Mapping[str, Any],
+        *,
+        tools: BeliefMCPTools,
+    ) -> dict[str, Any]:
         if set(params) - {"uri", "_meta"}:
             raise BeliefMCPError("resources/read accepts only the uri parameter")
         if "uri" not in params:
             raise BeliefMCPError("resources/read requires uri")
-        payload, mime_type = self.tools.read_resource(params["uri"])
+        payload, mime_type = tools.read_resource(params["uri"])
         uri = params["uri"]
         contains_untrusted = (
             isinstance(uri, str) and uri.startswith("belief://runs/")
         )
-        publication = self.tools.publication_metadata(
+        publication = tools.publication_metadata(
             contains_untrusted_source_content=contains_untrusted
         )
         return {
