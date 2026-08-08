@@ -103,6 +103,14 @@ def _arguments() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--acknowledge-scoped-credential",
+        action="store_true",
+        help=(
+            "Confirm the supplied API credential is benchmark-only, "
+            "revocable, spend-limited, and not a host OAuth session"
+        ),
+    )
+    parser.add_argument(
         "--runner",
         default=str(
             REPOSITORY_ROOT
@@ -152,6 +160,9 @@ def main() -> int:
             minimum_free_gib=args.minimum_free_gib,
             acknowledge_agent_network=bool(
                 args.acknowledge_agent_network
+            ),
+            acknowledge_scoped_credential=bool(
+                args.acknowledge_scoped_credential
             ),
             runner_path=Path(args.runner).resolve(),
         )

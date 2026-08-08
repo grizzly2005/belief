@@ -70,6 +70,14 @@ The transcript is also marked when it contains a policy indicator.
 The command hook is defense in depth, not a sandbox for arbitrary hostile
 code. The history-free workspace is the primary local anti-cheating boundary.
 
+BELIEF replaces the upstream persistent-container launch method without
+modifying the pinned SusVibes checkout. Agent containers use Docker bridge
+networking (model access remains possible), 4 CPUs, 8 GiB RAM with no extra
+swap, a 512-process ceiling, all Linux capabilities dropped,
+`no-new-privileges`, a bounded `/tmp`, and an init process. The only host mount
+is the isolated task workspace. Host networking and the Docker socket are not
+exposed.
+
 The harness deliberately does not reuse a Claude subscription session from the
 Windows host. Running the agent on the host would broaden its filesystem
 authority beyond the isolated task workspace, while copying or mounting OAuth
@@ -199,6 +207,7 @@ python scripts/preflight_susvibes_agent.py `
   --feedback-mode belief `
   --max-stop-blocks 1 `
   --acknowledge-agent-network `
+  --acknowledge-scoped-credential `
   --output F:\belief-rd\results\smoke-preflight-001.json
 ```
 
@@ -220,7 +229,8 @@ availability before execution.
 
 Real execution requires the verified manifest/cohort, a matching ready
 preflight report, both explicit flags (`--execute` and
-`--allow-agent-network`), an exact model identifier, an API credential in
+`--allow-agent-network`), an explicit scoped-credential confirmation, an exact
+model identifier, an API credential in
 `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, and an already-running Docker
 daemon:
 
@@ -237,7 +247,8 @@ python scripts/run_susvibes_belief_claude.py `
   --max-stop-blocks 1 `
   --num-instances 3 `
   --execute `
-  --allow-agent-network
+  --allow-agent-network `
+  --confirm-scoped-agent-credential
 ```
 
 Run each arm against its own matching report and result directory. Neither
@@ -250,6 +261,8 @@ The runner:
   evidence;
 - refuses a non-empty results directory;
 - executes tasks sequentially;
+- converts per-task timeouts and bounded runner failures into explicit,
+  redacted empty-patch submissions, then continues the frozen denominator;
 - injects credentials through container stdin into a mode-`0600` environment
   file rather than placing secrets in command arguments or logs;
 - pins the Claude Code CLI version;
@@ -262,6 +275,9 @@ The runner:
 
 Network acknowledgement is necessary because Docker may pull the task image,
 the CLI pin uses npm, and the agent calls the configured model API.
+The separate credential acknowledgement confirms that the supplied key/token
+is benchmark-only, revocable, spend-limited, and not a copied host OAuth
+session. The offline preflight cannot independently prove provider-side scope.
 
 ## Batch assembly
 
@@ -289,6 +305,15 @@ plan/result/prediction hash inconsistencies. `--allow-partial` exists only for
 explicitly incomplete diagnostics. Refusals, API retries, and suspected
 anti-cheating cases remain in the provenance; suspected cases are never
 silently dropped to improve a score.
+
+For v4 artifacts, the merger also accepts explicitly failed agent runs without
+pretending they succeeded. It requires consistent failure/timeout counts,
+permits an unobserved model identity only on a failed task, retains the empty
+prediction in cohort order, and rejects any observed model mismatch. Wall
+duration, provider duration, cost, tokens, turns, and patch bytes are
+aggregated without imputing missing provider accounting.
+The merger retains adapters for legacy v2 and v3 artifacts; new runs always
+emit v4.
 
 ## Official evaluation
 
