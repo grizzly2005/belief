@@ -103,13 +103,21 @@ pushed.
 ## Review and reproduction
 
 Reviewers should obtain the bundle named
-`belief-session-isolation-checkpoint.bundle`, run `git bundle verify`, confirm
-the advertised ref matches the commit recorded below, check out that branch,
-install the pinned project dependencies, and repeat the gates above.
+`belief-session-isolation-checkpoint.bundle`, run `git bundle verify`, check
+out the advertised branch, install the pinned project dependencies, and repeat
+the gates above.
 
-The bundle's identity is the commit it advertises, which `git bundle verify`
-prints, not a digest recorded elsewhere. A sidecar `.sha256` file ships beside
-the bundle for transport integrity only; it travels with the artifact and
-therefore authenticates nothing on its own.
+The bundle's identity is the annotated tag `v0.2.0`, which it carries alongside
+the branch and which `git bundle verify` prints. Anchoring on the tag rather
+than on a commit hash written into this file is deliberate: recording the hash
+here would change the commit and leave the recorded value describing the
+previous one, which is how the earlier checkpoint document came to name a
+commit five commits behind its own measurements.
+
+The tag message repeats the gate table, so a reviewer can compare the artifact
+against its claims without trusting this file.
+
+A sidecar `.sha256` file ships beside the bundle for transport integrity only.
+It travels with the artifact and therefore authenticates nothing on its own.
 
 The bundle is a local artifact and is not tracked in this repository.
