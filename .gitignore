@@ -42,6 +42,7 @@ belief_demo_video/
 # repository into itself. See BUNDLED_ASSETS.md for the vendored assets that
 # ARE tracked -- unrelated to these.
 *.bundle
+*.bundle.sha256
 
 .DS_Store
 Thumbs.db
