@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "belief-sec"
-version = "0.1.0"
+version = "0.2.0"
 description = "Belief Extraction and Logical Inference for Exploitable Flaws"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,6 +24,11 @@ multilang = [
     "tree-sitter-java>=0.23,<0.24",
     "tree-sitter-rust>=0.23,<0.24",
 ]
+web-validation = [
+    "Flask>=3.0,<4",
+    "fastapi>=0.115,<1",
+    "requests>=2.31,<3",
+]
 full = [
     "z3-solver>=4.12.0",
     "hypothesis>=6.0.0",
@@ -37,7 +42,7 @@ full = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "ruff>=0.1.0",
+    "ruff>=0.1.0,<0.16",
 ]
 
 [project.scripts]
@@ -51,6 +56,7 @@ include-package-data = true
 
 [tool.setuptools.package-data]
 belief = [
+    "python_source_classification.json",
     "security_rules/**/*",
     "tools_bundled/**/*",
 ]
@@ -83,7 +89,7 @@ exclude = [
 ignore = ["E401", "E402", "E701", "E702", "E741", "E731"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "tests_bridges"]
 markers = [
     "unit: fast local unit tests",
     "integration: local integration tests without external network",

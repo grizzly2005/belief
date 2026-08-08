@@ -103,26 +103,28 @@ def run_dlint(
 
 # Map DLint codes to severity/justification
 _DLINT_SEVERITY = {
-    "DUO101": ("HIGH", "C1"),    # yaml.load without Loader
-    "DUO102": ("HIGH", "C1"),    # random.* for security
-    "DUO103": ("HIGH", "C1"),    # pickle.loads
-    "DUO104": ("HIGH", "C1"),    # exec
-    "DUO105": ("HIGH", "C1"),    # compile() with user input
-    "DUO106": ("MED",  "C4"),    # bad zipfile use
-    "DUO107": ("MED",  "C4"),    # bad hashlib
-    "DUO111": ("MED",  "C4"),    # xml.etree
-    "DUO112": ("HIGH", "C1"),    # xml.sax
-    "DUO113": ("MED",  "C4"),    # xml.dom.minidom
-    "DUO116": ("HIGH", "C1"),    # shell=True
-    "DUO117": ("HIGH", "C1"),    # tempfile.mktemp
-    "DUO118": ("MED",  "C4"),    # compile regex flag
-    "DUO130": ("MED",  "C4"),    # redos
+    "DUO101": ("HIGH", "C2_STATICALLY_VERIFIED_PROPERTY"),  # yaml.load
+    "DUO102": ("HIGH", "C2_STATICALLY_VERIFIED_PROPERTY"),  # random.*
+    "DUO103": ("HIGH", "C2_STATICALLY_VERIFIED_PROPERTY"),  # pickle.loads
+    "DUO104": ("HIGH", "C2_STATICALLY_VERIFIED_PROPERTY"),  # exec
+    "DUO105": ("HIGH", "C2_STATICALLY_VERIFIED_PROPERTY"),  # compile()
+    "DUO106": ("MED", "C2_STATICALLY_VERIFIED_PROPERTY"),   # zipfile
+    "DUO107": ("MED", "C2_STATICALLY_VERIFIED_PROPERTY"),   # hashlib
+    "DUO111": ("MED", "C2_STATICALLY_VERIFIED_PROPERTY"),   # xml.etree
+    "DUO112": ("HIGH", "C2_STATICALLY_VERIFIED_PROPERTY"),  # xml.sax
+    "DUO113": ("MED", "C2_STATICALLY_VERIFIED_PROPERTY"),   # minidom
+    "DUO116": ("HIGH", "C2_STATICALLY_VERIFIED_PROPERTY"),  # shell=True
+    "DUO117": ("HIGH", "C2_STATICALLY_VERIFIED_PROPERTY"),  # mktemp
+    "DUO118": ("MED", "C2_STATICALLY_VERIFIED_PROPERTY"),   # regex
+    "DUO130": ("MED", "C2_STATICALLY_VERIFIED_PROPERTY"),   # redos
 }
 
 
 def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
     code = finding["code"]
-    sev, justif = _DLINT_SEVERITY.get(code, ("LOW", "C5"))
+    sev, justif = _DLINT_SEVERITY.get(
+        code, ("LOW", "C2_STATICALLY_VERIFIED_PROPERTY")
+    )
     return {
         "assumption": f"DLint {code} should not match: {finding['message']}",
         "anchor_file": finding["path"],

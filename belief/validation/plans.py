@@ -50,12 +50,21 @@ _WEB_CASES = {
 
 
 def build_validation_plan(case: Mapping[str, Any] | Any) -> ValidationPlan:
-    """Convert one AuditCase or serialized audit case into a safe plan."""
+    """Convert one audit case or explicit contract seed into a safe plan."""
 
     payload = _case_payload(case)
-    subject_id = clean_text(payload.get("case_id"))
+    subject_kind = clean_text(
+        payload.get("subject_kind")
+    ) or "audit_case"
+    subject_id = clean_text(
+        payload.get(
+            "seed_id"
+            if subject_kind == "validation_contract_seed"
+            else "case_id"
+        )
+    )
     if not subject_id:
-        raise ValueError("audit case is missing case_id")
+        raise ValueError("validation subject is missing its identifier")
 
     case_type = clean_text(payload.get("case_type")) or "unknown"
     status = clean_text(payload.get("status")) or "unknown"
@@ -64,6 +73,7 @@ def build_validation_plan(case: Mapping[str, Any] | Any) -> ValidationPlan:
         subject_id=subject_id,
         case_type=case_type,
         case_status=status,
+        subject_kind=subject_kind,
         strategy=spec["strategy"],
         objective=spec["objective"],
         priority=normalize_priority(payload.get("review_priority")),
@@ -105,7 +115,7 @@ def validation_result_from_plan(
     }
     return ValidationResult(
         subject_id=plan.subject_id,
-        subject_kind="audit_case",
+        subject_kind=plan.subject_kind,
         source=clean_text(source) or "validation_plan",
         outcome=normalized,
         confidence=confidence,
@@ -319,9 +329,20 @@ def _reachability(case: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _metadata(case: Mapping[str, Any]) -> dict[str, Any]:
+    contract_seed = (
+        case.get("subject_kind") == "validation_contract_seed"
+    )
     result: dict[str, Any] = {
-        "generator": "belief.evidence_guided_validation.v1",
-        "source_case_sha256": canonical_digest(dict(case)),
+        "generator": (
+            "belief.explicit_fixture_contract.v1"
+            if contract_seed
+            else "belief.evidence_guided_validation.v1"
+        ),
+        (
+            "source_seed_sha256"
+            if contract_seed
+            else "source_case_sha256"
+        ): canonical_digest(dict(case)),
         "human_next_steps": list(
             unique_strings(case.get("human_next_steps"))
         ),
@@ -331,6 +352,22 @@ def _metadata(case: Mapping[str, Any]) -> dict[str, Any]:
     fingerprint = clean_text(case.get("related_finding_fingerprint"))
     if fingerprint:
         result["related_finding_fingerprint"] = fingerprint
+    if contract_seed:
+        result["origin"] = clean_text(case.get("origin"))
+        result["static_support"] = case.get("static_support") is True
+        provenance = case.get("static_case_provenance")
+        if isinstance(provenance, Sequence) and not isinstance(
+            provenance,
+            (str, bytes),
+        ):
+            result["static_case_provenance"] = [
+                json_object(item)
+                for item in provenance
+                if isinstance(item, Mapping)
+            ]
+        result["validation_contract_seed_schema"] = str(
+            case.get("schema_version") or ""
+        )
     return result
 
 

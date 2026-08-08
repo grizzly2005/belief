@@ -18,8 +18,11 @@ from .susvibes import load_susvibes_cases
 from .susvibes_experiment import load_experiment_cohort
 
 
-SUSVIBES_PREFLIGHT_SCHEMA_VERSION = "belief.susvibes_agent_preflight.v2"
-_LEGACY_PREFLIGHT_SCHEMA_VERSION = "belief.susvibes_agent_preflight.v1"
+SUSVIBES_PREFLIGHT_SCHEMA_VERSION = "belief.susvibes_agent_preflight.v3"
+_LEGACY_PREFLIGHT_SCHEMA_VERSIONS = {
+    "belief.susvibes_agent_preflight.v1",
+    "belief.susvibes_agent_preflight.v2",
+}
 
 DockerProbe = Callable[[], tuple[bool, str]]
 DiskFreeProbe = Callable[[Path], int]
@@ -58,6 +61,7 @@ def run_susvibes_agent_preflight(
     max_stop_blocks: int = 1,
     minimum_free_gib: float | None = None,
     acknowledge_agent_network: bool = False,
+    acknowledge_scoped_credential: bool = False,
     environment: Mapping[str, str] | None = None,
     docker_probe: DockerProbe | None = None,
     disk_free_probe: DiskFreeProbe | None = None,
@@ -424,6 +428,21 @@ def run_susvibes_agent_preflight(
             ],
         },
     )
+    add(
+        "explicit_scoped_credential_acknowledgement",
+        bool(acknowledge_scoped_credential),
+        required=True,
+        evidence={
+            "acknowledged": bool(acknowledge_scoped_credential),
+            "scope_verified_by_offline_preflight": False,
+            "required_properties": [
+                "benchmark-only",
+                "revocable",
+                "spend-limited",
+                "not a host OAuth session",
+            ],
+        },
+    )
 
     add(
         "agent_runner_present",
@@ -483,6 +502,9 @@ def run_susvibes_agent_preflight(
             "claude_code_version": normalized_claude_version,
             "feedback_mode": normalized_feedback_mode,
             "max_stop_blocks": normalized_max_stop_blocks,
+            "scoped_credential_acknowledged": bool(
+                acknowledge_scoped_credential
+            ),
             "runner": str(runner),
             "runner_sha256": (
                 _file_sha256(runner, allowed_root=runner.parent)
@@ -542,6 +564,7 @@ def load_ready_susvibes_agent_preflight(
     runner_path: str | Path,
     feedback_mode: str = "belief",
     max_stop_blocks: int = 1,
+    scoped_credential_acknowledged: bool = False,
     max_report_age_seconds: int = _DEFAULT_MAX_REPORT_AGE_SECONDS,
 ) -> dict[str, Any]:
     """Verify a ready report and bind it to the current execution inputs."""
@@ -558,7 +581,7 @@ def load_ready_susvibes_agent_preflight(
     report_schema = payload.get("schema_version")
     if report_schema not in {
         SUSVIBES_PREFLIGHT_SCHEMA_VERSION,
-        _LEGACY_PREFLIGHT_SCHEMA_VERSION,
+        *_LEGACY_PREFLIGHT_SCHEMA_VERSIONS,
     }:
         raise ValueError("unsupported SusVibes preflight report schema")
     expected_digest = str(payload.get("report_digest") or "")
@@ -633,8 +656,12 @@ def load_ready_susvibes_agent_preflight(
     )
     if not feedback_configuration_valid:
         raise ValueError("SusVibes feedback configuration is invalid")
+    if not scoped_credential_acknowledged:
+        raise ValueError(
+            "SusVibes execution requires an explicitly scoped credential"
+        )
     if (
-        report_schema == _LEGACY_PREFLIGHT_SCHEMA_VERSION
+        report_schema == "belief.susvibes_agent_preflight.v1"
         and (
             normalized_feedback_mode != "belief"
             or normalized_max_stop_blocks != 1
@@ -696,11 +723,16 @@ def load_ready_susvibes_agent_preflight(
             allowed_root=runner.parent,
         ),
     }
-    if report_schema == SUSVIBES_PREFLIGHT_SCHEMA_VERSION:
+    if report_schema in {
+        SUSVIBES_PREFLIGHT_SCHEMA_VERSION,
+        "belief.susvibes_agent_preflight.v2",
+    }:
         expected_binding.update({
             "feedback_mode": normalized_feedback_mode,
             "max_stop_blocks": normalized_max_stop_blocks,
         })
+    if report_schema == SUSVIBES_PREFLIGHT_SCHEMA_VERSION:
+        expected_binding["scoped_credential_acknowledged"] = True
     binding = payload.get("binding")
     if not isinstance(binding, Mapping):
         raise ValueError("SusVibes preflight binding is missing")
@@ -746,6 +778,7 @@ def load_ready_susvibes_agent_preflight(
         "selected_instance_ids_sha256": _instance_ids_digest(execution_ids),
         "feedback_mode": normalized_feedback_mode,
         "max_stop_blocks": normalized_max_stop_blocks,
+        "scoped_credential_acknowledged": True,
     }
 
 

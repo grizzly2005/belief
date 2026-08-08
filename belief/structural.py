@@ -143,7 +143,7 @@ class StructuralExtractor:
                         ),
                     ),
                     scope=scope,
-                    justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                    justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                     epistemic_status=EpistemicStatus.BELIEF,
                     logic_type=LogicType.FOL,
                     confidence_score=0.95,  # high confidence: structural fact
@@ -172,7 +172,7 @@ class StructuralExtractor:
                                 ),
                             ),
                             scope=scope,
-                            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                             epistemic_status=EpistemicStatus.BELIEF,
                             logic_type=LogicType.FOL,
                             confidence_score=0.85,
@@ -207,7 +207,7 @@ class StructuralExtractor:
                                 ),
                             ),
                             scope=scope,
-                            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                             epistemic_status=EpistemicStatus.BELIEF,
                             logic_type=LogicType.FOL,
                             confidence_score=0.80,
@@ -243,7 +243,7 @@ class StructuralExtractor:
                                 ),
                             ),
                             scope=scope,
-                            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                             epistemic_status=EpistemicStatus.HOPE,
                             logic_type=LogicType.PROBABILISTIC,
                             confidence_score=0.90,
@@ -274,7 +274,7 @@ class StructuralExtractor:
                             ),
                         ),
                         scope=scope,
-                        justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                        justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                         epistemic_status=EpistemicStatus.BELIEF,
                         logic_type=LogicType.FOL,
                         confidence_score=0.92,
@@ -303,7 +303,7 @@ class StructuralExtractor:
                                     ),
                                 ),
                                 scope=scope,
-                                justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                                justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                                 epistemic_status=EpistemicStatus.BELIEF,
                                 logic_type=LogicType.INFORMATION_FLOW,
                                 confidence_score=0.75,
@@ -330,7 +330,7 @@ class StructuralExtractor:
                         ),
                     ),
                     scope=scope,
-                    justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                    justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                     epistemic_status=EpistemicStatus.BELIEF,
                     logic_type=LogicType.BEHAVIORAL,
                     confidence_score=0.95,
@@ -357,7 +357,7 @@ class StructuralExtractor:
                             ),
                         ),
                         scope=scope,
-                        justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                        justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                         epistemic_status=EpistemicStatus.HOPE,
                         logic_type=LogicType.BEHAVIORAL,
                         confidence_score=0.90,
@@ -382,7 +382,7 @@ class StructuralExtractor:
                                 ),
                             ),
                             scope=scope,
-                            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                             epistemic_status=EpistemicStatus.HOPE,
                             logic_type=LogicType.BEHAVIORAL,
                             confidence_score=0.85,
@@ -416,7 +416,7 @@ class StructuralExtractor:
                         ),
                     ),
                     scope=scope,
-                    justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                    justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                     epistemic_status=EpistemicStatus.BELIEF,
                     logic_type=LogicType.INFORMATION_FLOW,
                     confidence_score=0.80,
@@ -432,6 +432,11 @@ class StructuralExtractor:
         """Emit path-safety beliefs only for locally traceable external input."""
         beliefs = []
         tainted_vars = self._external_path_variables(node)
+        parents = {
+            id(child): parent
+            for parent in ast.walk(node)
+            for child in ast.iter_child_nodes(parent)
+        }
         path_sinks = {
             "open",
             "builtins.open",
@@ -446,6 +451,14 @@ class StructuralExtractor:
                 continue
             call_name = (self._get_call_name(child) or "").lower()
             if call_name not in path_sinks:
+                continue
+            parent = parents.get(id(child))
+            if (
+                call_name in {"path", "pathlib.path"}
+                and isinstance(parent, ast.Attribute)
+                and parent.value is child
+                and parent.attr == "name"
+            ):
                 continue
             source_arg = next(
                 (arg for arg in child.args if self._is_external_path_expr(arg, tainted_vars)),
@@ -465,7 +478,7 @@ class StructuralExtractor:
                     ),
                 ),
                 scope=scope,
-                justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                 epistemic_status=EpistemicStatus.BELIEF,
                 logic_type=LogicType.INFORMATION_FLOW,
                 confidence_score=0.78,
@@ -571,7 +584,7 @@ class StructuralExtractor:
                                 ),
                             ),
                             scope=scope,
-                            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                             epistemic_status=EpistemicStatus.BELIEF,
                             logic_type=LogicType.FOL,
                             confidence_score=0.82,
@@ -604,7 +617,7 @@ class StructuralExtractor:
                                 ),
                             ),
                             scope=scope,
-                            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                             epistemic_status=EpistemicStatus.HOPE,
                             logic_type=LogicType.TEMPORAL,
                             confidence_score=0.88,
@@ -629,7 +642,7 @@ class StructuralExtractor:
                             ),
                         ),
                         scope=scope,
-                        justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                        justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                         epistemic_status=EpistemicStatus.BELIEF,
                         logic_type=LogicType.TEMPORAL,
                         confidence_score=0.85,
@@ -659,7 +672,7 @@ class StructuralExtractor:
                                         ),
                                     ),
                                     scope=scope,
-                                    justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                                    justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                                     epistemic_status=EpistemicStatus.BELIEF,
                                     logic_type=LogicType.FOL,
                                     confidence_score=0.93,

@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from belief.json_contracts import load_json_file
 from belief.tools.schemas import AccessObservation, NormalizedToolResult
 
 
 def import_arjun_json(path: str | Path) -> NormalizedToolResult:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = load_json_file(path)
     observations = arjun_payload_to_observations(payload)
     return NormalizedToolResult(tool_id="arjun", access_observations=observations, raw={"payload": payload})
 

@@ -142,7 +142,7 @@ class SelfAnalyzer:
         result.total_beliefs = len(all_beliefs)
         result.unjustified_beliefs = sum(
             1 for b in all_beliefs
-            if b.justification == JustificationCategory.C5_NO_JUSTIFICATION
+            if b.justification == JustificationCategory.C6_UNSUPPORTED_ASSUMPTION
         )
 
         # Calculate own cognitive debt

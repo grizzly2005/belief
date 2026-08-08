@@ -328,6 +328,8 @@ def test_bypass_summary_requires_failed_security_oracle():
         expected="baseline works",
         actual={"decision": "read"},
         baseline=True,
+        oracle_role="functional_baseline",
+        required_for_conclusion=True,
         oracle_evaluated=True,
         oracle_passed=True,
     )
@@ -677,9 +679,16 @@ def test_result_bundle_metrics_cover_required_counts():
         "baseline_pass_count": 2,
         "baseline_failure_count": 0,
         "baseline_not_evaluated_count": 0,
-        "oracle_evaluated_count": oracle_evaluated_count,
-        "plans_with_evaluated_oracle_count": 2,
-        "evidence_gap_resolution_rate": 1.0,
+            "oracle_evaluated_count": oracle_evaluated_count,
+            "plans_with_evaluated_oracle_count": 2,
+            "primary_oracle_evaluated_count": sum(
+                result["metadata"][
+                    "primary_oracle_evaluated_count"
+                ]
+                for result in payload["results"]
+            ),
+            "conclusive_plan_count": 2,
+            "evidence_gap_resolution_rate": 1.0,
         "protected_regression_count": 0,
         "deterministic_cost_units": metrics[
             "deterministic_cost_units"
@@ -816,7 +825,7 @@ def test_documented_chain_example_preserves_all_contract_links():
 
     assert context.validation_plan_id == plan.plan_id
     assert context.expected_plan_digest == canonical_digest(
-        plan.to_dict()
+        example["validation_plan"]
     )
     assert result.subject_id == plan.subject_id
     assert result.metadata["validation_plan_id"] == plan.plan_id

@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Python 3.11
+  ubuntu-py311-full:
+    name: Ubuntu Python 3.11 - full
     runs-on: ubuntu-latest
 
     steps:
@@ -26,15 +26,93 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,z3]"
+          python -m pip install -e ".[dev,z3,web-validation]"
 
       - name: CLI smoke
         run: |
           python -m belief --help
           python -m belief scan --help
 
+      - name: Python source classification
+        run: python -m belief.source_classification --root .
+
       - name: Security regressions
         run: python -m pytest -q -m security
 
       - name: Local test suite
         run: python -m pytest -q -m "not slow and not external and not llm"
+
+      - name: Quality gates
+        run: |
+          python -m ruff check belief tests tests_bridges
+          python -m pip check
+          git diff --check
+
+  ubuntu-py312-core:
+    name: Ubuntu Python 3.12 - targeted core
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,z3,web-validation]"
+
+      - name: Targeted core regressions
+        run: >-
+          python -m pytest -q
+          tests/test_evidence_policy.py
+          tests/test_validation_plans.py
+          tests/test_isolated_web_worker_contracts.py
+          tests/test_mcp_dynamic_validation.py
+          tests/test_mcp_authorized_project_pilot.py
+          tests/test_mcp_session_isolation.py
+          tests/test_source_classification.py
+          tests/test_research_experiment_classification.py
+
+      - name: Python source classification
+        run: python -m belief.source_classification --root .
+
+  windows-py311-worker-mcp-security:
+    name: Windows Python 3.11 - worker, MCP, security
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,z3,web-validation]"
+
+      - name: Worker and MCP regressions
+        run: >-
+          python -m pytest -q
+          tests/test_evidence_policy.py
+          tests/test_isolated_web_validation.py
+          tests/test_isolated_web_worker_contracts.py
+          tests/test_isolated_web_worker_safety.py
+          tests/test_isolated_web_worker_adversarial.py
+          tests/test_mcp_server.py
+          tests/test_mcp_dynamic_validation.py
+          tests/test_mcp_authorized_project_pilot.py
+          tests/test_mcp_session_isolation.py
+
+      - name: Security regressions
+        run: python -m pytest -q -m security

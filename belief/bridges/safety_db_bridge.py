@@ -223,7 +223,7 @@ def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
         "anchor_file": finding["source_file"],
         "anchor_line": 1,
         "anchor_line_end": 1,
-        "justification_type": "C3",     # unstated prior
+        "justification_type": "C5_DOCUMENTED_CONVENTION",
         "contextual_constraint": f"CVE={finding.get('cve')}, spec={finding['matched_spec']}",
         "trust_domain": "supply_chain",
         "logic_type": "semantic",

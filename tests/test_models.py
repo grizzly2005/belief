@@ -1,15 +1,29 @@
 """Tests for BELIEF core models and logic."""
 
+import pytest
 
+from belief.predicate_logic import PredicateLogicError
 from belief.models import (
     AnalysisReport,
     Belief,
     EpistemicStatus,
     JustificationCategory,
     LogicType,
+    ModelContractError,
     Predicate,
     Scope,
 )
+
+
+def _proof_artifact() -> dict:
+    return {
+        "schema_version": "belief.proof_artifact.v1",
+        "verifier": "test-verifier",
+        "verification_status": "proven",
+        "replay_recipe": "pytest tests/test_models.py",
+        "artifact_digest": "a" * 64,
+        "source_digest": "b" * 64,
+    }
 
 
 # ─── Predicate ───
@@ -43,9 +57,10 @@ class TestPredicate:
         p = Predicate(expression="not active")
         assert p.negation() == "active"
 
-    def test_negation_fallback(self):
+    def test_negation_abstains_on_unmodeled_call(self):
         p = Predicate(expression="some_complex_thing()")
-        assert p.negation() == "not (some_complex_thing())"
+        with pytest.raises(PredicateLogicError):
+            p.negation()
 
 
 # ─── Scope ───
@@ -92,7 +107,7 @@ class TestBelief:
         defaults = dict(
             predicate=Predicate(expression="x <= 10", variables=("x",)),
             scope=Scope(file_path="test.py", function_name="func"),
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         )
         defaults.update(kwargs)
         return Belief(**defaults)
@@ -101,28 +116,35 @@ class TestBelief:
         b = self._make_belief()
         assert len(b.id) == 12
 
-    def test_fragility_c5_belief(self):
+    def test_fragility_unsupported_belief(self):
         b = self._make_belief(
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
             epistemic_status=EpistemicStatus.BELIEF,
             confidence_score=0.5,
         )
-        # C5 weight = (1 - 0.2) * 0.4 = 0.32
+        # C6 weight = (1 - 0.1) * 0.4 = 0.36
         # belief weight = 0.3 * 0.3 = 0.09
         # confidence weight = (1 - 0.5) * 0.3 = 0.15
-        assert 0.5 < b.fragility < 0.6
+        assert 0.59 < b.fragility < 0.61
 
-    def test_fragility_c1_belief(self):
+    def test_fragility_c1_belief_requires_replayable_proof(self):
         b = self._make_belief(
-            justification=JustificationCategory.C1_FORMAL_VERIFICATION,
+            justification=JustificationCategory.C1_MECHANICALLY_PROVEN,
             epistemic_status=EpistemicStatus.BELIEF,
             confidence_score=0.9,
+            source_metadata={"proof_artifact": _proof_artifact()},
         )
         assert b.fragility < 0.2  # very solid
 
+    def test_c1_without_proof_artifact_is_rejected(self):
+        with pytest.raises(ModelContractError, match="proof_artifact"):
+            self._make_belief(
+                justification=JustificationCategory.C1_MECHANICALLY_PROVEN,
+            )
+
     def test_fragility_c6_unknown(self):
         b = self._make_belief(
-            justification=JustificationCategory.C6_OPAQUE_INFERENCE,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
             epistemic_status=EpistemicStatus.UNKNOWN,
             confidence_score=0.2,
         )
@@ -136,7 +158,7 @@ class TestBelief:
                 anchor_lines=(42, 43),
                 natural_language="Buffer is large enough",
             ),
-            justification=JustificationCategory.C3_DOCUMENTED_CONVENTION,
+            justification=JustificationCategory.C5_DOCUMENTED_CONVENTION,
             logic_type=LogicType.FOL,
             epistemic_status=EpistemicStatus.HOPE,
             confidence_score=0.75,
@@ -162,10 +184,10 @@ class TestJustificationCategory:
         assert scores[0] > scores[-1]
 
     def test_c1_is_strongest(self):
-        assert JustificationCategory.C1_FORMAL_VERIFICATION.robustness_score == 1.0
+        assert JustificationCategory.C1_MECHANICALLY_PROVEN.robustness_score == 1.0
 
     def test_c6_is_weakest(self):
-        assert JustificationCategory.C6_OPAQUE_INFERENCE.robustness_score == 0.1
+        assert JustificationCategory.C6_UNSUPPORTED_ASSUMPTION.robustness_score == 0.1
 
 
 # ─── AnalysisReport ───
@@ -176,7 +198,7 @@ class TestAnalysisReport:
             Belief(
                 predicate=Predicate(expression=f"x{i} > 0"),
                 scope=Scope(file_path="t.py"),
-                justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
             )
             for i in range(10)
         ]
@@ -188,7 +210,7 @@ class TestAnalysisReport:
             Belief(
                 predicate=Predicate(expression=f"x{i} > 0"),
                 scope=Scope(file_path="t.py"),
-                justification=JustificationCategory.C1_FORMAL_VERIFICATION,
+                justification=JustificationCategory.C2_STATICALLY_VERIFIED_PROPERTY,
             )
             for i in range(10)
         ]
@@ -200,12 +222,12 @@ class TestAnalysisReport:
             Belief(
                 predicate=Predicate(expression="a > 0"),
                 scope=Scope(file_path="t.py"),
-                justification=JustificationCategory.C1_FORMAL_VERIFICATION,
+                justification=JustificationCategory.C2_STATICALLY_VERIFIED_PROPERTY,
             ),
             Belief(
                 predicate=Predicate(expression="b > 0"),
                 scope=Scope(file_path="t.py"),
-                justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
             ),
         ]
         report = AnalysisReport(project_name="test", beliefs=beliefs)
@@ -216,23 +238,23 @@ class TestAnalysisReport:
             Belief(
                 predicate=Predicate(expression="x > 0"),
                 scope=Scope(file_path="t.py"),
-                justification=JustificationCategory.C1_FORMAL_VERIFICATION,
+                justification=JustificationCategory.C2_STATICALLY_VERIFIED_PROPERTY,
             ),
             Belief(
                 predicate=Predicate(expression="y > 0"),
                 scope=Scope(file_path="t.py"),
-                justification=JustificationCategory.C1_FORMAL_VERIFICATION,
+                justification=JustificationCategory.C2_STATICALLY_VERIFIED_PROPERTY,
             ),
             Belief(
                 predicate=Predicate(expression="z > 0"),
                 scope=Scope(file_path="t.py"),
-                justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
             ),
         ]
         report = AnalysisReport(project_name="test", beliefs=beliefs)
         health = report.epistemic_health
-        assert health["C1"]["count"] == 2
-        assert health["C5"]["count"] == 1
+        assert health["C2"]["count"] == 2
+        assert health["C6"]["count"] == 1
 
     def test_save_and_load(self, tmp_path):
         beliefs = [
@@ -243,7 +265,7 @@ class TestAnalysisReport:
                     natural_language="x is positive",
                 ),
                 scope=Scope(file_path="t.py", function_name="f"),
-                justification=JustificationCategory.C3_DOCUMENTED_CONVENTION,
+                justification=JustificationCategory.C5_DOCUMENTED_CONVENTION,
             )
         ]
         report = AnalysisReport(project_name="test_proj", beliefs=beliefs)

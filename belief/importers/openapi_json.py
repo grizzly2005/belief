@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from belief.json_contracts import load_json_file
 from belief.tools.schemas import AccessObservation
 
 
@@ -13,7 +13,7 @@ HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 
 def import_openapi_json(path: str | Path) -> list[AccessObservation]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = load_json_file(path)
     return openapi_payload_to_access_observations(payload)
 
 

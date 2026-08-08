@@ -89,15 +89,48 @@ This flow is local and deterministic. It does not call LLM APIs, model servers, 
 
 ## Local MCP for Codex
 
-BELIEF includes an experimental, read-first local MCP facade:
+BELIEF includes an experimental, fixture-bound local MCP facade:
 
 ```bash
 python -m belief.mcp.server
 ```
 
-It exposes status, confined static scans, `AuditCase` retrieval and explanation, non-executing validation-plan generation, run comparison, and the transparent local validation benchmark. Runs remain in memory. The MCP surface has no network, subprocess, shell, Docker, arbitrary adapter, target-write, dynamic-validation, or SusVibes holdout capability.
+It exposes status, confined static scans, `AuditCase` retrieval and explanation,
+validation-plan generation, run comparison, the transparent local benchmark,
+and local execution only for plans prepared from and exactly bound to
+first-party registered fixtures. Arbitrary project plans remain non-executable.
+Runs and bounded projected results remain in memory. The MCP surface has no
+live network target, target process, shell, Docker, caller-controlled import,
+arbitrary adapter, target-workspace write, target-confirmation, or SusVibes
+holdout capability. It does spawn one bounded worker process, performs
+allowlisted framework imports, and writes temporary fixture state.
 
-See [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md) for the Codex configuration, resources, exact tool contracts, and security boundary.
+See [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md) for the Codex configuration,
+resources, exact tool contracts, and security boundary, and
+[`docs/MCP_DYNAMIC_VALIDATION_SECURITY.md`](docs/MCP_DYNAMIC_VALIDATION_SECURITY.md)
+for the trusted-binding, cancellation, storage, and human-confirmation model.
+
+---
+
+## C Exploration Objective Research Pilot
+
+The separate Duck-oriented research pilot projects only explicit C
+reachability hints from a `ValidationPlan` into a deterministic
+`ExplorationObjective`, renders a manual function-scope C fragment, and
+strictly imports objective-bound path artifacts. It preserves the
+`supported` / `refuted` / `inconclusive` distinction and never turns a
+plausible path into vulnerability confirmation.
+
+Run its closed three-case synthetic contract benchmark:
+
+```powershell
+python scripts/benchmark_exploration_objective.py `
+  --output out/exploration-objective-pilot.json
+```
+
+The pilot does not execute Duck, an LLM, a compiler, a subprocess, or external
+project code. Exact Duck wire-format compatibility is not claimed. See
+[`docs/DUCK_PATH_OBJECTIVE_PILOT.md`](docs/DUCK_PATH_OBJECTIVE_PILOT.md).
 
 ---
 
@@ -232,6 +265,66 @@ Agent Security League score. The static-corpus
 [`preflight result`](docs/PATCHEVAL_VERIFIED_RESULT.md) was negative: all 70
 Python records lacked the preregistered canonical-patch URL, so no threshold
 was relaxed and no static case was consumed.
+
+A new independent
+[`transparent web-validation protocol`](docs/WEB_VALIDATION_GENERALIZATION_PROTOCOL.md)
+therefore freezes 48 synthetic Flask/FastAPI cases by complete template
+family. The public development cohort contains 32 cases; 16 reserved case IDs
+are bound only by preregistration digests, with no reserved source or outcome
+committed. This scaffold is create-only, opens no SusVibes artifact, executes
+no target code, and is not `SecPass`-comparable.
+
+Its static runner is closed over that exact bundled development corpus and
+accepts no arbitrary source path, module, callable, or execution target. The
+runner performs two deterministic offline scans, generates unbound
+`ValidationPlan` summaries, and refuses to overwrite its result:
+
+```bash
+python scripts/run_web_validation_development.py \
+  --output benchmark_web_validation_results/development-static.json
+```
+
+Executable-plan coverage, runtime outcomes, and cross-platform agreement
+remain explicitly unmeasured at this stage.
+
+The frozen first
+[`development result`](docs/WEB_VALIDATION_GENERALIZATION_RESULT.md) is
+negative: static precision and recall are both `0.0`. It is retained as the
+pre-tuning baseline; the reserved cohort remains sealed.
+
+The separately versioned
+[`v2 development result`](docs/WEB_VALIDATION_GENERALIZATION_RESULT_V2.md)
+passes the measured static gates at `1.0` precision and `1.0` recall after
+public-cohort tuning. It is not an unseen holdout result, and all runtime,
+executable-plan, and cross-platform gates remain unmeasured.
+
+The separate
+[`CyberSecEval 4 Python static preflight`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_PROTOCOL.md)
+binds Meta's public `instruct-v2.json` to one upstream revision and SHA-256.
+It analyzes only the 282 Python `origin_code` snippets, never imports or
+executes them, and requires explicit public-external-code acknowledgement.
+The immutable v1 baseline reached only `0.124113` evaluability and `0.060284`
+target-pattern sensitivity. The preregistered
+[`v2 recovery result`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V2.md)
+raises those public-development diagnostics to `0.975177` and `0.719858`,
+respectively, with `0.024823` abstention and identical repeated digests:
+
+```powershell
+python scripts/run_cyberseceval_static_preflight_v2.py `
+  --dataset C:\path\to\instruct-v2.json `
+  --output benchmark_cyberseceval_results\python-instruct-v2-static-v2.json `
+  --belief-revision <full-lowercase-git-sha> `
+  --acknowledge-external-public-code
+```
+
+This corpus is positive-only and was used for public development. It has no
+safe controls or functional oracles, so the result is not precision, official
+CyberSecEval pass rate, `SecPass`, an unseen holdout, or evidence that BELIEF
+outperforms Fable 5 or Kimi. The preserved
+[`v1 result`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V1.md) and
+[`v2 protocol`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_V2_PROTOCOL.md) document
+the negative baseline, recovery bounds, independent controls, and remaining
+CWE-338/CWE-798 blind spots.
 
 ---
 
@@ -511,6 +604,12 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev,z3]"  # Windows PowerShell
 ```
 
+Install the optional Flask/FastAPI worker fixtures when needed:
+
+```bash
+.venv\Scripts\python -m pip install -e ".[dev,web-validation]"
+```
+
 The static CLI can be imported and run from source without `httpx`; LLM-backed
 `analyze` requires that transport dependency in the active environment.
 
@@ -576,6 +675,39 @@ isolated, and BELIEF does not attest its network, process, shell, Docker, or
 dynamic-import behavior. See
 [`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md).
 
+### Isolated Web Validation Worker
+
+BELIEF also provides a spawn-only worker for eight registered Flask and
+FastAPI path-traversal and IDOR/BOLA fixtures. It uses Flask `test_client()` or
+a direct local ASGI transport; it never starts a real server or accepts a URL,
+port, module, callable, command, or fixture path from the caller.
+
+The v3 worker requires canonical duplicate-free bounded JSON. The parent owns
+an outer temporary container and fixed child root, replaces the child
+environment with an allowlist, applies resource limits before preparation, and
+confines both fixture preparation and execution. It blocks reviewed
+network/process and filesystem escape APIs, captures bounded stdout/stderr,
+supports cancellation, and separately binds evidence, runtime attestation, and
+the full response. Crashes, timeouts, cancellations, policy violations, and
+missing optional frameworks remain explicit `inconclusive` results. This is an
+isolated process with Python-level controls, not a secure operating-system
+sandbox.
+
+See
+[`docs/ISOLATED_WEB_VALIDATION_WORKER.md`](docs/ISOLATED_WEB_VALIDATION_WORKER.md)
+for the protocol, registry, platform boundary, Python API, and limitations, and
+[`docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md`](docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md)
+for the independent threat model and confirmed defects.
+The MCP v0.2 surface may execute only an exact registered-fixture plan. Fixture
+IDs are opaque, each behavior has a distinct fixed source module, and
+evaluator-only outcome labels are excluded from scanned/executed sources. MCP
+keeps synthetic `ValidationContractSeed` objects separate from real
+`AuditCase` objects: a seed alone can reach only `contract_prepared`, never
+`statically_supported`. Results are scoped to
+`registered_transparent_fixture_only`, set
+`target_vulnerability_confirmed=false`, and require human confirmation. MCP
+does not validate arbitrary Flask or FastAPI projects.
+
 Run the separate eight-case local experiment:
 
 ```bash
@@ -599,9 +731,20 @@ The authoritative regression baseline is reported by the latest successful
 GitHub Actions CI run. Exact counts may vary by platform, Python version, and
 optional dependencies.
 
+The local mega-solidification review boundary, validation record, and explicit
+non-claims are frozen in
+[`docs/MEGA_SOLIDIFICATION_CHECKPOINT.md`](docs/MEGA_SOLIDIFICATION_CHECKPOINT.md).
+
 `ruff check belief tests` covers first-party code and test fixtures. Bundled
 compatibility assets, third-party rule data, and real-world snippets are kept
 outside that lint target so upstream syntax and provenance remain intact.
+The separate `python -m belief.source_classification --root .` gate compiles
+every non-classified Python source under the declared `belief/` package root
+while allowing only the exact, digest-pinned historical Z3 Python 2 inventory
+as classified non-runtime reference assets. It does not claim compilation
+coverage for root files, `scripts/`, or `tests/`, and its declarative
+`execution = forbidden` policy is not technical execution prevention. See
+[`docs/PYTHON_SOURCE_CLASSIFICATION.md`](docs/PYTHON_SOURCE_CLASSIFICATION.md).
 
 ---
 
@@ -665,6 +808,7 @@ The main regression commands are:
 python -m pytest -q
 python -m pytest -q -m security
 python -m pytest -q -m "not slow and not external and not llm"
+python -m belief.source_classification --root .
 ```
 
 The project also includes bridge tests, access-model tests, dataset tests, reasoning tests, feedback tests, and benchmark tests.
@@ -693,7 +837,9 @@ belief/validation/
   Generic validation result models and PDX verdict adaptation.
 
 belief/mcp/
-  Experimental local stdio MCP facade, public contracts, and read-first tools.
+  Experimental local stdio MCP facade, trusted fixture bindings, bounded
+  cancellation-aware execution, one exact-source abstaining real-project
+  pilot, public contracts, and in-memory resources.
 
 belief/reasoning/
   Deterministic offline reasoning models, router, and rule-based engine.
@@ -727,6 +873,12 @@ benchmark_reportability/
 
 benchmark_susvibes/
   Pinned provenance and protocols for static pairs, candidate review, and the agent harness.
+
+benchmark_cyberseceval/
+  Exact upstream binding and frozen positive-only static preflight protocols.
+
+benchmark_cyberseceval_results/
+  Immutable, digest-bound CyberSecEval static preflight result artifacts.
 
 schemas/
   Documentation-only JSON schemas for BELIEF data formats.
@@ -763,10 +915,21 @@ pyproject.toml
 - [`docs/PDX_BELIEF_INTEGRATION.md`](docs/PDX_BELIEF_INTEGRATION.md)
 - [`docs/TOOL_BRIDGES.md`](docs/TOOL_BRIDGES.md)
 - [`docs/MCP_SERVER.md`](docs/MCP_SERVER.md)
+- [`docs/MCP_DYNAMIC_VALIDATION_SECURITY.md`](docs/MCP_DYNAMIC_VALIDATION_SECURITY.md)
+- [`docs/DUCK_PATH_OBJECTIVE_PILOT.md`](docs/DUCK_PATH_OBJECTIVE_PILOT.md)
+- [`docs/AUTHORIZED_PROJECT_PILOT.md`](docs/AUTHORIZED_PROJECT_PILOT.md)
+- [`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md)
+- [`docs/PYTHON_SOURCE_CLASSIFICATION.md`](docs/PYTHON_SOURCE_CLASSIFICATION.md)
+- [`docs/MEGA_SOLIDIFICATION_CHECKPOINT.md`](docs/MEGA_SOLIDIFICATION_CHECKPOINT.md)
+- [`docs/ISOLATED_WEB_VALIDATION_WORKER.md`](docs/ISOLATED_WEB_VALIDATION_WORKER.md)
 - [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md)
 - [`benchmark_reportability/README.md`](benchmark_reportability/README.md)
 - [`benchmark_susvibes/README.md`](benchmark_susvibes/README.md)
 - [`benchmark_susvibes/AGENT_HARNESS.md`](benchmark_susvibes/AGENT_HARNESS.md)
+- [`docs/CYBERSECEVAL_STATIC_PREFLIGHT_PROTOCOL.md`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_PROTOCOL.md)
+- [`docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V1.md`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V1.md)
+- [`docs/CYBERSECEVAL_STATIC_PREFLIGHT_V2_PROTOCOL.md`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_V2_PROTOCOL.md)
+- [`docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V2.md`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V2.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md)
 

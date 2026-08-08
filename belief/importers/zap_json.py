@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from belief.json_contracts import load_json_file
 from belief.tools.schemas import ExternalFinding
 
 
 def import_zap_json(path: str | Path) -> list[ExternalFinding]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = load_json_file(path)
     return zap_payload_to_findings(payload)
 
 

@@ -37,6 +37,13 @@ belief_demo_video/
 *.tar.gz
 *.7z
 
+# Local git bundles used as offline branch checkpoints. Their contents are
+# already reachable through normal history; tracking them would commit the
+# repository into itself. See BUNDLED_ASSETS.md for the vendored assets that
+# ARE tracked -- unrelated to these.
+*.bundle
+*.bundle.sha256
+
 .DS_Store
 Thumbs.db
 .vscode/

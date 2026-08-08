@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from belief.json_contracts import load_json_file
 from belief.tools.schemas import ExternalFinding, NormalizedToolResult
 
 
 def import_pip_audit_json(path: str | Path) -> NormalizedToolResult:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = load_json_file(path)
     dependencies = payload.get("dependencies", []) if isinstance(payload, dict) else []
     findings = []
     for dep in dependencies if isinstance(dependencies, list) else []:

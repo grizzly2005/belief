@@ -14,7 +14,7 @@ Reason: keeps Bandit's ~20 dependencies out of BELIEF's env.
 Mapping to BELIEF sextuplet:
   assumption   ← f"{test_name} should not match at {location}"
   anchor_point ← (file, line)
-  justification_type ← C1 (enforced if severity=HIGH) or C5
+  justification_type ← C2_STATICALLY_VERIFIED_PROPERTY
   contextual_constraint ← bandit's test_id + severity + confidence
   trust_domain ← file's module
   logic_type   ← 'semantic' (pre-LLM, not Z3-translatable directly)
@@ -45,6 +45,49 @@ def is_installed() -> bool:
     return shutil.which("bandit") is not None
 
 
+# Bandit test IDs that carry no triage signal for BELIEF.
+#
+# Two families qualify, and only these two:
+#
+#   * the whole B4xx "blacklist imports" family — an import is a module
+#     reference, not a data flow. Bandit already reports the *use* of the same
+#     dangerous API under a separate ID (B403 import_pickle vs B301 pickle,
+#     B405-B411 import_xml_* vs B313-B320 xml_bad_*), so keeping the import
+#     variant duplicates a finding BELIEF cannot anchor to a source or sink;
+#   * three control-flow hygiene checks that describe style, not a weakness.
+#
+# Deliberately NOT informational: B603 and B607. They are noisy, but they are
+# call sites with a real CWE-78 mapping, so dropping them would remove
+# candidate sinks rather than noise.
+BANDIT_INFORMATIONAL_TEST_IDS = frozenset({
+    # Control-flow hygiene — no weakness on its own.
+    "B101",  # assert_used
+    "B110",  # try_except_pass
+    "B112",  # try_except_continue
+    # Blacklisted imports — reference only, never an anchored flow.
+    "B401",  # import_telnetlib
+    "B402",  # import_ftplib
+    "B403",  # import_pickle
+    "B404",  # import_subprocess
+    "B405",  # import_xml_etree
+    "B406",  # import_xml_sax
+    "B407",  # import_xml_expat
+    "B408",  # import_xml_minidom
+    "B409",  # import_xml_pulldom
+    "B410",  # import_lxml
+    "B411",  # import_xmlrpclib
+    "B412",  # import_httpoxy
+    "B413",  # import_pycrypto
+    "B414",  # import_pycryptodome
+    "B415",  # import_pyghmi
+})
+
+
+def is_informational(finding: Dict[str, Any]) -> bool:
+    """True when a Bandit finding is not relevant to BELIEF triage."""
+    return str(finding.get("test_id", "")) in BANDIT_INFORMATIONAL_TEST_IDS
+
+
 def _project_hash(project_path: str) -> str:
     """Stable hash of all .py files' mtimes+sizes. Invalidates cache on any change."""
     p = Path(project_path)
@@ -58,6 +101,30 @@ def _project_hash(project_path: str) -> str:
     return hashlib.sha256("\n".join(sig_parts).encode()).hexdigest()[:16]
 
 
+def _apply_informational_filter(
+    result: BridgeResult,
+    drop_informational: bool,
+) -> None:
+    """Record, and optionally remove, findings with no triage signal.
+
+    The disk cache always holds Bandit's raw output, so the same cache entry
+    stays correct under either setting.
+    """
+    dropped = [f for f in result.findings if is_informational(f)]
+    result.metadata["informational_available"] = len(dropped)
+    result.metadata["informational_dropped"] = len(dropped) if drop_informational else 0
+    result.metadata["informational_test_ids"] = sorted(
+        {str(f.get("test_id", "")) for f in dropped}
+    )
+    if drop_informational and dropped:
+        result.findings = [f for f in result.findings if not is_informational(f)]
+        logger.info(
+            "bandit: dropped %d informational finding(s) (%s)",
+            len(dropped),
+            ", ".join(result.metadata["informational_test_ids"]),
+        )
+
+
 def run_bandit(
     project_path: str,
     *,
@@ -65,10 +132,18 @@ def run_bandit(
     confidence: str = "low",
     exclude: Optional[List[str]] = None,
     use_cache: bool = True,
+    drop_informational: bool = True,
 ) -> BridgeResult:
     """Run bandit, return BridgeResult.
 
     Subprocess-based. Falls back gracefully if bandit isn't installed.
+
+    `drop_informational` removes the test IDs listed in
+    `BANDIT_INFORMATIONAL_TEST_IDS` before the findings reach triage. It is on
+    by default: those IDs are import references and style checks that BELIEF
+    cannot anchor to a source or a sink. Pass False to obtain Bandit's raw
+    finding set — required when reproducing a measurement recorded before this
+    filter existed.
     """
     t0 = time.time()
     result = BridgeResult(source="bandit")
@@ -95,6 +170,7 @@ def run_bandit(
             data = json.loads(cache_file.read_text())
             result.findings = data.get("results", [])
             result.cache_hit = True
+            _apply_informational_filter(result, drop_informational)
             result.elapsed_s = time.time() - t0
             logger.info(f"bandit cache hit: {len(result.findings)} findings")
             return result
@@ -137,6 +213,7 @@ def run_bandit(
     except Exception as e:
         result.errors.append(f"bandit subprocess failed: {type(e).__name__}: {e}")
 
+    _apply_informational_filter(result, drop_informational)
     result.elapsed_s = time.time() - t0
     logger.info(f"bandit: {len(result.findings)} findings in {result.elapsed_s:.1f}s")
     return result
@@ -160,13 +237,9 @@ def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
     filename = finding.get("filename", "<unknown>")
     line = finding.get("line_number", 0)
 
-    # Severity → justification type (more severe = stronger enforcement claim)
-    if severity == "HIGH" and confidence == "HIGH":
-        justif = "C1"       # enforced at runtime (often raise/abort)
-    elif severity in ("HIGH", "MEDIUM"):
-        justif = "C4"       # enforced by check but weak
-    else:
-        justif = "C5"       # pure convention
+    # Severity and evidentiary support are separate axes.  This bridge emits a
+    # concrete static rule match, never a source-bound mechanical proof.
+    justif = "C2_STATICALLY_VERIFIED_PROPERTY"
 
     # Trust domain = module path
     trust_domain = Path(filename).stem
@@ -213,7 +286,7 @@ def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
         "B507": "CWE-295",  # ssh_no_host_key_verification
         "B601": "CWE-78",   # paramiko_calls
         "B602": "CWE-78",   # subprocess_popen_with_shell_equals_true
-        "B603": "CWE-78",   # subprocess_without_shell_equals_true (informational)
+        "B603": "CWE-78",   # subprocess_without_shell_equals_true (noisy, kept: real sink)
         "B604": "CWE-78",   # any_other_function_with_shell_equals_true
         "B605": "CWE-78",   # start_process_with_a_shell
         "B606": "CWE-78",   # start_process_with_no_shell
@@ -245,6 +318,9 @@ def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
         "logic_type": "semantic",
         "source": "bandit",
         "cwe": cwe,     # v4 hotfix #3.2: let belief_adapter propagate this to Belief.cwe
+        # Labelled, not assumed absent: run_bandit(drop_informational=False)
+        # and direct to_belief() callers both still reach this path.
+        "informational": is_informational(finding),
         "raw": finding,
     }
 

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/grizzly2005/belief/schemas/belief.path-artifact.v1.schema.json",
+  "title": "BELIEF imported path artifact v1",
+  "description": "A bounded, objective-bound reachability result imported without executing the producing tool.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "objective_id",
+    "tool_id",
+    "outcome",
+    "reason",
+    "path"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "belief.path_artifact.v1"
+    },
+    "artifact_id": {
+      "type": "string",
+      "pattern": "^pa_[0-9a-f]{16}$"
+    },
+    "objective_id": {
+      "type": "string",
+      "pattern": "^eo_[0-9a-f]{16}$"
+    },
+    "tool_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+    },
+    "outcome": {
+      "enum": [
+        "plausible_path_artifact",
+        "no_plausible_path",
+        "inconclusive"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "path": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/pathStep"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {"const": "plausible_path_artifact"}
+        }
+      },
+      "then": {
+        "properties": {
+          "path": {"minItems": 2}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {"const": "no_plausible_path"}
+        }
+      },
+      "then": {
+        "properties": {
+          "path": {"maxItems": 0}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "pathStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "symbol", "kind"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*[\\\\:]).+\\.c$",
+          "maxLength": 512
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000
+        },
+        "symbol": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "kind": {
+          "enum": ["entry", "branch", "call", "target", "other"]
+        }
+      }
+    }
+  }
+}

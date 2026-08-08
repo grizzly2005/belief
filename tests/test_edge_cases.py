@@ -9,7 +9,7 @@ from belief.models import (
     Conflict,
     ConflictSeverity,
     JustificationCategory,
-    LogicType,
+    ModelContractError,
     Predicate,
     Scope,
 )
@@ -19,35 +19,34 @@ from belief.config import LLMProvider
 # ─── Bug fix: from_dict with invalid enum values ───
 
 class TestFromDictRobustness:
-    def test_invalid_justification_falls_back_to_c5(self):
+    def test_invalid_justification_is_rejected(self):
         data = {
             "predicate": {"expression": "x > 0"},
             "scope": {"file_path": "t.py"},
             "justification": "INVALID_VALUE",
         }
-        b = Belief.from_dict(data)
-        assert b.justification == JustificationCategory.C5_NO_JUSTIFICATION
+        with pytest.raises(ModelContractError, match="JustificationCategory"):
+            Belief.from_dict(data)
 
-    def test_invalid_epistemic_falls_back_to_belief(self):
+    def test_invalid_epistemic_is_rejected(self):
         data = {
             "predicate": {"expression": "x > 0"},
             "scope": {"file_path": "t.py"},
             "justification": "C1",
             "epistemic_status": "GARBAGE",
         }
-        b = Belief.from_dict(data)
-        from belief.models import EpistemicStatus
-        assert b.epistemic_status == EpistemicStatus.BELIEF
+        with pytest.raises(ModelContractError, match="EpistemicStatus"):
+            Belief.from_dict(data)
 
-    def test_invalid_logic_type_falls_back_to_fol(self):
+    def test_invalid_logic_type_is_rejected(self):
         data = {
             "predicate": {"expression": "x > 0"},
             "scope": {"file_path": "t.py"},
             "justification": "C3",
             "logic_type": "quantum_logic",
         }
-        b = Belief.from_dict(data)
-        assert b.logic_type == LogicType.FOL
+        with pytest.raises(ModelContractError, match="LogicType"):
+            Belief.from_dict(data)
 
     def test_missing_predicate_fields_use_defaults(self):
         data = {
@@ -79,7 +78,7 @@ class TestFromDictRobustness:
         b = Belief.from_dict(data)
         assert b.predicate.expression == "x > 0"
         assert b.scope.file_path == "unknown"
-        assert b.justification == JustificationCategory.C5_NO_JUSTIFICATION
+        assert b.justification == JustificationCategory.C6_UNSUPPORTED_ASSUMPTION
 
 
 # ─── Bug fix: AnalysisReport.load robustness ───
@@ -113,12 +112,12 @@ class TestReportLoadRobustness:
         b1 = Belief(
             predicate=Predicate(expression="x > 0"),
             scope=Scope(file_path="t.py"),
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         )
         b2 = Belief(
             predicate=Predicate(expression="y > 0"),
             scope=Scope(file_path="t.py"),
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         )
         conflict = Conflict(
             belief_a=b1, belief_b=b2,
@@ -144,7 +143,7 @@ class TestReportLoadRobustness:
         b = Belief(
             predicate=Predicate(expression="x > 0"),
             scope=Scope(file_path="t.py"),
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         )
         data = {
             "project_name": "test",
@@ -164,8 +163,10 @@ class TestReportLoadRobustness:
         path = tmp_path / "report.json"
         path.write_text(json.dumps(data))
         loaded = AnalysisReport.load(str(path))
-        assert len(loaded.conflicts) == 1
-        assert loaded.conflicts[0].severity == ConflictSeverity.MEDIUM  # fallback
+        assert loaded.conflicts == []
+        diagnostic = loaded.run_metadata["load_diagnostics"][0]
+        assert diagnostic["code"] == "conflict_deserialization_abstained"
+        assert "ULTRA_CRITICAL" in diagnostic["error"]
 
 
 # ─── Bug fix: API key not in repr ───
@@ -216,12 +217,12 @@ class TestZ3ModelExtraction:
         a = Belief(
             predicate=Predicate(expression="x <= 100", variables=("x",)),
             scope=Scope(file_path="t.py"),
-            justification=JustificationCategory.C5_NO_JUSTIFICATION,
+            justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         )
         b = Belief(
             predicate=Predicate(expression="x > 0", variables=("x",)),
             scope=Scope(file_path="t.py"),
-            justification=JustificationCategory.C1_FORMAL_VERIFICATION,
+            justification=JustificationCategory.C2_STATICALLY_VERIFIED_PROPERTY,
         )
         # This should detect that A (weak) can be violated while B holds
         conflicts = detector.detect_pairwise([a], [b])

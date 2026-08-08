@@ -242,11 +242,13 @@ functional/security oracles. Unsupported strategies remain inconclusive.
 See [`LOCAL_VALIDATION_EXECUTION.md`](LOCAL_VALIDATION_EXECUTION.md) for the
 threat model, CLI, metrics, complete artifact example, and limitations.
 
-Flask/FastAPI test-client adapters, recording database adapters, and isolated
-workers remain future work. No subprocess or mocked network adapter is enabled
-by the built-in executors. A callable explicitly registered through the Python
-API remains a trusted same-process extension whose I/O behavior is not
-attested.
+An opt-in, spawn-only worker now covers eight fixed Flask/FastAPI fixtures
+without broadening the built-in executor registry or loading arbitrary target
+code. Recording database adapters remain future work. No subprocess or mocked
+network adapter is enabled by the built-in executors. A callable explicitly
+registered through the Python API remains a trusted same-process extension
+whose I/O behavior is not attested. See
+[`ISOLATED_WEB_VALIDATION_WORKER.md`](ISOLATED_WEB_VALIDATION_WORKER.md).
 
 ### Phase 3 - evidence-guided reachability
 

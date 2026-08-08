@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from .django import extract_django_routes
 from .fastapi import extract_fastapi_routes
@@ -38,6 +38,27 @@ def extract_routes_from_files(
         except (OSError, SyntaxError):
             continue
         routes.extend(_extract_from_ast(tree, rel, source))
+    return sorted(_dedupe(routes), key=route_sort_key)
+
+
+def extract_routes_from_sources(
+    sources: Mapping[str, str],
+    *,
+    ast_map: Mapping[str, ast.Module] | None = None,
+) -> list[RouteRecord]:
+    """Extract routes from one immutable source snapshot without disk reads."""
+
+    trees = ast_map or {}
+    routes: list[RouteRecord] = []
+    for logical_path, source in sorted(sources.items()):
+        try:
+            tree = trees.get(logical_path) or ast.parse(
+                source,
+                filename=logical_path,
+            )
+        except SyntaxError:
+            continue
+        routes.extend(_extract_from_ast(tree, logical_path, source))
     return sorted(_dedupe(routes), key=route_sort_key)
 
 
@@ -100,5 +121,6 @@ __all__ = [
     "extract_routes_from_file",
     "extract_routes_from_tree",
     "extract_routes_from_files",
+    "extract_routes_from_sources",
     "routes_to_audit_context",
 ]

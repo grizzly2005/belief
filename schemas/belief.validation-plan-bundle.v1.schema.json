@@ -153,7 +153,7 @@
       ],
       "properties": {
         "schema_version": {
-          "const": "belief.validation_plan.v1"
+          "const": "belief.validation_plan.v2"
         },
         "plan_id": {
           "type": "string",
@@ -164,7 +164,11 @@
           "minLength": 1
         },
         "subject_kind": {
-          "const": "audit_case"
+          "type": "string",
+          "enum": [
+            "audit_case",
+            "validation_contract_seed"
+          ]
         },
         "case_type": {
           "type": "string",
@@ -360,7 +364,11 @@
           "minLength": 1
         },
         "subject_kind": {
-          "const": "audit_case"
+          "type": "string",
+          "enum": [
+            "audit_case",
+            "validation_contract_seed"
+          ]
         },
         "required_metadata": {
           "type": "object",

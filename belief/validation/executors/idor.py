@@ -7,6 +7,12 @@ from collections.abc import Callable, Mapping, MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
+from ..evidence_policy import (
+    FUNCTIONAL_BASELINE,
+    PRIMARY_SECURITY,
+    SECONDARY_SECURITY,
+    evaluate_evidence,
+)
 from ..execution_models import (
     ValidationExecutionContext,
     ValidationExecutionSummary,
@@ -16,7 +22,6 @@ from ..plan_models import ValidationPlan, clean_text
 from .base import (
     LocalValidationExecutor,
     ValidationEntrypointUnavailable,
-    baseline_verdict,
     conclusive_safe_outcome,
     resolved_runtime_gaps,
     stable_limitations,
@@ -306,25 +311,14 @@ class IDORValidationExecutor(LocalValidationExecutor):
             observations.extend(scenario_observations)
             limitations.extend(scenario_limitations)
 
-        baseline_passed = baseline_verdict(observations)
-        security = [
-            item for item in observations if not item.baseline
-        ]
-        failed_security = [
-            item
-            for item in security
-            if item.oracle_evaluated and item.oracle_passed is False
-        ]
-        unevaluated_security = [
-            item for item in security if not item.oracle_evaluated
-        ]
-        if baseline_passed and failed_security:
-            outcome = "bypassed"
-        elif baseline_passed and not unevaluated_security:
-            outcome = conclusive_safe_outcome(plan)
-        else:
-            outcome = "inconclusive"
-        conclusive = outcome != "inconclusive"
+        decision = evaluate_evidence(
+            observations,
+            completed=True,
+            safe_outcome=conclusive_safe_outcome(plan),
+        )
+        limitations.extend(decision.limitations)
+        outcome = decision.outcome
+        conclusive = decision.conclusive
         return ValidationExecutionSummary(
             validation_plan_id=plan.plan_id,
             validation_plan_digest=plan_digest,
@@ -337,7 +331,7 @@ class IDORValidationExecutor(LocalValidationExecutor):
             supported=True,
             executed=True,
             outcome=outcome,
-            baseline_passed=baseline_passed,
+            baseline_passed=decision.baseline_passed,
             observations=tuple(observations),
             resolved_evidence_gaps=resolved_runtime_gaps(
                 plan,
@@ -462,6 +456,8 @@ def _observe_idor(
                     ),
                     actual=actual,
                     baseline=True,
+                    oracle_role=FUNCTIONAL_BASELINE,
+                    required_for_conclusion=True,
                     oracle_evaluated=True,
                     oracle_passed=passed,
                     evidence=evidence,
@@ -487,6 +483,8 @@ def _observe_idor(
         ),
         actual=actual,
         baseline=False,
+        oracle_role=PRIMARY_SECURITY,
+        required_for_conclusion=True,
         oracle_evaluated=True,
         oracle_passed=authorization_passed,
         evidence=evidence,
@@ -510,6 +508,8 @@ def _observe_idor(
             "state_after": _state_label(after),
         },
         baseline=False,
+        oracle_role=SECONDARY_SECURITY,
+        required_for_conclusion=True,
         oracle_evaluated=True,
         oracle_passed=not state_changed,
         evidence=(*evidence, "state_oracle_evaluated"),
@@ -545,6 +545,12 @@ def _unavailable_observation(
             "decision": "not_observed",
         },
         baseline=baseline,
+        oracle_role=(
+            FUNCTIONAL_BASELINE
+            if baseline
+            else PRIMARY_SECURITY
+        ),
+        required_for_conclusion=True,
         oracle_evaluated=False,
         oracle_passed=None,
         limitations=(limitation,),

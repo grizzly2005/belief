@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from belief import __version__
@@ -9,11 +10,33 @@ from belief.audit_case import AUDIT_SCHEMA_VERSION
 from belief.validation.metrics import VALIDATION_METRICS_SCHEMA_VERSION
 from belief.validation.models import (
     VALIDATION_OUTCOMES,
-    VALIDATION_RESULT_SCHEMA_VERSION,
+    VALIDATION_RESULT_SCHEMA_VERSION as CORE_VALIDATION_RESULT_SCHEMA_VERSION,
 )
 from belief.validation.plan_models import (
     VALIDATION_PLAN_SCHEMA_VERSION,
     VALIDATION_STRATEGIES,
+)
+
+from .authorized_project import (
+    AUTHORIZED_PROJECT_BINDING_SCHEMA_VERSION,
+    AUTHORIZED_PROJECT_EXECUTION_SCOPE,
+    FLASKJWT_PILOT_ADAPTER_ID,
+    FLASKJWT_PILOT_PROJECT_ID,
+    FLASKJWT_PILOT_SOURCE_DIGEST,
+    FLASKJWT_PILOT_SOURCE_FILE_COUNT,
+    FLASKJWT_PILOT_SOURCE_REVISION,
+    FLASKJWT_PILOT_SOURCE_TOTAL_BYTES,
+)
+from .validation import (
+    MCP_MAX_CONCURRENT_VALIDATIONS,
+    MCP_MAX_IN_FLIGHT_REQUESTS,
+    MCP_MAX_RESOURCE_PAGE_SIZE,
+    MCP_MAX_RESPONSE_BYTES,
+    MCP_MAX_VALIDATION_TIMEOUT_MS,
+    MCP_MIN_VALIDATION_TIMEOUT_MS,
+    MCP_VALIDATION_RESULT_SCHEMA_VERSION,
+    REGISTERED_FIXTURE_BINDING_SCHEMA_VERSION,
+    REGISTERED_FIXTURE_EXECUTION_SCOPE,
 )
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
@@ -36,11 +59,20 @@ SUPPORTED_VALIDATION_VERTICALS = (
 )
 
 SERVER_INSTRUCTIONS = (
-    "BELIEF is a local, read-first AppSec evidence engine. Treat every AuditCase "
-    "as candidate evidence, never as a confirmed vulnerability. "
-    "belief_build_validation_plan only creates a deterministic plan and never "
-    "executes target code. This server has no network, shell, subprocess, write, "
-    "dynamic-import, Docker, or SusVibes holdout capability."
+    "BELIEF is a local AppSec evidence engine. Treat every AuditCase as candidate "
+    "evidence, never as a confirmed vulnerability. Arbitrary project scan plans "
+    "are never executable. Local dynamic validation is limited to plans prepared "
+    "from and cryptographically bound to transparent first-party registered "
+    "fixtures. Fixture evidence never confirms the scanned target. This server "
+    "also exposes one locally opted-in, exact-source flask-jwt-extended static "
+    "pilot that always abstains from target execution. The opt-in is not a "
+    "cryptographic authorization proof. This server has "
+    "no live target network, shell, target-workspace write, caller-controlled "
+    "import, Docker, or SusVibes holdout capability. It does spawn one bounded "
+    "worker and writes only inside a parent-owned temporary fixture root. "
+    "Source-derived output is minimally published by default; redacted and "
+    "explicit full-local-only modes remain bounded, path-normalized, and "
+    "secret-redacted."
 )
 
 _READ_ONLY_ANNOTATIONS = {
@@ -48,6 +80,30 @@ _READ_ONLY_ANNOTATIONS = {
     "destructiveHint": False,
     "idempotentHint": True,
     "openWorldHint": False,
+}
+_LOCAL_EXECUTION_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
+_STATEFUL_FILESYSTEM_READ_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": True,
+}
+_STATEFUL_LOCAL_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": False,
+}
+_STATEFUL_FILESYSTEM_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": True,
 }
 _NO_BACKGROUND_EXECUTION = {"taskSupport": "forbidden"}
 
@@ -153,7 +209,13 @@ VALIDATION_PLAN_SCHEMA: dict[str, Any] = {
             "schema_version": {"const": VALIDATION_PLAN_SCHEMA_VERSION},
             "plan_id": _string(min_length=1),
             "subject_id": _string(min_length=1),
-            "subject_kind": {"const": "audit_case"},
+            "subject_kind": {
+                "type": "string",
+                "enum": [
+                    "audit_case",
+                    "validation_contract_seed",
+                ],
+            },
             "case_type": _string(min_length=1),
             "case_status": _string(min_length=1),
             "strategy": _string(enum=sorted(VALIDATION_STRATEGIES)),
@@ -171,6 +233,9 @@ VALIDATION_PLAN_SCHEMA: dict[str, Any] = {
             "safety": {"type": "object"},
             "result_contract": {"type": "object"},
             "metadata": {"type": "object"},
+            "registered_fixture_binding": {
+                "$ref": "belief://schemas/registered-fixture-binding"
+            },
         },
         required=(
             "schema_version",
@@ -196,35 +261,284 @@ VALIDATION_PLAN_SCHEMA: dict[str, Any] = {
     ),
 }
 
+REGISTERED_FIXTURE_BINDING_SCHEMA: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "belief://schemas/registered-fixture-binding",
+    "title": "BELIEF registered fixture binding v3",
+    **_object(
+        {
+            "binding_kind": {
+                "const": REGISTERED_FIXTURE_BINDING_SCHEMA_VERSION
+            },
+            "run_id": _string(min_length=5),
+            "validation_contract_seed_id": _string(min_length=1),
+            "fixture_id": _string(min_length=1),
+            "fixture_registry_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_source_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_descriptor_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_execution_bundle_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_code_object_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_case_type": _string(
+                enum=list(SUPPORTED_VALIDATION_VERTICALS)
+            ),
+            "validation_plan_id": _string(min_length=1),
+            "validation_plan_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "source_revision": _string(min_length=1),
+            "source_target_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "created_by": {
+                "const": "belief_prepare_validation_fixture"
+            },
+            "execution_scope": {
+                "const": REGISTERED_FIXTURE_EXECUTION_SCOPE
+            },
+        },
+        required=(
+            "binding_kind",
+            "run_id",
+            "validation_contract_seed_id",
+            "fixture_id",
+            "fixture_registry_digest",
+            "fixture_source_digest",
+            "fixture_descriptor_digest",
+            "fixture_execution_bundle_digest",
+            "fixture_code_object_digest",
+            "fixture_case_type",
+            "validation_plan_id",
+            "validation_plan_digest",
+            "source_revision",
+            "source_target_digest",
+            "created_by",
+            "execution_scope",
+        ),
+    ),
+}
+
+AUTHORIZED_PROJECT_BINDING_SCHEMA: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "belief://schemas/authorized-project-binding",
+    "title": "BELIEF authorized project static binding v1",
+    **_object(
+        {
+            "binding_kind": {
+                "const": AUTHORIZED_PROJECT_BINDING_SCHEMA_VERSION
+            },
+            "adapter_id": {"const": FLASKJWT_PILOT_ADAPTER_ID},
+            "project_id": {"const": FLASKJWT_PILOT_PROJECT_ID},
+            "run_id": _string(min_length=5),
+            "audit_case_id": _string(min_length=1),
+            "validation_plan_id": _string(min_length=1),
+            "validation_plan_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "source_revision": {
+                "const": FLASKJWT_PILOT_SOURCE_REVISION
+            },
+            "source_digest": {"const": FLASKJWT_PILOT_SOURCE_DIGEST},
+            "source_file_count": {
+                "type": "integer",
+                "const": FLASKJWT_PILOT_SOURCE_FILE_COUNT,
+            },
+            "source_total_bytes": {
+                "type": "integer",
+                "const": FLASKJWT_PILOT_SOURCE_TOTAL_BYTES,
+            },
+            "authorization_id": {
+                "type": "string",
+                "pattern": "^auth_[0-9a-f]{64}$",
+            },
+            "authorization_grant_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "created_by": {
+                "const": "belief_prepare_authorized_project_pilot"
+            },
+            "execution_scope": {
+                "const": AUTHORIZED_PROJECT_EXECUTION_SCOPE
+            },
+            "dynamic_execution_authorized": {"const": False},
+        },
+        required=(
+            "binding_kind",
+            "adapter_id",
+            "project_id",
+            "run_id",
+            "audit_case_id",
+            "validation_plan_id",
+            "validation_plan_digest",
+            "source_revision",
+            "source_digest",
+            "source_file_count",
+            "source_total_bytes",
+            "authorization_id",
+            "authorization_grant_digest",
+            "created_by",
+            "execution_scope",
+            "dynamic_execution_authorized",
+        ),
+    ),
+}
+
 VALIDATION_RESULT_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "belief://schemas/validation-result",
-    "title": "BELIEF ValidationResult v1",
+    "title": "BELIEF MCP fixture validation result v4",
     **_object(
         {
-            "schema_version": {"const": VALIDATION_RESULT_SCHEMA_VERSION},
+            "schema_version": {"const": MCP_VALIDATION_RESULT_SCHEMA_VERSION},
             "result_id": _string(min_length=1),
-            "subject_id": _string(min_length=1),
-            "subject_kind": _string(min_length=1),
-            "source": _string(min_length=1),
+            "run_id": _string(min_length=5),
+            "plan_id": _string(min_length=1),
+            "validation_contract_seed_id": _string(min_length=1),
+            "subject_kind": {
+                "const": "validation_contract_seed",
+            },
+            "fixture_id": _string(min_length=1),
+            "binding_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "validation_plan_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_registry_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_source_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_descriptor_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_execution_bundle_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "fixture_code_object_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "source_target_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "source_revision": _string(min_length=1),
+            "evidence_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "attestation_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "environment_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "semantic_digest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "execution_status": {
+                "type": "string",
+                "enum": ["completed", "abstained"],
+            },
+            "worker_status": _string(min_length=1),
+            "worker_error_codes": {
+                "type": "array",
+                "items": _string(min_length=1),
+            },
             "outcome": _string(enum=sorted(VALIDATION_OUTCOMES)),
-            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-            "tested": {"type": "boolean"},
-            "human_validated": {"type": "boolean"},
-            "method": _string(),
-            "reason": _string(),
-            "evidence": {"type": "array", "items": _string()},
-            "metadata": {"type": "object"},
+            "baseline": {"type": ["boolean", "null"]},
+            "observations": {"type": "array", "items": {"type": "object"}},
+            "limitations": {"type": "array", "items": _string()},
+            "execution_boundaries": {"type": "object"},
+            "evidence_scope": {
+                "const": REGISTERED_FIXTURE_EXECUTION_SCOPE
+            },
+            "maturity": _string(
+                enum=[
+                    "contract_prepared",
+                    "candidate",
+                    "statically_supported",
+                    "locally_evaluated",
+                    "human_confirmed",
+                    "report_ready",
+                ]
+            ),
+            "static_support": {"type": "boolean"},
+            "static_case_provenance": {
+                "type": "array",
+                "items": {"type": "object"},
+            },
+            "target_vulnerability_confirmed": {"const": False},
+            "human_confirmation_required": {"const": True},
+            "human_confirmed": {"const": False},
+            "report_ready": {"const": False},
+            "confirmed_vulnerability": {"const": False},
         },
         required=(
             "schema_version",
             "result_id",
-            "subject_id",
+            "run_id",
+            "plan_id",
+            "validation_contract_seed_id",
             "subject_kind",
-            "source",
+            "fixture_id",
+            "binding_digest",
+            "validation_plan_digest",
+            "fixture_registry_digest",
+            "fixture_source_digest",
+            "fixture_descriptor_digest",
+            "fixture_execution_bundle_digest",
+            "fixture_code_object_digest",
+            "source_target_digest",
+            "source_revision",
+            "evidence_digest",
+            "attestation_digest",
+            "environment_digest",
+            "semantic_digest",
+            "execution_status",
+            "worker_status",
+            "worker_error_codes",
             "outcome",
+            "baseline",
+            "observations",
+            "limitations",
+            "execution_boundaries",
+            "evidence_scope",
+            "maturity",
+            "static_support",
+            "static_case_provenance",
+            "target_vulnerability_confirmed",
+            "human_confirmation_required",
         ),
-        additional=True,
     ),
 }
 
@@ -232,6 +546,12 @@ PUBLIC_SCHEMAS = {
     "belief://schemas/audit-case": AUDIT_CASE_SCHEMA,
     "belief://schemas/validation-plan": VALIDATION_PLAN_SCHEMA,
     "belief://schemas/validation-result": VALIDATION_RESULT_SCHEMA,
+    "belief://schemas/registered-fixture-binding": (
+        REGISTERED_FIXTURE_BINDING_SCHEMA
+    ),
+    "belief://schemas/authorized-project-binding": (
+        AUTHORIZED_PROJECT_BINDING_SCHEMA
+    ),
 }
 
 _RUN_ID_INPUT = _string(min_length=5)
@@ -240,7 +560,7 @@ _GENERIC_OUTPUT = {"type": "object", "additionalProperties": True}
 
 
 def tool_definitions() -> list[dict[str, Any]]:
-    """Return the complete, closed MCP v0.1 tool surface."""
+    """Return the complete, closed MCP v0.2 tool surface."""
 
     definitions = [
         {
@@ -316,6 +636,99 @@ def tool_definitions() -> list[dict[str, Any]]:
             "outputSchema": VALIDATION_PLAN_SCHEMA,
         },
         {
+            "name": "belief_prepare_validation_fixture",
+            "title": "Prepare a registered validation fixture",
+            "description": (
+                "Statically scan the exact transparent source of one immutable "
+                "registered fixture and store a canonical plan with a trusted "
+                "fixture-only binding. No arbitrary source or path is accepted."
+            ),
+            "inputSchema": _object(
+                {"fixture_id": _string(min_length=1)},
+                required=("fixture_id",),
+            ),
+            "outputSchema": _GENERIC_OUTPUT,
+        },
+        {
+            "name": "belief_prepare_authorized_project_pilot",
+            "title": "Prepare the authorized flask-jwt-extended pilot",
+            "description": (
+                "Verify the configured workspace against the one pinned "
+                "flask-jwt-extended revision and canonical source digest, then "
+                "copy the attested bytes to a temporary snapshot, analyze that "
+                "snapshot, re-attest the live workspace, and create "
+                "non-executable bindings. A separate startup local-operator "
+                "opt-in is mandatory but is not cryptographic authorization. "
+                "This tool accepts no path, module, callable, or source and "
+                "always abstains from dynamic target execution."
+            ),
+            "inputSchema": _object(
+                {
+                    "adapter_id": {
+                        "type": "string",
+                        "const": FLASKJWT_PILOT_ADAPTER_ID,
+                    },
+                    "authorization_id": {
+                        "type": "string",
+                        "pattern": "^auth_[0-9a-f]{64}$",
+                    },
+                    "source_revision": {
+                        "type": "string",
+                        "const": FLASKJWT_PILOT_SOURCE_REVISION,
+                    },
+                    "source_digest": {
+                        "type": "string",
+                        "const": FLASKJWT_PILOT_SOURCE_DIGEST,
+                    },
+                    "acknowledge_authorized_project_access": {
+                        "type": "boolean",
+                        "const": True,
+                    },
+                },
+                required=(
+                    "adapter_id",
+                    "authorization_id",
+                    "source_revision",
+                    "source_digest",
+                    "acknowledge_authorized_project_access",
+                ),
+            ),
+            "outputSchema": _GENERIC_OUTPUT,
+        },
+        {
+            "name": "belief_validate_plan",
+            "title": "Validate a bound registered fixture plan",
+            "description": (
+                "Run only an existing plan prepared and exactly bound to one "
+                "transparent registered fixture in the hardened local worker. "
+                "The result never confirms an arbitrary scanned target."
+            ),
+            "inputSchema": _object(
+                {
+                    "run_id": _RUN_ID_INPUT,
+                    "plan_id": _string(min_length=1),
+                    "fixture_id": _string(min_length=1),
+                    "timeout_ms": {
+                        "type": "integer",
+                        "minimum": MCP_MIN_VALIDATION_TIMEOUT_MS,
+                        "maximum": MCP_MAX_VALIDATION_TIMEOUT_MS,
+                    },
+                    "acknowledge_local_execution": {
+                        "type": "boolean",
+                        "const": True,
+                    },
+                },
+                required=(
+                    "run_id",
+                    "plan_id",
+                    "fixture_id",
+                    "timeout_ms",
+                    "acknowledge_local_execution",
+                ),
+            ),
+            "outputSchema": VALIDATION_RESULT_SCHEMA,
+        },
+        {
             "name": "belief_compare_runs",
             "title": "Compare two scan runs",
             "description": (
@@ -350,8 +763,24 @@ def tool_definitions() -> list[dict[str, Any]]:
             "outputSchema": _GENERIC_OUTPUT,
         },
     ]
+    annotations_by_tool = {
+        "belief_status": _READ_ONLY_ANNOTATIONS,
+        "belief_scan": _STATEFUL_FILESYSTEM_READ_ANNOTATIONS,
+        "belief_get_case": _READ_ONLY_ANNOTATIONS,
+        "belief_explain_case": _READ_ONLY_ANNOTATIONS,
+        "belief_build_validation_plan": _STATEFUL_LOCAL_ANNOTATIONS,
+        "belief_prepare_validation_fixture": _STATEFUL_LOCAL_ANNOTATIONS,
+        "belief_prepare_authorized_project_pilot": (
+            _STATEFUL_FILESYSTEM_ANNOTATIONS
+        ),
+        "belief_validate_plan": _STATEFUL_LOCAL_ANNOTATIONS,
+        "belief_compare_runs": _READ_ONLY_ANNOTATIONS,
+        "belief_run_local_benchmark": _LOCAL_EXECUTION_ANNOTATIONS,
+    }
     for definition in definitions:
-        definition["annotations"] = dict(_READ_ONLY_ANNOTATIONS)
+        definition["annotations"] = dict(
+            annotations_by_tool[definition["name"]]
+        )
         definition["execution"] = dict(_NO_BACKGROUND_EXECUTION)
     return definitions
 
@@ -395,49 +824,105 @@ def resource_template_definitions() -> list[dict[str, Any]]:
             "mimeType": "application/json",
         },
         {
-            "uriTemplate": "belief://runs/{run_id}/audit-cases",
+            "uriTemplate": (
+                "belief://runs/{run_id}/audit-cases{?cursor,limit}"
+            ),
             "name": "belief-run-audit-cases",
             "title": "BELIEF run audit cases",
-            "description": "All AuditCase objects produced by an in-memory run.",
+            "description": "Paginated AuditCase objects from an in-memory run.",
             "mimeType": "application/json",
         },
         {
-            "uriTemplate": "belief://runs/{run_id}/validation-plans",
+            "uriTemplate": (
+                "belief://runs/{run_id}/validation-plans{?cursor,limit}"
+            ),
             "name": "belief-run-validation-plans",
             "title": "BELIEF run validation plans",
             "description": "Plans explicitly built for cases in an in-memory run.",
             "mimeType": "application/json",
         },
         {
-            "uriTemplate": "belief://runs/{run_id}/validation-results",
+            "uriTemplate": (
+                "belief://runs/{run_id}/validation-results{?cursor,limit}"
+            ),
             "name": "belief-run-validation-results",
             "title": "BELIEF run validation results",
             "description": (
-                "Empty in MCP v0.1 because dynamic validation execution is disabled."
+                "Bounded results from registered transparent fixture validation."
             ),
             "mimeType": "application/json",
         },
     ]
 
 
-def status_payload(*, workspace_root: str, benchmark_available: bool) -> dict[str, Any]:
+def status_payload(
+    *,
+    workspace_root: str,
+    benchmark_available: bool,
+    authorized_project_pilot_available: bool,
+    storage_limits: Mapping[str, int],
+) -> dict[str, Any]:
     return {
         "version": MCP_SERVER_VERSION,
         "protocol_version": MCP_PROTOCOL_VERSION,
-        "phase": "v0.1-read-first",
+        "phase": "v0.2-registered-fixture-validation",
         "workspace_root": workspace_root,
         "supported_verticals": list(SUPPORTED_VALIDATION_VERTICALS),
         "audit_case_schema": AUDIT_SCHEMA_VERSION,
         "validation_plan_schema": VALIDATION_PLAN_SCHEMA_VERSION,
-        "validation_result_schema": VALIDATION_RESULT_SCHEMA_VERSION,
+        "validation_result_schema": MCP_VALIDATION_RESULT_SCHEMA_VERSION,
+        "core_validation_result_schema": (
+            CORE_VALIDATION_RESULT_SCHEMA_VERSION
+        ),
         "metrics_schema": VALIDATION_METRICS_SCHEMA_VERSION,
         "transparent_benchmark_available": benchmark_available,
-        "network_enabled": False,
-        "subprocess_enabled": False,
+        "authorized_project_pilot_available": (
+            authorized_project_pilot_available
+        ),
+        "authorized_project_pilot_adapter_id": FLASKJWT_PILOT_ADAPTER_ID,
+        "authorized_project_pilot_execution_scope": (
+            AUTHORIZED_PROJECT_EXECUTION_SCOPE
+        ),
+        "authorized_project_dynamic_execution_enabled": False,
+        "live_network_target_allowed": False,
+        "worker_process_spawn": True,
+        "target_process_spawn": False,
         "shell_enabled": False,
         "docker_enabled": False,
-        "dynamic_import_enabled": False,
-        "dynamic_execution_enabled": False,
+        "allowlisted_framework_imports": True,
+        "caller_controlled_imports": False,
+        "temporary_fixture_writes": True,
+        "target_workspace_writes": False,
+        "dynamic_execution_enabled": True,
+        "dynamic_execution_scope": REGISTERED_FIXTURE_EXECUTION_SCOPE,
+        "active_cancellation_scope": (
+            "all_request_state_commits_and_dynamic_worker_termination"
+        ),
+        "local_worker_execution_enabled": True,
+        "max_concurrent_validations": MCP_MAX_CONCURRENT_VALIDATIONS,
+        "max_in_flight_requests": MCP_MAX_IN_FLIGHT_REQUESTS,
+        "max_stored_runs": storage_limits["max_runs"],
+        "max_validation_results_per_run": storage_limits[
+            "max_results_per_run"
+        ],
+        "max_total_validation_results": storage_limits[
+            "max_total_results"
+        ],
+        "max_cases_per_run": storage_limits["max_cases_per_run"],
+        "max_serialized_bytes_per_case": storage_limits[
+            "max_serialized_bytes_per_case"
+        ],
+        "max_serialized_bytes_per_run": storage_limits[
+            "max_serialized_bytes_per_run"
+        ],
+        "max_total_store_bytes": storage_limits[
+            "max_total_store_bytes"
+        ],
+        "max_total_memory_bytes": storage_limits[
+            "max_total_memory_bytes"
+        ],
+        "max_resource_page_size": MCP_MAX_RESOURCE_PAGE_SIZE,
+        "max_mcp_response_bytes": MCP_MAX_RESPONSE_BYTES,
         "write_tools_enabled": False,
         "custom_adapters_enabled": False,
         "holdout_access_enabled": False,

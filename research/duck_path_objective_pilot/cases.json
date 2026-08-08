@@ -1,0 +1,135 @@
+{
+  "cases": [
+    {
+      "case_id": "authorization_path_supported",
+      "expected_interpretation": "supported",
+      "objective": {
+        "constraint": {
+          "expression": "requested_id != owned_id",
+          "logic": "c_boolean_expression_v1",
+          "origin": "human_reviewed_candidate"
+        },
+        "entry_boundary": "function_entry",
+        "expected_outputs": [
+          "plausible_path_artifact",
+          "no_plausible_path",
+          "inconclusive"
+        ],
+        "function": "authorize_request",
+        "language": "c",
+        "objective_id": "eo_66a283ec9f7fbca0",
+        "schema_version": "belief.exploration_objective.v1",
+        "source_plan_id": "vp_1111111111111111",
+        "subject_id": "synthetic.authorization_path",
+        "target": {
+          "file": "src/authorization.c",
+          "line": 18,
+          "symbol": "sensitive_operation"
+        }
+      },
+      "path_artifact": {
+        "artifact_id": "pa_d84e9612402eb8b2",
+        "objective_id": "eo_66a283ec9f7fbca0",
+        "outcome": "plausible_path_artifact",
+        "path": [
+          {
+            "file": "src/authorization.c",
+            "kind": "entry",
+            "line": 8,
+            "symbol": "authorize_request"
+          },
+          {
+            "file": "src/authorization.c",
+            "kind": "branch",
+            "line": 14,
+            "symbol": "authorization_branch"
+          },
+          {
+            "file": "src/authorization.c",
+            "kind": "target",
+            "line": 18,
+            "symbol": "sensitive_operation"
+          }
+        ],
+        "reason": "Synthetic path reaches the exact target under the candidate constraint.",
+        "schema_version": "belief.path_artifact.v1",
+        "tool_id": "synthetic_reachability_fixture"
+      }
+    },
+    {
+      "case_id": "guarded_delete_refuted",
+      "expected_interpretation": "refuted",
+      "objective": {
+        "constraint": {
+          "expression": "is_admin == 0",
+          "logic": "c_boolean_expression_v1",
+          "origin": "human_reviewed_candidate"
+        },
+        "entry_boundary": "function_entry",
+        "expected_outputs": [
+          "plausible_path_artifact",
+          "no_plausible_path",
+          "inconclusive"
+        ],
+        "function": "delete_record",
+        "language": "c",
+        "objective_id": "eo_5a160ec149f15537",
+        "schema_version": "belief.exploration_objective.v1",
+        "source_plan_id": "vp_2222222222222222",
+        "subject_id": "synthetic.guarded_delete",
+        "target": {
+          "file": "src/guarded_delete.c",
+          "line": 27,
+          "symbol": "dangerous_delete"
+        }
+      },
+      "path_artifact": {
+        "artifact_id": "pa_22bf2f0b7a797d81",
+        "objective_id": "eo_5a160ec149f15537",
+        "outcome": "no_plausible_path",
+        "path": [],
+        "reason": "Synthetic analysis reports no path satisfying the candidate constraint.",
+        "schema_version": "belief.path_artifact.v1",
+        "tool_id": "synthetic_reachability_fixture"
+      }
+    },
+    {
+      "case_id": "bounded_copy_inconclusive",
+      "expected_interpretation": "inconclusive",
+      "objective": {
+        "constraint": {
+          "expression": "length > capacity",
+          "logic": "c_boolean_expression_v1",
+          "origin": "human_reviewed_candidate"
+        },
+        "entry_boundary": "function_entry",
+        "expected_outputs": [
+          "plausible_path_artifact",
+          "no_plausible_path",
+          "inconclusive"
+        ],
+        "function": "copy_input",
+        "language": "c",
+        "objective_id": "eo_7e11d86425ddd612",
+        "schema_version": "belief.exploration_objective.v1",
+        "source_plan_id": "vp_3333333333333333",
+        "subject_id": "synthetic.bounded_copy",
+        "target": {
+          "file": "src/bounds.c",
+          "line": 33,
+          "symbol": "copy_bytes"
+        }
+      },
+      "path_artifact": {
+        "artifact_id": "pa_0020fb863c957995",
+        "objective_id": "eo_7e11d86425ddd612",
+        "outcome": "inconclusive",
+        "path": [],
+        "reason": "Synthetic analysis cannot resolve an indirect capacity dependency.",
+        "schema_version": "belief.path_artifact.v1",
+        "tool_id": "synthetic_reachability_fixture"
+      }
+    }
+  ],
+  "schema_version": "belief.exploration_pilot_corpus.v1"
+}

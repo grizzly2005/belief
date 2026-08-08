@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
 
 from belief.importers.semgrep_json import semgrep_payload_to_findings
+from belief.json_contracts import (
+    StrictJSONError,
+    load_json_file,
+    strict_json_loads,
+)
 from belief.tools.runner import run_external_command
 from belief.tools.schemas import NormalizedToolResult, ToolExecution, ToolInput
 
@@ -51,7 +55,7 @@ class SemgrepBridge(ManifestBridge):
         return execution
 
     def import_file(self, path: str | Path) -> NormalizedToolResult:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        payload = load_json_file(path)
         return NormalizedToolResult(
             tool_id=self.tool_id,
             findings=semgrep_payload_to_findings(payload),
@@ -66,8 +70,8 @@ class SemgrepBridge(ManifestBridge):
         if execution.returncode != 0:
             warnings.append(f"semgrep exited with returncode {execution.returncode}")
         try:
-            payload = json.loads(execution.stdout or "{}")
-        except json.JSONDecodeError as exc:
+            payload = strict_json_loads(execution.stdout or "{}")
+        except StrictJSONError as exc:
             return NormalizedToolResult(
                 tool_id=self.tool_id,
                 warnings=[*warnings, f"invalid Semgrep JSON: {exc}"],

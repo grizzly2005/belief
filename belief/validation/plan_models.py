@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from belief.json_contracts import strict_json_clone, strict_json_dumps
+
 from .models import VALIDATION_OUTCOMES, VALIDATION_RESULT_SCHEMA_VERSION
 
-VALIDATION_PLAN_SCHEMA_VERSION = "belief.validation_plan.v1"
+VALIDATION_PLAN_V1_SCHEMA_VERSION = "belief.validation_plan.v1"
+VALIDATION_PLAN_SCHEMA_VERSION = "belief.validation_plan.v2"
 VALIDATION_PLAN_BUNDLE_SCHEMA_VERSION = "belief.validation_plan_bundle.v1"
 VALIDATION_REACHABILITY_SCHEMA_VERSION = "belief.validation_reachability.v1"
 
@@ -26,6 +28,10 @@ VALIDATION_STRATEGIES = {
     "safe_deserialization_policy",
     "secret_provenance_verification",
     "stateful_authorization_differential",
+}
+VALIDATION_SUBJECT_KINDS = {
+    "audit_case",
+    "validation_contract_seed",
 }
 
 
@@ -125,6 +131,7 @@ class ValidationPlan:
     case_status: str
     strategy: str
     objective: str
+    subject_kind: str = "audit_case"
     priority: str = "medium"
     target: dict[str, Any] = field(default_factory=dict)
     evidence_gaps: tuple[str, ...] = ()
@@ -151,6 +158,12 @@ class ValidationPlan:
             raise ValueError(f"unsupported validation strategy: {strategy!r}")
 
         object.__setattr__(self, "subject_id", subject_id)
+        subject_kind = clean_text(self.subject_kind)
+        if subject_kind not in VALIDATION_SUBJECT_KINDS:
+            raise ValueError(
+                f"unsupported ValidationPlan subject kind: {subject_kind!r}"
+            )
+        object.__setattr__(self, "subject_kind", subject_kind)
         object.__setattr__(
             self,
             "case_type",
@@ -200,7 +213,7 @@ class ValidationPlan:
             "schema_version": self.schema_version,
             "plan_id": self.plan_id,
             "subject_id": self.subject_id,
-            "subject_kind": "audit_case",
+            "subject_kind": self.subject_kind,
             "case_type": self.case_type,
             "case_status": self.case_status,
             "strategy": self.strategy,
@@ -217,7 +230,7 @@ class ValidationPlan:
             "result_contract": {
                 "schema_version": VALIDATION_RESULT_SCHEMA_VERSION,
                 "subject_id": self.subject_id,
-                "subject_kind": "audit_case",
+                "subject_kind": self.subject_kind,
                 "required_metadata": {"validation_plan_id": self.plan_id},
                 "allowed_outcomes": sorted(VALIDATION_OUTCOMES),
             },
@@ -228,6 +241,27 @@ class ValidationPlan:
     def from_dict(cls, payload: Mapping[str, Any]) -> "ValidationPlan":
         if not isinstance(payload, Mapping):
             raise ValueError("ValidationPlan payload must be a JSON object")
+        source_schema = str(
+            payload.get("schema_version")
+            or VALIDATION_PLAN_V1_SCHEMA_VERSION
+        )
+        if source_schema not in {
+            VALIDATION_PLAN_V1_SCHEMA_VERSION,
+            VALIDATION_PLAN_SCHEMA_VERSION,
+        }:
+            raise ValueError(
+                f"unsupported ValidationPlan schema: {source_schema!r}"
+            )
+        subject_kind = str(
+            payload.get("subject_kind") or "audit_case"
+        )
+        if (
+            source_schema == VALIDATION_PLAN_V1_SCHEMA_VERSION
+            and subject_kind != "audit_case"
+        ):
+            raise ValueError(
+                "v1 ValidationPlan subject kind must be audit_case"
+            )
         return cls(
             plan_id=str(payload.get("plan_id") or ""),
             subject_id=str(payload.get("subject_id") or ""),
@@ -237,6 +271,7 @@ class ValidationPlan:
                 payload.get("strategy") or "manual_evidence_collection"
             ),
             objective=str(payload.get("objective") or ""),
+            subject_kind=subject_kind,
             priority=str(payload.get("priority") or "medium"),
             target=json_object(payload.get("target")),
             evidence_gaps=unique_strings(payload.get("evidence_gaps")),
@@ -255,10 +290,7 @@ class ValidationPlan:
             stop_conditions=unique_strings(payload.get("stop_conditions")),
             safety=json_object(payload.get("safety")),
             metadata=json_object(payload.get("metadata")),
-            schema_version=str(
-                payload.get("schema_version")
-                or VALIDATION_PLAN_SCHEMA_VERSION
-            ),
+            schema_version=VALIDATION_PLAN_SCHEMA_VERSION,
         )
 
 
@@ -283,12 +315,11 @@ def stable_plan_id(plan: ValidationPlan) -> str:
 
 
 def canonical_digest(payload: Any) -> str:
-    encoded = json.dumps(
+    encoded = strict_json_dumps(
         payload,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
-        default=str,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -299,13 +330,16 @@ def clean_text(value: Any) -> str:
 
 def normalize_priority(value: Any) -> str:
     normalized = clean_text(value).lower()
-    return normalized if normalized in {
+    allowed = {
         "critical",
         "high",
         "medium",
         "low",
         "info",
-    } else "medium"
+    }
+    if normalized not in allowed:
+        raise ValueError(f"unsupported validation priority: {normalized!r}")
+    return normalized
 
 
 def unique_strings(value: Any) -> tuple[str, ...]:
@@ -330,7 +364,10 @@ def unique_strings(value: Any) -> tuple[str, ...]:
 def json_object(value: Any) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         return {}
-    return json.loads(json.dumps(dict(value), sort_keys=True, default=str))
+    clone = strict_json_clone(dict(value))
+    if not isinstance(clone, dict):
+        raise ValueError("expected a JSON object")
+    return clone
 
 
 def object_list(value: Any) -> list[Mapping[str, Any]]:
@@ -346,8 +383,10 @@ def object_list(value: Any) -> list[Mapping[str, Any]]:
 __all__ = [
     "VALIDATION_PLAN_BUNDLE_SCHEMA_VERSION",
     "VALIDATION_PLAN_SCHEMA_VERSION",
+    "VALIDATION_PLAN_V1_SCHEMA_VERSION",
     "VALIDATION_REACHABILITY_SCHEMA_VERSION",
     "VALIDATION_STRATEGIES",
+    "VALIDATION_SUBJECT_KINDS",
     "ValidationOracle",
     "ValidationPlan",
     "ValidationStimulus",

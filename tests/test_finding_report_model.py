@@ -53,12 +53,12 @@ def test_report_output_is_deterministic_for_reordered_beliefs_and_findings():
     b1 = Belief(
         predicate=Predicate(expression="b"),
         scope=Scope(file_path="b.py", line_start=20),
-        justification=JustificationCategory.C5_NO_JUSTIFICATION,
+        justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
     )
     b2 = Belief(
         predicate=Predicate(expression="a"),
         scope=Scope(file_path="a.py", line_start=10),
-        justification=JustificationCategory.C5_NO_JUSTIFICATION,
+        justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
     )
     f1 = Finding(source="security", rule_id="B", file="b.py", line=20, cwe="CWE-95")
     f2 = Finding(source="security", rule_id="A", file="a.py", line=10, cwe="CWE-78")
@@ -78,7 +78,7 @@ def test_finding_from_belief_preserves_identity_cwe_and_metadata():
             natural_language="User input reaches eval().",
         ),
         scope=Scope(file_path="app.py", function_name="run", line_start=3),
-        justification=JustificationCategory.C5_NO_JUSTIFICATION,
+        justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         cwe="CWE-95",
         source_metadata={"source": "security_patterns", "rule_id": "CWE-95"},
         confidence_score=0.95,

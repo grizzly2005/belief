@@ -204,7 +204,9 @@ def to_belief(finding: Dict[str, Any]) -> Dict[str, Any]:
         "anchor_file": "<symbolic>",
         "anchor_line": counter.get("line", 0),
         "anchor_line_end": counter.get("line", 0),
-        "justification_type": "C1",   # proven violable
+        # The counterexample is a static verification result.  It is not C1
+        # until an immutable replay artifact is bound to an exact source digest.
+        "justification_type": "C2_STATICALLY_VERIFIED_PROPERTY",
         "contextual_constraint": str(counter.get("state", "unknown"))[:500],
         "trust_domain": "symbolic",
         "logic_type": "fol",

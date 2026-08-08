@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import ast
 import os
+import tokenize
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Mapping, Optional
 
 from .models import Frontier, Scope, TrustProfile
 
@@ -326,6 +327,29 @@ class CodeParser:
         self._build_call_graph()
         return list(self.functions.values())
 
+    def parse_sources(
+        self,
+        sources: Mapping[str, str],
+        *,
+        ast_map: Mapping[str, ast.Module] | None = None,
+    ) -> list[ParsedFunction]:
+        """Parse an immutable logical-path/source map without disk reads."""
+
+        self.functions.clear()
+        self.call_graph.clear()
+        trees = ast_map or {}
+        for logical_path, source in sorted(sources.items()):
+            tree = trees.get(logical_path)
+            if tree is None:
+                tree = ast.parse(source, filename=logical_path)
+            self._parse_source(
+                source,
+                file_path=logical_path,
+                tree=tree,
+            )
+        self._build_call_graph()
+        return list(self.functions.values())
+
     def detect_frontiers(self, trust_threshold: float = 0.3) -> list[Frontier]:
         """
         Identify frontiers — boundaries between components where trust
@@ -403,7 +427,7 @@ class CodeParser:
                 current_path = Path(current_dir)
                 dirnames[:] = [
                     name for name in dirnames
-                    if not (current_path / name).is_symlink()
+                    if not self._is_link_or_junction(current_path / name)
                     and not self._is_excluded_dir(current_path / name, base_root=base_root)
                 ]
                 for filename in filenames:
@@ -411,7 +435,7 @@ class CodeParser:
                         continue
                     py_file = current_path / filename
                     if (
-                        not py_file.is_symlink()
+                        not self._is_link_or_junction(py_file)
                         and not self._is_generated_file(py_file)
                         and not self._is_excluded_path(py_file, base_root=base_root)
                     ):
@@ -440,14 +464,17 @@ class CodeParser:
         name = py_file.name.lower()
         if any(name.endswith(suffix) for suffix in GENERATED_FILE_NAMES):
             return True
-        if name.endswith("_generated.py") or name.endswith(".generated.py"):
-            return True
+        return name.endswith("_generated.py") or name.endswith(".generated.py")
+
+    @staticmethod
+    def _is_link_or_junction(path: Path) -> bool:
         try:
-            with py_file.open(encoding="utf-8", errors="ignore") as f:
-                head = "".join(f.readline() for _ in range(5)).lower()
+            if path.is_symlink():
+                return True
+            predicate = getattr(path, "is_junction", None)
+            return bool(predicate()) if callable(predicate) else False
         except OSError:
-            return False
-        return "code generated" in head or "@generated" in head
+            return True
 
     def _is_under_excluded_root(self, path: Path) -> bool:
         if not self.excluded_root_paths:
@@ -503,16 +530,49 @@ class CodeParser:
         return False
 
     def _parse_file(self, file_path: Path):
-        source = file_path.read_text(encoding="utf-8", errors="replace")
-        lines = source.split("\n")
-        module = self._path_to_module(file_path)
-
+        with tokenize.open(file_path) as handle:
+            source = handle.read()
         tree = ast.parse(source, filename=str(file_path))
+        try:
+            logical_path = (
+                file_path.name
+                if self.root_path.is_file()
+                else file_path.relative_to(self.root_path).as_posix()
+            )
+        except ValueError:
+            logical_path = file_path.name
+        self._parse_source(
+            source,
+            file_path=logical_path,
+            tree=tree,
+        )
+
+    def _parse_source(
+        self,
+        source: str,
+        *,
+        file_path: str,
+        tree: ast.Module,
+    ) -> None:
+        lines = source.split("\n")
+        module = self._logical_path_to_module(file_path)
         visitor = _FunctionVisitor(lines, str(file_path), module)
         visitor.visit(tree)
 
         for func in visitor.functions:
             self.functions[func.qualified_name] = func
+
+    @staticmethod
+    def _logical_path_to_module(path: str) -> str:
+        normalized = path.replace("\\", "/")
+        parts = [part for part in normalized.split("/") if part]
+        if not parts:
+            return "source"
+        if parts[-1] == "__init__.py":
+            parts = parts[:-1]
+        elif parts[-1].endswith(".py"):
+            parts[-1] = parts[-1][:-3]
+        return ".".join(parts) or "source"
 
     def _path_to_module(self, path: Path) -> str:
         try:

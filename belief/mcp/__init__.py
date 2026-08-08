@@ -1,4 +1,4 @@
-"""Local, read-first MCP facade for BELIEF."""
+"""Local, fixture-bound MCP facade for BELIEF."""
 
 from .contracts import MCP_PROTOCOL_VERSION, MCP_SERVER_VERSION
 

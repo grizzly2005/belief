@@ -10,15 +10,20 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from .evidence_policy import (
+    FUNCTIONAL_BASELINE,
+    ORACLE_ROLES,
+    evaluate_evidence,
+)
 from .plan_models import canonical_digest, clean_text, json_object, unique_strings
 
 
 VALIDATION_EXECUTION_CONTEXT_SCHEMA_VERSION = (
     "belief.validation_execution_context.v1"
 )
-VALIDATION_OBSERVATION_SCHEMA_VERSION = "belief.validation_observation.v1"
+VALIDATION_OBSERVATION_SCHEMA_VERSION = "belief.validation_observation.v2"
 VALIDATION_EXECUTION_SUMMARY_SCHEMA_VERSION = (
-    "belief.validation_execution_summary.v1"
+    "belief.validation_execution_summary.v2"
 )
 VALIDATION_FIXTURE_BUNDLE_SCHEMA_VERSION = (
     "belief.validation_fixture_bundle.v1"
@@ -235,6 +240,8 @@ class ValidationObservation:
     expected: str
     actual: dict[str, Any]
     baseline: bool
+    oracle_role: str
+    required_for_conclusion: bool
     oracle_evaluated: bool
     oracle_passed: bool | None
     evidence: tuple[str, ...] = ()
@@ -275,6 +282,28 @@ class ValidationObservation:
             raise ValidationContractError(
                 "unevaluated validation oracle cannot have a verdict"
             )
+        oracle_role = clean_text(self.oracle_role)
+        if oracle_role not in ORACLE_ROLES:
+            raise ValidationContractError(
+                "validation observation oracle_role is invalid"
+            )
+        object.__setattr__(self, "oracle_role", oracle_role)
+        if not isinstance(self.required_for_conclusion, bool):
+            raise ValidationContractError(
+                "validation observation required_for_conclusion "
+                "must be boolean"
+            )
+        if (oracle_role == FUNCTIONAL_BASELINE) != self.baseline:
+            raise ValidationContractError(
+                "validation observation baseline contradicts oracle_role"
+            )
+        if (
+            oracle_role == FUNCTIONAL_BASELINE
+            and not self.required_for_conclusion
+        ):
+            raise ValidationContractError(
+                "functional baseline must be required for conclusion"
+            )
         if (
             not isinstance(self.cost_units, int)
             or isinstance(self.cost_units, bool)
@@ -311,6 +340,8 @@ class ValidationObservation:
             "expected": self.expected,
             "actual": copy.deepcopy(self.actual),
             "baseline": self.baseline,
+            "oracle_role": self.oracle_role,
+            "required_for_conclusion": self.required_for_conclusion,
             "oracle_evaluated": self.oracle_evaluated,
             "oracle_passed": self.oracle_passed,
             "evidence": list(self.evidence),
@@ -415,32 +446,34 @@ class ValidationExecutionSummary:
             unique_strings(self.limitations),
         )
 
-        security_observations = [
-            item
-            for item in observations
-            if not item.baseline and item.oracle_evaluated
-        ]
-        security_failures = [
-            item
-            for item in security_observations
-            if item.oracle_passed is False
-        ]
-        if outcome == "bypassed" and (
-            not self.executed
-            or self.baseline_passed is not True
-            or not security_failures
-        ):
+        safe_outcome = (
+            "false_positive"
+            if outcome == "false_positive"
+            else "enforced"
+        )
+        decision = evaluate_evidence(
+            observations,
+            completed=self.executed,
+            safe_outcome=safe_outcome,
+        )
+        if self.baseline_passed != decision.baseline_passed:
+            raise ValidationContractError(
+                "validation summary baseline does not match observations"
+            )
+        if outcome == "bypassed" and decision.outcome != "bypassed":
             raise ValidationContractError(
                 "a bypass requires a working baseline and failed oracle"
             )
-        if outcome in {"enforced", "false_positive"} and (
-            not self.executed
-            or self.baseline_passed is not True
-            or not security_observations
-            or security_failures
+        if (
+            outcome in {"enforced", "false_positive"}
+            and decision.outcome != outcome
         ):
             raise ValidationContractError(
-                "an enforced result requires passing evaluated oracles"
+                "an enforced result requires passing required oracles"
+            )
+        if outcome == "inconclusive" and decision.outcome != "inconclusive":
+            raise ValidationContractError(
+                "an inconclusive result contradicts conclusive evidence"
             )
         if not self.executed and outcome != "inconclusive":
             raise ValidationContractError(
@@ -464,6 +497,19 @@ class ValidationExecutionSummary:
     @property
     def oracle_evaluated_count(self) -> int:
         return sum(item.oracle_evaluated for item in self.observations)
+
+    @property
+    def primary_oracle_evaluated_count(self) -> int:
+        decision = evaluate_evidence(
+            self.observations,
+            completed=self.executed,
+            safe_outcome=(
+                "false_positive"
+                if self.outcome == "false_positive"
+                else "enforced"
+            ),
+        )
+        return decision.evaluated_primary_count
 
     @property
     def deterministic_cost_units(self) -> int:
@@ -492,6 +538,9 @@ class ValidationExecutionSummary:
             "limitations": list(self.limitations),
             "protected_regression": self.protected_regression,
             "oracle_evaluated_count": self.oracle_evaluated_count,
+            "primary_oracle_evaluated_count": (
+                self.primary_oracle_evaluated_count
+            ),
             "deterministic_cost": {
                 "unit": "local_operation",
                 "value": self.deterministic_cost_units,
@@ -545,11 +594,11 @@ def load_validation_fixture_bundle(
 ) -> tuple[dict[str, Any], dict[str, ValidationExecutionContext]]:
     """Load and verify a canonical local-fixture bundle."""
 
-    import json
+    from belief.json_contracts import StrictJSONError, load_json_file
 
     try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        payload = load_json_file(path)
+    except StrictJSONError as exc:
         raise ValidationContractError(
             f"invalid validation fixture bundle: {exc}"
         ) from exc
@@ -615,7 +664,7 @@ def write_validation_fixture_bundle(
 ) -> dict[str, Any]:
     """Create a canonical fixture bundle without replacing an artifact."""
 
-    import json
+    from belief.json_contracts import strict_json_dumps
 
     payload = build_validation_fixture_bundle(contexts)
     destination = Path(output)
@@ -623,7 +672,7 @@ def write_validation_fixture_bundle(
     try:
         with destination.open("x", encoding="utf-8") as handle:
             handle.write(
-                json.dumps(payload, indent=2, sort_keys=True) + "\n"
+                strict_json_dumps(payload, indent=2, sort_keys=True) + "\n"
             )
     except FileExistsError as exc:
         raise ValidationContractError(

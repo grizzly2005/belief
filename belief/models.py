@@ -9,10 +9,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
+from .json_contracts import (
+    StrictJSONError,
+    load_json_file,
+    strict_json_dumps,
+    strict_json_loads,
+)
+
+BELIEF_SCHEMA_VERSION = "belief.belief.v2"
+JUSTIFICATION_TAXONOMY_VERSION = "belief.justification.v2"
 FINDING_SCHEMA_VERSION = "belief.finding.v1"
 REPORT_SCHEMA_VERSION = "belief.report.v2"
 
@@ -22,19 +32,22 @@ REPORT_SCHEMA_VERSION = "belief.report.v2"
 # ─────────────────────────────────────────────
 
 class JustificationCategory(Enum):
-    """Taxonomy of belief justification robustness (C1–C6, decreasing)."""
+    """Taxonomy of evidentiary support (C1–C6, decreasing).
 
-    C1_FORMAL_VERIFICATION = "C1"    # assert / static type / explicit check
-    C2_CALLER_VERIFICATION = "C2"    # every known caller verifies
-    C3_DOCUMENTED_CONVENTION = "C3"  # comment / docstring / docs
-    C3_DOCUMENTED = "C3"             # backward-compatible alias
-    C4_IMPLICIT_CONVENTION = "C4"    # domain standard, not written
-    C5_NO_JUSTIFICATION = "C5"       # pure faith
-    C6_OPAQUE_INFERENCE = "C6"       # inferred from opaque component
+    C1 is intentionally unavailable to ordinary extraction heuristics.  It
+    requires a replayable proof artifact bound to the exact analyzed source.
+    """
+
+    C1_MECHANICALLY_PROVEN = "C1"
+    C2_STATICALLY_VERIFIED_PROPERTY = "C2"
+    C3_EXPLICIT_RUNTIME_GUARD = "C3"
+    C4_CALLER_ASSUMPTION = "C4"
+    C5_DOCUMENTED_CONVENTION = "C5"
+    C6_UNSUPPORTED_ASSUMPTION = "C6"
 
     @classmethod
     def parse(cls, value: object) -> "JustificationCategory":
-        return _parse_enum_value(cls, value, cls.C5_NO_JUSTIFICATION)
+        return _parse_enum_value(cls, value, cls.C6_UNSUPPORTED_ASSUMPTION)
 
     @property
     def robustness_score(self) -> float:
@@ -98,8 +111,36 @@ class ArtifactKind(Enum):
     OPAQUE_API = "opaque_api"            # external API / closed-source lib
 
 
+class ModelContractError(ValueError):
+    """Raised when serialized model data cannot be interpreted safely."""
+
+
+_LEGACY_JUSTIFICATION_NAMES = {
+    "C1_FORMAL_VERIFICATION": JustificationCategory.C3_EXPLICIT_RUNTIME_GUARD,
+    "C2_CALLER_VERIFICATION": JustificationCategory.C4_CALLER_ASSUMPTION,
+    "C3_DOCUMENTED_CONVENTION": JustificationCategory.C5_DOCUMENTED_CONVENTION,
+    "C3_DOCUMENTED": JustificationCategory.C5_DOCUMENTED_CONVENTION,
+    "C4_IMPLICIT_CONVENTION": JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
+    "C5_NO_JUSTIFICATION": JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
+    "C6_OPAQUE_INFERENCE": JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
+}
+
+_LEGACY_JUSTIFICATION_CODES = {
+    "C1": JustificationCategory.C3_EXPLICIT_RUNTIME_GUARD,
+    "C2": JustificationCategory.C4_CALLER_ASSUMPTION,
+    "C3": JustificationCategory.C5_DOCUMENTED_CONVENTION,
+    "C4": JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
+    "C5": JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
+    "C6": JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
+}
+
+
 def _parse_enum_value(enum_cls: type[Enum], value: object, default: Enum) -> Enum:
-    """Parse enum values from JSON using either enum value or member name."""
+    """Parse a known enum value/name and reject unknown values.
+
+    Missing fields retain their explicit schema default.  A present but unknown
+    value is never silently reinterpreted as that default.
+    """
     if isinstance(value, enum_cls):
         return value
     if value is None:
@@ -118,19 +159,61 @@ def _parse_enum_value(enum_cls: type[Enum], value: object, default: Enum) -> Enu
     if member is not None:
         return member
 
-    return default
+    raise ModelContractError(
+        f"unknown {enum_cls.__name__} value: {text!r}"
+    )
+
+
+def _parse_serialized_justification(
+    value: object,
+    *,
+    taxonomy_version: object,
+    belief_schema_version: object,
+) -> tuple[JustificationCategory, str | None]:
+    """Parse current data or conservatively migrate pre-v2 taxonomy values."""
+
+    if value is None or not str(value).strip():
+        return JustificationCategory.C6_UNSUPPORTED_ASSUMPTION, None
+
+    text = str(value).strip()
+    current_schema = (
+        taxonomy_version == JUSTIFICATION_TAXONOMY_VERSION
+        or belief_schema_version == BELIEF_SCHEMA_VERSION
+    )
+    if current_schema:
+        parsed = JustificationCategory.parse(text)
+        return parsed, None
+
+    if text in JustificationCategory.__members__:
+        return JustificationCategory.__members__[text], None
+    if text.upper() in JustificationCategory.__members__:
+        return JustificationCategory.__members__[text.upper()], None
+
+    legacy = (
+        _LEGACY_JUSTIFICATION_NAMES.get(text)
+        or _LEGACY_JUSTIFICATION_NAMES.get(text.upper())
+        or _LEGACY_JUSTIFICATION_CODES.get(text.upper())
+    )
+    if legacy is None:
+        raise ModelContractError(
+            f"unknown legacy JustificationCategory value: {text!r}"
+        )
+    return legacy, f"{text}->{legacy.name}"
 
 
 def _json_safe(value: Any) -> Any:
-    """Return a JSON-serializable copy, stringifying unknown objects."""
+    """Return a finite JSON copy, stringifying unknown object types only."""
     try:
-        return json.loads(json.dumps(value, default=str))
-    except Exception:
-        return str(value)
+        payload = json.dumps(value, default=str, allow_nan=False)
+        return strict_json_loads(payload)
+    except (TypeError, ValueError, StrictJSONError) as exc:
+        raise ModelContractError(f"value is not finite JSON: {exc}") from exc
 
 
 def _stable_digest(value: Any, length: int = 16) -> str:
-    payload = json.dumps(_json_safe(value), sort_keys=True, separators=(",", ":"))
+    payload = strict_json_dumps(
+        _json_safe(value), sort_keys=True, separators=(",", ":")
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:length]
 
 
@@ -163,6 +246,8 @@ def _safe_float(value: object, default: float = 0.5) -> float:
         parsed = float(value)
     except (TypeError, ValueError):
         return default
+    if not math.isfinite(parsed):
+        raise ModelContractError("floating-point values must be finite")
     return min(max(parsed, 0.0), 1.0)
 
 
@@ -229,39 +314,11 @@ class Predicate:
     natural_language: str = ""  # human-readable explanation
 
     def negation(self) -> str:
-        """Return the logical negation of this predicate.
+        """Return a structured negation or raise on unsupported semantics."""
 
-        v4 hotfix #3 (critique #43 part 2): apply flips to ALL occurrences
-        (was applying to first only via .replace() which is fine by default
-        but we wrap composed cases explicitly). For predicates that use
-        and/or, use explicit De Morgan wrap rather than partial flip.
-        """
-        expr = self.expression.strip()
-        if expr.startswith("not ") or expr.startswith("NOT "):
-            return expr[4:]
-        # Compound: use explicit wrap to keep logical semantics correct.
-        if " and " in expr.lower() or " or " in expr.lower():
-            return f"not ({expr})"
-        # Atomic: flip the operator (replace() already substitutes all occurrences).
-        if " <= " in expr:
-            return expr.replace(" <= ", " > ")
-        if " >= " in expr:
-            return expr.replace(" >= ", " < ")
-        if " < " in expr:
-            return expr.replace(" < ", " >= ")
-        if " > " in expr:
-            return expr.replace(" > ", " <= ")
-        if " == " in expr:
-            return expr.replace(" == ", " != ")
-        if " != " in expr:
-            return expr.replace(" != ", " == ")
-        if " in " in expr:
-            return expr.replace(" in ", " not in ")
-        if " is None" in expr:
-            return expr.replace(" is None", " is not None")
-        if " is not None" in expr:
-            return expr.replace(" is not None", " is None")
-        return f"not ({expr})"
+        from .predicate_logic import negate_expression
+
+        return negate_expression(self.expression)
 
 
 # ─────────────────────────────────────────────
@@ -290,6 +347,19 @@ class Belief:
     source_metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
+        if not isinstance(self.justification, JustificationCategory):
+            raise ModelContractError("justification must be a JustificationCategory")
+        if not isinstance(self.epistemic_status, EpistemicStatus):
+            raise ModelContractError("epistemic_status must be an EpistemicStatus")
+        if not isinstance(self.logic_type, LogicType):
+            raise ModelContractError("logic_type must be a LogicType")
+        if not isinstance(self.artifact_kind, ArtifactKind):
+            raise ModelContractError("artifact_kind must be an ArtifactKind")
+        if not isinstance(self.source_metadata, dict):
+            raise ModelContractError("source_metadata must be an object")
+        if self.justification is JustificationCategory.C1_MECHANICALLY_PROVEN:
+            _validate_proof_artifact(self.source_metadata.get("proof_artifact"))
+        self.confidence_score = _safe_float(self.confidence_score)
         # canonical_key: stable across text variations of the same belief.
         # Uses (cwe or guessed, file, function, line_bucket) — NOT the LLM text.
         if not self.canonical_key:
@@ -329,6 +399,7 @@ class Belief:
 
     def to_dict(self) -> dict:
         return {
+            "schema_version": BELIEF_SCHEMA_VERSION,
             "id": self.id,
             "predicate": {
                 "expression": self.predicate.expression,
@@ -338,6 +409,8 @@ class Belief:
             },
             "scope": _scope_to_dict(self.scope),
             "justification": self.justification.value,
+            "justification_name": self.justification.name,
+            "justification_taxonomy": JUSTIFICATION_TAXONOMY_VERSION,
             "dependencies": self.dependencies,
             "epistemic_status": self.epistemic_status.value,
             "logic_type": self.logic_type.value,
@@ -351,9 +424,13 @@ class Belief:
 
     @classmethod
     def from_dict(cls, data: dict) -> Belief:
-        # Safe enum parsing with fallbacks. JSON may carry either enum values
-        # ("C3", "semantic") or historical member names ("C3_DOCUMENTED").
-        justification = JustificationCategory.parse(data.get("justification", "C5"))
+        if not isinstance(data, dict):
+            raise ModelContractError("belief payload must be an object")
+        justification, taxonomy_migration = _parse_serialized_justification(
+            data.get("justification_name", data.get("justification")),
+            taxonomy_version=data.get("justification_taxonomy"),
+            belief_schema_version=data.get("schema_version"),
+        )
         epistemic = _parse_enum_value(
             EpistemicStatus, data.get("epistemic_status", "belief"),
             EpistemicStatus.BELIEF,
@@ -366,6 +443,22 @@ class Belief:
 
         pred_data = data.get("predicate", {})
         scope_data = data.get("scope", {})
+        if not isinstance(pred_data, dict):
+            raise ModelContractError("predicate must be an object")
+        if not isinstance(scope_data, dict):
+            raise ModelContractError("scope must be an object")
+        source_metadata = data.get("source_metadata") or data.get("metadata") or {}
+        if not isinstance(source_metadata, dict):
+            raise ModelContractError("source_metadata must be an object")
+        source_metadata = dict(source_metadata)
+        if taxonomy_migration:
+            source_metadata.setdefault("deserialization_diagnostics", []).append(
+                {
+                    "code": "legacy_justification_taxonomy_migrated",
+                    "migration": taxonomy_migration,
+                    "target_taxonomy": JUSTIFICATION_TAXONOMY_VERSION,
+                }
+            )
 
         return cls(
             predicate=Predicate(
@@ -389,12 +482,42 @@ class Belief:
             epistemic_status=epistemic,
             logic_type=logic,
             artifact_kind=artifact,
-            confidence_score=data.get("confidence_score", 0.5),
+            confidence_score=_safe_float(data.get("confidence_score", 0.5)),
             id=data.get("id", ""),
             canonical_key=data.get("canonical_key", ""),
             cwe=data.get("cwe", ""),
-            source_metadata=data.get("source_metadata") or data.get("metadata") or {},
+            source_metadata=source_metadata,
         )
+
+
+def _validate_proof_artifact(value: object) -> None:
+    """Require source-bound, replayable evidence before C1 can be assigned."""
+
+    if not isinstance(value, dict):
+        raise ModelContractError(
+            "C1_MECHANICALLY_PROVEN requires source_metadata.proof_artifact"
+        )
+    required_text = (
+        "schema_version",
+        "verifier",
+        "verification_status",
+        "replay_recipe",
+        "artifact_digest",
+        "source_digest",
+    )
+    missing = [key for key in required_text if not str(value.get(key, "")).strip()]
+    if missing:
+        raise ModelContractError(
+            "C1 proof artifact is incomplete: " + ", ".join(missing)
+        )
+    if value["schema_version"] != "belief.proof_artifact.v1":
+        raise ModelContractError("unsupported C1 proof artifact schema")
+    if value["verification_status"] != "proven":
+        raise ModelContractError("C1 proof artifact must have status 'proven'")
+    for key in ("artifact_digest", "source_digest"):
+        digest = str(value[key]).lower()
+        if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+            raise ModelContractError(f"C1 proof artifact {key} must be SHA-256")
 
 
 # ─────────────────────────────────────────────
@@ -797,32 +920,50 @@ class AnalysisReport:
 
     def save(self, path: str):
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=2, sort_keys=True)
+            json.dump(
+                self.to_dict(),
+                f,
+                indent=2,
+                sort_keys=True,
+                allow_nan=False,
+            )
 
     @classmethod
     def load(cls, path: str) -> AnalysisReport:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
+        data = load_json_file(path)
+        if not isinstance(data, dict):
+            raise ModelContractError("analysis report must be a JSON object")
         report = cls(project_name=data.get("project_name", "unknown"))
         report.bridge_summary = data.get("bridge_summary", {}) or {}
         report.source_metadata = data.get("source_metadata", {}) or {}
         report.run_metadata = data.get("run_metadata", {}) or {}
 
-        # Restore beliefs (skip any that fail to parse)
-        for raw_belief in data.get("beliefs", []):
+        diagnostics: list[dict[str, Any]] = []
+
+        # Invalid records abstain and leave an explicit diagnostic.
+        for index, raw_belief in enumerate(data.get("beliefs", [])):
             try:
                 if not isinstance(raw_belief, dict):
-                    continue
+                    raise ModelContractError("belief record must be an object")
                 report.beliefs.append(Belief.from_dict(raw_belief))
-            except Exception:
-                continue
+            except (KeyError, TypeError, ValueError) as exc:
+                diagnostics.append({
+                    "code": "belief_deserialization_abstained",
+                    "index": index,
+                    "error": str(exc),
+                })
 
-        for raw_finding in data.get("findings", []):
+        for index, raw_finding in enumerate(data.get("findings", [])):
             try:
-                if isinstance(raw_finding, dict):
-                    report.findings.append(Finding.from_dict(raw_finding))
-            except Exception:
-                continue
+                if not isinstance(raw_finding, dict):
+                    raise ModelContractError("finding record must be an object")
+                report.findings.append(Finding.from_dict(raw_finding))
+            except (KeyError, TypeError, ValueError) as exc:
+                diagnostics.append({
+                    "code": "finding_deserialization_abstained",
+                    "index": index,
+                    "error": str(exc),
+                })
 
         # Restore frontiers as lightweight objects
         belief_map = {b.id: b for b in report.beliefs}
@@ -870,10 +1011,7 @@ class AnalysisReport:
                 if not ba or not bb:
                     continue
                 severity_str = raw_conflict.get("severity", "medium")
-                try:
-                    severity = ConflictSeverity(severity_str)
-                except ValueError:
-                    severity = ConflictSeverity.MEDIUM
+                severity = ConflictSeverity(severity_str)
                 conflict = Conflict(
                     belief_a=ba,
                     belief_b=bb,
@@ -884,9 +1022,16 @@ class AnalysisReport:
                     verified_by=raw_conflict.get("verified_by", ""),
                 )
                 report.conflicts.append(conflict)
-            except (KeyError, TypeError):
+            except (KeyError, TypeError, ValueError) as exc:
+                diagnostics.append({
+                    "code": "conflict_deserialization_abstained",
+                    "error": str(exc),
+                })
                 continue
 
+        if diagnostics:
+            report.run_metadata = dict(report.run_metadata)
+            report.run_metadata["load_diagnostics"] = diagnostics
         return report
 
 

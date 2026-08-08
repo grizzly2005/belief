@@ -266,6 +266,13 @@ def _compare_case(
 ) -> dict[str, Any]:
     expected = dict(expected_case["expected"])
     observed_cases = [_observed_case(item, root) for item in actual_cases]
+    target = str(expected_case["target"]).replace("\\", "/")
+    for observed in observed_cases:
+        observed_file = str(observed.get("file") or "").replace("\\", "/")
+        if observed_file and "/" not in observed_file and (
+            target == observed_file or target.endswith(f"/{observed_file}")
+        ):
+            observed["file"] = target
     observed_cases.sort(key=_stable_json)
     best = _select_best_case(expected, observed_cases)
     expected_no_case = bool(expected.get("expected_no_audit_case", False))

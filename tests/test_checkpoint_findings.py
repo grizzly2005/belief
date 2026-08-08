@@ -21,7 +21,7 @@ class SeedSecurityBeliefPhase(Phase):
                     natural_language="User input reaches eval().",
                 ),
                 scope=Scope(file_path="app.py", function_name="run", line_start=3),
-                justification=JustificationCategory.C5_NO_JUSTIFICATION,
+                justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
                 cwe="CWE-95",
                 source_metadata={"source": "security_patterns", "rule_id": "CWE-95"},
             )

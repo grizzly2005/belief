@@ -53,3 +53,19 @@ def test_structural_path_check_ignores_generic_local_file_apis():
     )
 
     assert beliefs == []
+
+
+def test_structural_path_check_treats_path_name_as_reduction_not_sink():
+    beliefs = _path_beliefs(
+        """
+        from pathlib import Path
+
+        def download(request):
+            raw_path = request.args.get("path")
+            safe_name = Path(raw_path).name
+            candidate = Path("/srv/files") / safe_name
+            return candidate
+        """
+    )
+
+    assert beliefs == []

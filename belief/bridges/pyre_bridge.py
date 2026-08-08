@@ -135,7 +135,7 @@ def to_belief(finding: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "anchor_file": finding["path"],
         "anchor_line": finding.get("line", 0),
         "anchor_line_end": finding.get("line", 0),
-        "justification_type": "C2",    # declaration (type annotation)
+        "justification_type": "C2_STATICALLY_VERIFIED_PROPERTY",
         "contextual_constraint": f"pyre_code={finding.get('code')}, name={finding.get('name')}",
         "trust_domain": Path(finding["path"]).stem,
         "logic_type": "contract",

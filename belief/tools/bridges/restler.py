@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
 from typing import Any
 
+from belief.json_contracts import load_json_file
 from belief.tools.schemas import AttackPath, NormalizedToolResult, RequestStep
 
 from .base import ManifestBridge
@@ -18,7 +18,7 @@ class RestlerBridge(ManifestBridge):
 
     def import_file(self, path: str | Path) -> NormalizedToolResult:
         source = Path(path)
-        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload = load_json_file(source)
         attack_paths = _restler_attack_paths(payload)
         warnings = [] if attack_paths else ["Unsupported or empty RESTler-style JSON format."]
         return NormalizedToolResult(

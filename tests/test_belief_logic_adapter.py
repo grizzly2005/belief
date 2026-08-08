@@ -23,7 +23,7 @@ def _belief(belief_id: str, expression: str) -> Belief:
         id=belief_id,
         predicate=Predicate(expression=expression),
         scope=Scope(file_path="logic.py", function_name="f"),
-        justification=JustificationCategory.C5_NO_JUSTIFICATION,
+        justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
     )
 
 

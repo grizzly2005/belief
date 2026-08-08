@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from belief.json_contracts import load_json_file
 from belief.tool_results.io import sanitize_for_json
 from belief.tools.schemas import AccessObservation, NormalizedToolResult
 
 
 def import_har(path: str | Path) -> NormalizedToolResult:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = load_json_file(path)
     entries = payload.get("log", {}).get("entries", []) if isinstance(payload, dict) else []
     observations = []
     for entry in entries if isinstance(entries, list) else []:

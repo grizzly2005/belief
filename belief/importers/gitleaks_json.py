@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from belief.json_contracts import load_json_file
 from belief.tool_results.io import sanitize_for_json
 from belief.tools.schemas import ExternalFinding, NormalizedToolResult
 
 
 def import_gitleaks_json(path: str | Path) -> NormalizedToolResult:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = load_json_file(path)
     rows = payload if isinstance(payload, list) else payload.get("findings", []) if isinstance(payload, dict) else []
     findings = []
     for item in rows if isinstance(rows, list) else []:

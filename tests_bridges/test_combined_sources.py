@@ -133,7 +133,7 @@ def test_multi_source_unification():
         has_blackbox = any(k.startswith("http") for k in by_source_file)
 
         print(f"  Beliefs collected: {len(all_beliefs)}")
-        print(f"  By source file:")
+        print("  By source file:")
         for k, v in sorted(by_source_file.items()):
             tag = "[BB]" if k.startswith("http") else "[WB]"
             print(f"    {tag} {k}: {v}")

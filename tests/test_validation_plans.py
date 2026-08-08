@@ -493,8 +493,8 @@ def test_published_json_schema_matches_runtime_contract():
     runtime_contract = build_validation_plan(_case()).to_dict()["result_contract"]
     contract_schema = schema["$defs"]["resultContract"]
     assert set(contract_schema["required"]) == set(runtime_contract)
-    assert contract_schema["properties"]["subject_kind"]["const"] == (
-        runtime_contract["subject_kind"]
+    assert runtime_contract["subject_kind"] in (
+        contract_schema["properties"]["subject_kind"]["enum"]
     )
     assert set(
         contract_schema["properties"]["allowed_outcomes"]["items"]["enum"]

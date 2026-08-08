@@ -754,7 +754,8 @@ def _synthetic_belief(
             natural_language=description,
         ),
         scope=Scope(file_path=file, line_start=line, line_end=line),
-        justification=JustificationCategory.C1_FORMAL_VERIFICATION,
+        # This proposition is solver input, not a mechanically proven claim.
+        justification=JustificationCategory.C6_UNSUPPORTED_ASSUMPTION,
         epistemic_status=EpistemicStatus.BELIEF,
         logic_type=LogicType.FOL,
         confidence_score=1.0,

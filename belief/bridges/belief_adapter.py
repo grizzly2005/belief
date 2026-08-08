@@ -38,14 +38,26 @@ except Exception:
 logger = logging.getLogger("belief.bridges.adapter")
 
 
-# Map bridge's short justif code → JustificationCategory
-_JUSTIF_MAP = {
-    "C1": "C1_FORMAL_VERIFICATION",
-    "C2": "C2_CALLER_VERIFICATION",
-    "C3": "C3_DOCUMENTED_CONVENTION",
-    "C4": "C4_IMPLICIT_CONVENTION",
-    "C5": "C5_NO_JUSTIFICATION",
-    "C6": "C6_OPAQUE_INFERENCE",
+# Historical bridge codes predate the evidentiary taxonomy.  Never reinterpret
+# an old C1 as a mechanical proof.  Static analyzers are upgraded separately
+# below only when the bridge identifies the tool result that was observed.
+_LEGACY_JUSTIF_MAP = {
+    "C1": "C3_EXPLICIT_RUNTIME_GUARD",
+    "C2": "C4_CALLER_ASSUMPTION",
+    "C3": "C5_DOCUMENTED_CONVENTION",
+    "C4": "C6_UNSUPPORTED_ASSUMPTION",
+    "C5": "C6_UNSUPPORTED_ASSUMPTION",
+    "C6": "C6_UNSUPPORTED_ASSUMPTION",
+}
+
+_STATIC_ANALYZER_SOURCES = {
+    "bandit",
+    "crosshair",
+    "dlint",
+    "path_traversal",
+    "pyre",
+    "pyt",
+    "semgrep",
 }
 
 _LOGIC_MAP = {
@@ -56,8 +68,21 @@ _LOGIC_MAP = {
 }
 
 
-def _justif(code: str) -> "JustificationCategory":
-    name = _JUSTIF_MAP.get(code, "C5_NO_JUSTIFICATION")
+def _justif(code: str, *, source: str, raw: object) -> "JustificationCategory":
+    normalized = str(code or "").strip()
+    if normalized in JustificationCategory.__members__:
+        category = JustificationCategory.__members__[normalized]
+        if category is JustificationCategory.C1_MECHANICALLY_PROVEN:
+            # Bridges currently expose findings/counterexamples, but no
+            # immutable replay bundle bound to an exact source digest.
+            return JustificationCategory.C2_STATICALLY_VERIFIED_PROPERTY
+        return category
+
+    if source in _STATIC_ANALYZER_SOURCES and isinstance(raw, dict):
+        return JustificationCategory.C2_STATICALLY_VERIFIED_PROPERTY
+    name = _LEGACY_JUSTIF_MAP.get(
+        normalized.upper(), "C6_UNSUPPORTED_ASSUMPTION"
+    )
     return getattr(JustificationCategory, name)
 
 
@@ -140,9 +165,13 @@ def dict_to_belief(d: Dict[str, Any]) -> Optional["Belief"]:
             line_start=int(line_start) if line_start else None,
             line_end=int(line_end) if line_end else None,
         )
-        justif = _justif(d.get("justification_type", "C5"))
-        logic = _logic(d.get("logic_type", "semantic"))
         src = d.get("source", "unknown")
+        justif = _justif(
+            d.get("justification_type", "C6"),
+            source=src,
+            raw=d.get("raw"),
+        )
+        logic = _logic(d.get("logic_type", "semantic"))
         conf = _confidence(src, d.get("raw", {}))
         # Propagate explicit CWE from the bridge finding when present
         bridge_cwe = d.get("cwe") or ""

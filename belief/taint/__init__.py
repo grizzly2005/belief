@@ -229,14 +229,14 @@ class TaintPath:
                 f"{self.source_variable} is sanitized before reaching "
                 f"{self.sink.name}"
             )
-            justification = JustificationCategory.C2_CALLER_VERIFICATION
+            justification = JustificationCategory.C3_EXPLICIT_RUNTIME_GUARD
             epistemic = EpistemicStatus.BELIEF
         else:
             expr = (
                 f"taint({self.source_variable}, source={self.source.category}) "
                 f"reaches {self.sink.name}({self.sink_variable}) without sanitization"
             )
-            justification = JustificationCategory.C5_NO_JUSTIFICATION
+            justification = JustificationCategory.C6_UNSUPPORTED_ASSUMPTION
             epistemic = EpistemicStatus.HOPE
 
         return Belief(

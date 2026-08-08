@@ -8,7 +8,6 @@ Integration tests for belief.cognitive:
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import sys
 import tempfile
@@ -24,7 +23,7 @@ def _make_belief(expression, file_path="app.py", func="handler",
     """Helper: create a Belief with minimal boilerplate."""
     from belief.models import (
         Belief, Predicate, Scope,
-        JustificationCategory, EpistemicStatus, LogicType,
+        JustificationCategory,
     )
     return Belief(
         predicate=Predicate(
@@ -95,7 +94,7 @@ def test_belief_graph():
     # Propagate + final contradiction check
     g.propagate_confidence(iterations=3)
     contras = g.find_contradictions(min_severity=0.0)
-    assert len(contras) >= 1, f"Contradiction should persist after merge+propagate"
+    assert len(contras) >= 1, "Contradiction should persist after merge+propagate"
 
     stats = g.stats()
     print(f"  ✓ BeliefGraph v2: {stats['nodes']} nodes, {stats['edges']} edges, "
@@ -283,7 +282,7 @@ def run_cmd(user_input):
         assert len(report.beliefs) > 0, "Should collect beliefs"
         assert report.total_elapsed_s > 0
 
-        print(f"  ✓ CognitiveLoop full cycle:")
+        print("  ✓ CognitiveLoop full cycle:")
         print(f"    Beliefs: {len(report.beliefs)}")
         print(f"    Graph: {report.graph_stats}")
         print(f"    Contradictions: {len(report.contradictions)}")

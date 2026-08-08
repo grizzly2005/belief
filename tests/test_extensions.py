@@ -179,7 +179,7 @@ class TestStructuralExtractor:
         ext = StructuralExtractor()
         beliefs = ext.extract(code, "test.py")
         for b in beliefs:
-            assert b.justification == JustificationCategory.C5_NO_JUSTIFICATION
+            assert b.justification == JustificationCategory.C6_UNSUPPORTED_ASSUMPTION
 
     def test_empty_function(self):
         code = "def noop():\n    pass\n"

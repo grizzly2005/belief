@@ -1,0 +1,18 @@
+{
+  "schema_version": "belief.python_source_classification.v1",
+  "python3_roots": [
+    "belief"
+  ],
+  "classifications": [
+    {
+      "classification_id": "legacy_z3_playground_python2",
+      "path_prefix": "belief/tools_bundled/z3_playground",
+      "language": "python2",
+      "role": "vendored_reference_examples",
+      "python3_compile": "excluded",
+      "execution": "forbidden",
+      "expected_python_file_count": 29,
+      "inventory_sha256": "29ddd5f2e4df856f1b720ed6ea17fb82c2e993f5817ecb1fc0343e7ad40502f2"
+    }
+  ]
+}

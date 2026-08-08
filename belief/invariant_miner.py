@@ -604,7 +604,8 @@ class InvariantMiner:
                 natural_language=spec.description,
             ),
             scope=scope,
-            justification=JustificationCategory.C1_FORMAL_VERIFICATION,
+            # A source-level guard is evidence, but not a proof artifact.
+            justification=JustificationCategory.C3_EXPLICIT_RUNTIME_GUARD,
             epistemic_status=EpistemicStatus.BELIEF,
             logic_type=LogicType.FOL,
             artifact_kind=ArtifactKind.SOURCE_CODE,
