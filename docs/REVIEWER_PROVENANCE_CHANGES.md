@@ -59,6 +59,33 @@ the same cache entry serves both settings.
 are noisy, but they are call sites carrying a real CWE-78 mapping; dropping them
 would remove candidate sinks rather than noise.
 
+## 2026-08-08 — Web security semantics and the `Path(x).name` suppression
+
+Change: merging `research/cyberseceval-static-preflight-v1` added
+`belief/web_security_semantics.py` and wired it into `security_patterns` on the
+`default` analysis profile, and made both `security_patterns` and `structural`
+stop emitting a path-safety belief when the call is `Path(x).name`.
+
+- digest break: **yes**
+- behavior break: **yes, on the recorded benchmark path**
+
+This is the case the Bandit entry below is not. `security_patterns` and
+`structural` are first-party analysis on the `default` profile, which the
+static reviewer does use. The reviewer can now emit beliefs it did not emit
+before, and withholds one it used to emit for `Path(x).name` — a call that
+strips directory components and is therefore not a traversal sink.
+
+Measured, not assumed: the local `static_analysis_ground_truth_v1` benchmark
+returns the same deterministic digest across the merge,
+`0941a4ec7976067059e5a931245efba78ae1c68334bef06730ad3094cb4d53a9`, with
+`status=passed`. That corpus is eight cases. It is evidence that the change is
+not gratuitously disruptive, and it is **not** evidence about the 98-case
+artifact-unseen cohort or the 45 evaluable development cases, neither of which
+was re-run.
+
+Any new SusVibes measurement is therefore not comparable to the two recorded
+results above. The reserved 49-case cohort remains unopened.
+
 ## 2026-08-08 — MCP per-session store isolation
 
 Change: `belief/mcp/session.py` added; `BeliefMCPServer` resolves one
