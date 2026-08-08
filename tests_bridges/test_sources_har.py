@@ -287,7 +287,7 @@ def test_multisource_dedupes():
         return Belief(
             predicate=Predicate(expression=expr, variables=(), anchor_lines=(line,)),
             scope=Scope(file_path=file_, line_start=line, line_end=line),
-            justification=JustificationCategory.C4_IMPLICIT_CONVENTION,
+            justification=JustificationCategory.C4_CALLER_ASSUMPTION,
             epistemic_status=EpistemicStatus.BELIEF,
             logic_type=LogicType.FOL,
             artifact_kind=ArtifactKind.SOURCE_CODE,

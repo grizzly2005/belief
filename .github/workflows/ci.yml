@@ -44,7 +44,7 @@ jobs:
 
       - name: Quality gates
         run: |
-          python -m ruff check belief tests
+          python -m ruff check belief tests tests_bridges
           python -m pip check
           git diff --check
 
@@ -75,6 +75,7 @@ jobs:
           tests/test_isolated_web_worker_contracts.py
           tests/test_mcp_dynamic_validation.py
           tests/test_mcp_authorized_project_pilot.py
+          tests/test_mcp_session_isolation.py
           tests/test_source_classification.py
           tests/test_research_experiment_classification.py
 
@@ -111,6 +112,7 @@ jobs:
           tests/test_mcp_server.py
           tests/test_mcp_dynamic_validation.py
           tests/test_mcp_authorized_project_pilot.py
+          tests/test_mcp_session_isolation.py
 
       - name: Security regressions
         run: python -m pytest -q -m security

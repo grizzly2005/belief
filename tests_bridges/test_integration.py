@@ -14,7 +14,6 @@ or directly: python tests_bridges/test_integration.py
 """
 from __future__ import annotations
 
-import os
 import shutil
 import sys
 import tempfile
@@ -196,7 +195,7 @@ def test_adapter_conversion():
         })
         assert b is not None
         assert 0.0 <= b.fragility <= 1.0
-        print(f"  ✓ adapter synthetic test passed (bandit not installed)")
+        print("  ✓ adapter synthetic test passed (bandit not installed)")
 
 
 def test_merge_deduplication():
