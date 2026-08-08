@@ -38,7 +38,6 @@ from .tools import BeliefMCPError, BeliefMCPTools
 from .validation import (
     MCP_MAX_IN_FLIGHT_REQUESTS,
     MCP_MAX_RESPONSE_BYTES,
-    MCP_MAX_SESSIONS,
 )
 
 _JSONRPC_VERSION = "2.0"
@@ -74,8 +73,15 @@ class BeliefMCPServer:
         self,
         tools: BeliefMCPTools | None = None,
         *,
-        max_sessions: int = MCP_MAX_SESSIONS,
+        max_sessions: int = 1,
     ) -> None:
+        """Create a dispatcher.
+
+        ``max_sessions`` defaults to 1: stdio binds one caller to one process,
+        and a single session keeps the whole reviewed store budget. Only a
+        transport that multiplexes several callers should raise it, and doing
+        so divides that budget rather than multiplying it.
+        """
         self._state_lock = threading.Lock()
         self._state = MCPLifecycleState.NEW
         if tools is not None:
