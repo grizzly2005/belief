@@ -1,0 +1,93 @@
+{
+  "schema_version": "belief.external_artifacts.v1",
+  "recorded_on": "2026-08-08",
+  "default_root_hint": "F:/belief-rd",
+  "note": "Create-only measurement artifacts retained outside the repository. Every digest below was verified against the recorded files on 2026-08-08.",
+  "artifacts": [
+    {
+      "path": "results/belief-generalization-dev-a-baseline-20260725-01.json",
+      "sha256": "27cfb814ae8fffd9c24823f2aeafe96c9887d26575e18ccc9796dcb197ea8c30",
+      "role": "generalization_ablation_variant_a",
+      "recorded_in": "docs/GENERALIZATION_RESULTS.md"
+    },
+    {
+      "path": "results/belief-generalization-dev-b-diagnostics-20260725-01.json",
+      "sha256": "8881386066618f420cb5c2f0b11ac43a00f3b87a09a5a213f6454291aa843809",
+      "role": "generalization_ablation_variant_b",
+      "recorded_in": "docs/GENERALIZATION_RESULTS.md"
+    },
+    {
+      "path": "results/belief-generalization-dev-c2-summaries-20260725-01.json",
+      "sha256": "f70cf92e3ce0e1d85435796cfd6a4efcb63a337c965927701a97bdf9537a9c0b",
+      "role": "generalization_ablation_variant_c",
+      "recorded_in": "docs/GENERALIZATION_RESULTS.md"
+    },
+    {
+      "path": "results/belief-generalization-dev-d3-flow-states-20260726-01.json",
+      "sha256": "4177426efcec95f132cf439302aafb807bcff42b41badd340b2a612fad7e0954",
+      "role": "generalization_ablation_variant_d",
+      "recorded_in": "docs/GENERALIZATION_RESULTS.md"
+    },
+    {
+      "path": "results/belief-generalization-dev-e-evidence-graph-20260726-01.json",
+      "sha256": "c530b01fd92b165e27dd0cb5c7402ef7488c728d4b8b861efc0d691bf5d17d89",
+      "role": "generalization_ablation_variant_e",
+      "recorded_in": "docs/GENERALIZATION_RESULTS.md"
+    },
+    {
+      "path": "results/belief-generalization-dev-f-full-20260726-01.json",
+      "sha256": "33c422c5b1084f1114bd473f3fcd3ca1fcb40b6eb438bb0e818bba8fd2018c00",
+      "role": "generalization_ablation_variant_f_run_1",
+      "recorded_in": "docs/GENERALIZATION_RESULTS.md"
+    },
+    {
+      "path": "results/belief-generalization-dev-f-full-20260726-02.json",
+      "sha256": "caad60021d98288f7cd96ac1b0175196791664aa7ad462223b93c3b199a72167",
+      "role": "generalization_ablation_variant_f_run_2",
+      "recorded_in": "docs/GENERALIZATION_RESULTS.md"
+    },
+    {
+      "path": "results/belief-susvibes-candidate-review-artifact-unseen-holdout-20260725-02.json",
+      "sha256": "8caf1eb49090aa39c8ed645252ae31ae1594ddc413b4259ba3edf67445aac4c4",
+      "role": "artifact_unseen_candidate_review_run_1",
+      "recorded_in": "benchmark_susvibes/README.md"
+    },
+    {
+      "path": "results/belief-susvibes-candidate-review-artifact-unseen-holdout-20260725-03.json",
+      "sha256": "9fa0b82b106d05dc673123c6bef79c5b51e9b3201f8c5ff7898a0a6e829cb8de",
+      "role": "artifact_unseen_candidate_review_run_2",
+      "recorded_in": "benchmark_susvibes/README.md"
+    },
+    {
+      "path": "results/belief-susvibes-candidate-review-artifact-unseen-holdout-20260725-04.json",
+      "sha256": "e61cb04ad782adff20432d29438d16f4be308f0af356d06e3115ed4acd27884a",
+      "role": "artifact_unseen_candidate_review_run_3",
+      "recorded_in": "benchmark_susvibes/README.md"
+    },
+    {
+      "path": "results/belief-susvibes-v1-artifact-unseen-holdout-20260725-04.json",
+      "sha256": "163306bba0bdc4809b44a471ce4d1e9cbbb6d6d4bf5f927f7939f2e458509fb1",
+      "role": "artifact_unseen_cohort_manifest",
+      "recorded_in": "benchmark_susvibes/README.md"
+    },
+    {
+      "path": "results/belief-susvibes-v1-nested-dev-test-20260725-01.json",
+      "sha256": "74d916df62428882ae89cc46d10b9d14c01831a6e60826b317cbb77e3ae6631b",
+      "role": "nested_development_test_split_manifest",
+      "recorded_in": "benchmark_susvibes/README.md, docs/GENERALIZATION_RESULTS.md"
+    },
+    {
+      "path": "results/belief-cache-candidate-review-holdout-full-20260725-01.json",
+      "sha256": "97e4cd762f94275fa335e2532f886bbbd02b086b10b00e35fcfcd78fd8852abb",
+      "role": "hydrated_parent_repository_cache_manifest",
+      "recorded_in": "benchmark_susvibes/README.md",
+      "note": "The prose records this digest without naming the file. Resolved by digest search on 2026-08-08; it is not prepare-smoke/belief-cache-manifest.json, which is a different, smaller preparation."
+    },
+    {
+      "path": "manifests/belief-patcheval-verified-python-v1-20260725-01.json",
+      "sha256": "2e19fde79d61ce757fa5c91c56ad86c78bac31a6179ac4133b8df47204ff14bd",
+      "role": "patcheval_verified_ineligible_manifest",
+      "recorded_in": "docs/PATCHEVAL_VERIFIED_RESULT.md"
+    }
+  ]
+}
