@@ -1014,10 +1014,30 @@ def test_cancellation_before_start_and_during_execution_releases_everything(
     assert active._response_send.closed
 
 
-def test_twenty_sequential_runs_leave_no_children_or_temporary_roots():
+def test_twenty_sequential_runs_leave_no_children_or_temporary_roots(
+    monkeypatch,
+):
+    """Every root this run creates must be gone, and none may stay owned.
+
+    Recording the exact roots is what makes the assertion attributable.
+    Globbing the shared system temp directory instead would also observe roots
+    belonging to any other process running the suite concurrently, which
+    reports a leak that this run did not cause.
+    """
     before_children = {child.pid for child in multiprocessing.active_children()}
-    temp_parent = Path(tempfile.gettempdir())
-    before_roots = set(temp_parent.glob("belief-isolated-web-worker-*"))
+    created: list[Path] = []
+    create_worker_roots = worker_process._create_worker_roots
+
+    def recording_create_worker_roots() -> tuple[Path, Path]:
+        container, child = create_worker_roots()
+        created.append(container)
+        return container, child
+
+    monkeypatch.setattr(
+        worker_process,
+        "_create_worker_roots",
+        recording_create_worker_roots,
+    )
 
     responses = [
         run_worker_request(_request("fx_18a4e9_v1"))
@@ -1025,10 +1045,19 @@ def test_twenty_sequential_runs_leave_no_children_or_temporary_roots():
     ]
 
     after_children = {child.pid for child in multiprocessing.active_children()}
-    after_roots = set(temp_parent.glob("belief-isolated-web-worker-*"))
+    with worker_process._OWNED_WORKER_ROOTS_LOCK:
+        still_owned = {
+            path
+            for path in created
+            if os.path.normcase(str(path))
+            in worker_process._OWNED_WORKER_ROOTS
+        }
+
     assert all(response.worker_status == "completed" for response in responses)
     assert after_children == before_children
-    assert after_roots == before_roots
+    assert len(created) == 20
+    assert [path for path in created if path.exists()] == []
+    assert still_owned == set()
     assert all(
         response.attestation.cleanup_completed is True
         for response in responses
