@@ -123,6 +123,7 @@ def _ready_kwargs(
         "claude_version": "2.1.218",
         "minimum_free_gib": 1.0,
         "acknowledge_agent_network": True,
+        "acknowledge_scoped_credential": True,
         "environment": {
             "ANTHROPIC_API_KEY": "never-write-this-secret"
         },
@@ -152,6 +153,7 @@ def test_ready_preflight_is_bound_and_never_reports_secret(tmp_path):
     assert payload["binding"]["requested_num_instances"] == 1
     assert payload["binding"]["feedback_mode"] == "belief"
     assert payload["binding"]["max_stop_blocks"] == 1
+    assert payload["binding"]["scoped_credential_acknowledged"] is True
     assert payload["boundaries"]["docker_started"] is False
     assert payload["comparability"]["susvibes_secpass_measured"] is False
     warnings = [
@@ -186,6 +188,7 @@ def test_ready_preflight_is_bound_and_never_reports_secret(tmp_path):
         model="claude-fable-5",
         claude_version="2.1.218",
         runner_path=runner,
+        scoped_credential_acknowledged=True,
     )
     assert provenance["report_digest"] == written["report_digest"]
     assert len(provenance["report_sha256"]) == 64
@@ -213,6 +216,7 @@ def test_ready_preflight_binds_true_no_feedback_control(tmp_path):
         runner_path=runner,
         feedback_mode="none",
         max_stop_blocks=0,
+        scoped_credential_acknowledged=True,
     )
 
     assert written["binding"]["feedback_mode"] == "none"
@@ -231,6 +235,7 @@ def test_ready_preflight_binds_true_no_feedback_control(tmp_path):
             runner_path=runner,
             feedback_mode="belief",
             max_stop_blocks=1,
+            scoped_credential_acknowledged=True,
         )
 
 
@@ -238,6 +243,7 @@ def test_preflight_reports_all_environment_blockers(tmp_path):
     kwargs, _fixture_paths = _ready_kwargs(tmp_path)
     kwargs.update({
         "acknowledge_agent_network": False,
+        "acknowledge_scoped_credential": False,
         "environment": {},
         "docker_probe": lambda: (False, "daemon stopped"),
         "disk_free_probe": lambda _path: 512,
@@ -252,6 +258,7 @@ def test_preflight_reports_all_environment_blockers(tmp_path):
         "docker_daemon_ready",
         "container_agent_credentials",
         "explicit_agent_network_acknowledgement",
+        "explicit_scoped_credential_acknowledgement",
     }
     assert payload["comparability"]["preflight_is_benchmark_result"] is False
 
@@ -312,6 +319,7 @@ def test_ready_report_rechecks_current_storage(tmp_path):
             model="claude-fable-5",
             claude_version="2.1.218",
             runner_path=runner,
+            scoped_credential_acknowledged=True,
         )
 
 
@@ -338,6 +346,7 @@ def test_ready_report_rejects_tampering_and_input_drift(tmp_path):
             model="claude-fable-5",
             claude_version="2.1.218",
             runner_path=runner,
+            scoped_credential_acknowledged=True,
         )
 
 
@@ -362,6 +371,7 @@ def test_ready_report_rejects_dirty_checkout(tmp_path):
             model="claude-fable-5",
             claude_version="2.1.218",
             runner_path=runner,
+            scoped_credential_acknowledged=True,
         )
 
 
@@ -387,6 +397,7 @@ def test_ready_report_is_bound_to_exact_execution_slice(tmp_path):
             model="claude-fable-5",
             claude_version="2.1.218",
             runner_path=runner,
+            scoped_credential_acknowledged=True,
         )
 
 
