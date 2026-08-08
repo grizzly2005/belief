@@ -20,6 +20,7 @@ from .models import (
     Predicate,
     Scope,
 )
+from .web_security_semantics import analyze_web_security_semantics
 
 logger = logging.getLogger("belief.structural.security")
 
@@ -162,6 +163,13 @@ class SecurityPatternExtractor:
             line_start=1, line_end=len(source_code.splitlines()),
         )
         beliefs.extend(self._check_module_dynamic_code_execution(tree, module_scope))
+        if self.analysis_profile == "default":
+            beliefs.extend(
+                self._check_web_security_semantics(
+                    tree,
+                    module_scope,
+                )
+            )
 
         class_names: dict[int, str] = {}
         for class_node in ast.walk(tree):
@@ -924,6 +932,11 @@ class SecurityPatternExtractor:
         """Detect path operations reached from likely external path input (CWE-22)."""
         beliefs = []
         tainted_vars, constant_vars = self._path_assignment_facts(node)
+        parents = {
+            id(child): parent
+            for parent in ast.walk(node)
+            for child in ast.iter_child_nodes(parent)
+        }
         path_sinks = {
             "open",
             "builtins.open",
@@ -938,6 +951,14 @@ class SecurityPatternExtractor:
                 continue
             name = self._get_call_name(child)
             if name not in path_sinks:
+                continue
+            parent = parents.get(id(child))
+            if (
+                name in {"Path", "pathlib.Path"}
+                and isinstance(parent, ast.Attribute)
+                and parent.value is child
+                and parent.attr == "name"
+            ):
                 continue
             source_arg = next(
                 (
@@ -956,6 +977,49 @@ class SecurityPatternExtractor:
                 scope, child.lineno, "high", "CWE-22",
                 variables=(source_name,),
             ))
+        return beliefs
+
+    def _check_web_security_semantics(
+        self,
+        tree: ast.AST,
+        module_scope: Scope,
+    ) -> list[Belief]:
+        beliefs = []
+        for issue in analyze_web_security_semantics(tree):
+            scope = Scope(
+                file_path=module_scope.file_path,
+                function_name=issue.function_name,
+                module=module_scope.module,
+                line_start=issue.line_start,
+                line_end=issue.line_end,
+            )
+            beliefs.append(
+                self._make_belief(
+                    issue.predicate,
+                    issue.description,
+                    scope,
+                    issue.line,
+                    "high",
+                    issue.cwe,
+                    variables=issue.variables,
+                    metadata={
+                        "detector": "web_security_semantics_v1",
+                        "dataflow": {
+                            "source": issue.source,
+                            "source_line": issue.line_start,
+                            "sink": issue.sink,
+                            "sink_line": issue.line,
+                            "path": [
+                                issue.source,
+                                issue.sink,
+                            ],
+                            "missing_guarantees": list(
+                                issue.missing_guarantees
+                            ),
+                        },
+                    },
+                )
+            )
         return beliefs
 
     def _path_assignment_facts(
@@ -2494,10 +2558,14 @@ class SecurityPatternExtractor:
         for pattern in patterns:
             match = pattern.search(func_src)
             if match:
+                match_line = (
+                    node.lineno
+                    + func_src[:match.start()].count("\n")
+                )
                 beliefs.append(self._make_belief(
                     "credentials.stored_securely == True",
-                    f"Hardcoded credential at line ~{node.lineno} (CWE-798).",
-                    scope, node.lineno, "high", "CWE-798",
+                    f"Hardcoded credential at line {match_line} (CWE-798).",
+                    scope, match_line, "high", "CWE-798",
                 ))
                 break
         return beliefs
@@ -2505,6 +2573,11 @@ class SecurityPatternExtractor:
     def _check_insecure_random(self, node: ast.FunctionDef, scope: Scope) -> list[Belief]:
         """Detect insecure randomness for security contexts (CWE-330)."""
         beliefs = []
+        parent_by_id = {
+            id(child): parent
+            for parent in ast.walk(node)
+            for child in ast.iter_child_nodes(parent)
+        }
         for child in ast.walk(node):
             if isinstance(child, ast.Call):
                 name = self._get_call_name(child)
@@ -2515,6 +2588,13 @@ class SecurityPatternExtractor:
                         "token", "secret", "key", "password", "auth",
                         "hash", "salt", "nonce", "session", "csrf",
                     ])
+                    security_ctx = (
+                        security_ctx
+                        or _random_call_has_security_assignment_context(
+                            child,
+                            parent_by_id,
+                        )
+                    )
                     if security_ctx:
                         beliefs.append(self._make_belief(
                             "random.is_cryptographic == True",
@@ -2662,6 +2742,66 @@ def _function_parameter_names(
     if node.args.kwarg:
         names.add(node.args.kwarg.arg)
     return names
+
+
+def _random_call_has_security_assignment_context(
+    call: ast.Call,
+    parent_by_id: dict[int, ast.AST],
+) -> bool:
+    current: ast.AST = call
+    while (parent := parent_by_id.get(id(current))) is not None:
+        targets: list[ast.AST] = []
+        if isinstance(parent, ast.Assign):
+            targets.extend(parent.targets)
+        elif isinstance(parent, ast.AnnAssign):
+            targets.append(parent.target)
+        elif isinstance(parent, ast.NamedExpr):
+            targets.append(parent.target)
+        if any(
+            _security_sensitive_identifier(identifier)
+            for target in targets
+            for identifier in _assignment_target_identifiers(target)
+        ):
+            return True
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return False
+        current = parent
+    return False
+
+
+def _assignment_target_identifiers(node: ast.AST) -> tuple[str, ...]:
+    if isinstance(node, ast.Name):
+        return (node.id,)
+    if isinstance(node, ast.Attribute):
+        return (node.attr,)
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return tuple(
+            identifier
+            for element in node.elts
+            for identifier in _assignment_target_identifiers(element)
+        )
+    return ()
+
+
+def _security_sensitive_identifier(value: str) -> bool:
+    separated = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value)
+    parts = {
+        part
+        for part in re.split(r"[^a-z0-9]+", separated.lower())
+        if part
+    }
+    return bool(parts & {
+        "auth",
+        "csrf",
+        "hash",
+        "key",
+        "nonce",
+        "password",
+        "salt",
+        "secret",
+        "session",
+        "token",
+    })
 
 
 def _is_patch_path_parameter(name: str) -> bool:

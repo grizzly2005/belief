@@ -432,6 +432,11 @@ class StructuralExtractor:
         """Emit path-safety beliefs only for locally traceable external input."""
         beliefs = []
         tainted_vars = self._external_path_variables(node)
+        parents = {
+            id(child): parent
+            for parent in ast.walk(node)
+            for child in ast.iter_child_nodes(parent)
+        }
         path_sinks = {
             "open",
             "builtins.open",
@@ -446,6 +451,14 @@ class StructuralExtractor:
                 continue
             call_name = (self._get_call_name(child) or "").lower()
             if call_name not in path_sinks:
+                continue
+            parent = parents.get(id(child))
+            if (
+                call_name in {"path", "pathlib.path"}
+                and isinstance(parent, ast.Attribute)
+                and parent.value is child
+                and parent.attr == "name"
+            ):
                 continue
             source_arg = next(
                 (arg for arg in child.args if self._is_external_path_expr(arg, tainted_vars)),
