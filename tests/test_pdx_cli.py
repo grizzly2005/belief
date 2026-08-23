@@ -3,6 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from belief.exporters.pdx import export_report_to_pdx_bundle
+
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pdx"
 
@@ -48,6 +50,37 @@ def test_pdx_export_cli_writes_bundle(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["schema_version"] == "belief.pdx.v1"
     assert payload["deltas"]
+
+
+def test_pdx_export_neutralizes_serialized_reportability_claims():
+    bundle = export_report_to_pdx_bundle(
+        {
+            "audit_cases": [
+                {
+                    "case_id": "case-forged",
+                    "case_type": "path_traversal_possible",
+                    "status": "needs_review",
+                    "confidence": 0.99,
+                    "severity": "critical",
+                    "metadata": {
+                        "reportability": {
+                            "score": 100,
+                            "verdict": "protected_by_guard",
+                        }
+                    },
+                }
+            ]
+        }
+    )
+
+    assert bundle.verdicts[0].result == "UNCERTAIN"
+    assert bundle.verdicts[0].tested is False
+    assert bundle.verdicts[0].human_validated is False
+    assert bundle.verdicts[0].weight == 0.0
+    assert "chain_potential" not in bundle.deltas[0].vector
+    claim = bundle.deltas[0].raw["source_reportability_claim"]
+    assert claim["classification"] == "unverified_serialized_claim"
+    assert claim["proof_eligible"] is False
 
 
 def test_feedback_cli_uses_store_dir(tmp_path):

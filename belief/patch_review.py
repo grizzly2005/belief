@@ -27,6 +27,7 @@ from .benchmark.susvibes import (
     finding_is_focused,
     parse_security_diff,
 )
+from .reportability.scoring import assess_audit_case_reportability
 from .static_analysis_pipeline import (
     StaticAnalysisOptions,
     analyze_static_target,
@@ -1313,11 +1314,7 @@ def _normalize_path(value: Any) -> str:
 
 
 def _case_verdict(case: Any) -> str:
-    metadata = getattr(case, "metadata", {}) or {}
-    reportability = metadata.get("reportability")
-    if isinstance(reportability, Mapping):
-        return str(reportability.get("verdict") or "")
-    return str(getattr(case, "status", "") or "")
+    return assess_audit_case_reportability(case).verdict
 
 
 def _git(

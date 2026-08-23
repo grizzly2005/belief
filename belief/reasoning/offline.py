@@ -16,7 +16,6 @@ class OfflineReasoningEngine:
     def analyze(self, request: ReasoningRequest) -> ReasoningResponse:
         feedback_verdicts = _verdicts(request.feedback_events)
         validations = list(request.validation_results)
-        reportability = _reportability(request.metadata)
 
         if "false_positive" in feedback_verdicts:
             return _response(
@@ -31,20 +30,6 @@ class OfflineReasoningEngine:
                 "protected_by_guard",
                 "Human feedback says the candidate is protected by guard evidence.",
                 confidence=0.85,
-            )
-        if _has_validated_outcome(validations, "enforced"):
-            return _response(
-                request,
-                "protected_by_guard",
-                "Validation evidence indicates the relevant guard is enforced.",
-                confidence=0.8,
-            )
-        if _has_validated_outcome(validations, "false_positive"):
-            return _response(
-                request,
-                "likely_false_positive",
-                "Validation evidence marks this candidate as likely false positive.",
-                confidence=0.8,
             )
         if "needs_more_evidence" in feedback_verdicts:
             return _response(
@@ -77,13 +62,6 @@ class OfflineReasoningEngine:
                 missing=request.missing_evidence or ("manual validation result",),
                 steps=request.validation_steps,
                 confidence=0.65,
-            )
-        if reportability.get("verdict") == "protected_by_guard":
-            return _response(
-                request,
-                "protected_by_guard",
-                "Existing reportability metadata classifies this candidate as protected by guard.",
-                confidence=0.7,
             )
         if request.missing_evidence:
             return _response(
@@ -145,15 +123,6 @@ def _verdicts(events: tuple[dict[str, Any], ...]) -> set[str]:
     }
 
 
-def _has_validated_outcome(validations: list[dict[str, Any]], outcome: str) -> bool:
-    for result in validations:
-        if str(result.get("outcome") or "").lower() != outcome:
-            continue
-        if bool(result.get("tested")) or bool(result.get("human_validated")):
-            return True
-    return False
-
-
 def _has_inconclusive_positive_evidence(validations: list[dict[str, Any]]) -> bool:
     for result in validations:
         if str(result.get("outcome") or "").lower() != "inconclusive":
@@ -162,11 +131,6 @@ def _has_inconclusive_positive_evidence(validations: list[dict[str, Any]]) -> bo
         if isinstance(metadata, dict) and metadata.get("positive_evidence") is True:
             return True
     return False
-
-
-def _reportability(metadata: dict[str, Any]) -> dict[str, Any]:
-    reportability = metadata.get("reportability")
-    return reportability if isinstance(reportability, dict) else {}
 
 
 def _dedupe(values: tuple[str, ...]) -> list[str]:

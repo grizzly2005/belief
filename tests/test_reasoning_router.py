@@ -65,7 +65,7 @@ def test_offline_engine_needs_manual_validation_for_inconclusive_pdx_evidence():
     assert response.recommendation == "needs_manual_validation"
 
 
-def test_offline_engine_protected_by_guard_from_enforced_validation():
+def test_offline_engine_does_not_trust_enforced_boolean_claim():
     request = ReasoningRequest(
         case_id="case-1",
         validation_results=(
@@ -79,7 +79,23 @@ def test_offline_engine_protected_by_guard_from_enforced_validation():
 
     response = OfflineReasoningEngine().analyze(request)
 
-    assert response.recommendation == "protected_by_guard"
+    assert response.recommendation == "keep"
+
+
+def test_offline_engine_does_not_trust_serialized_reportability_claim():
+    request = ReasoningRequest(
+        case_id="case-1",
+        metadata={
+            "reportability": {
+                "score": 0,
+                "verdict": "protected_by_guard",
+            }
+        },
+    )
+
+    response = OfflineReasoningEngine().analyze(request)
+
+    assert response.recommendation == "keep"
 
 
 def test_reason_audit_report_stable_ordering():

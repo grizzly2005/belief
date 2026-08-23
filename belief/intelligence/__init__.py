@@ -1,0 +1,82 @@
+"""Bounded external intelligence as immutable, context-only signals."""
+
+from .canonical import canonical_json, canonical_json_sha256, sha256_bytes
+from .errors import (
+    ExternalIntelligenceError,
+    HTTPStatusTransportError,
+    IntelligenceParseError,
+    IntelligenceSchemaError,
+    IntelligenceTransportError,
+    InvalidTransportResponseError,
+    MalformedIntelligenceJSONError,
+    NetworkTransportError,
+    QueryNormalizationError,
+    ResponseTooLargeError,
+    TransportTimeoutError,
+)
+from .models import (
+    CONTEXT_ONLY_CLASSIFICATION,
+    INTELLIGENCE_SCHEMA_VERSION,
+    ExternalIntelligenceBatch,
+    ExternalIntelligenceRecord,
+    FreshnessMetadata,
+    LicenseMetadata,
+    concatenate_context_records,
+)
+from .parsers import (
+    CISA_KEV_PARSER_VERSION,
+    OSV_QUERY_PARSER_VERSION,
+    parse_cisa_kev_catalog,
+    parse_osv_query_response,
+)
+from .transport import (
+    ALLOWED_INTELLIGENCE_URLS,
+    CISA_KEV_CATALOG_URL,
+    MAX_HTTP_RESPONSE_BYTES,
+    MAX_HTTP_TIMEOUT_SECONDS,
+    OSV_QUERY_URL,
+    HTTPFetchRequest,
+    HTTPFetchResponse,
+    build_cisa_kev_request,
+    build_osv_query_request,
+    fetch_http_response,
+)
+
+
+__all__ = [
+    "ALLOWED_INTELLIGENCE_URLS",
+    "CISA_KEV_CATALOG_URL",
+    "CISA_KEV_PARSER_VERSION",
+    "CONTEXT_ONLY_CLASSIFICATION",
+    "ExternalIntelligenceBatch",
+    "ExternalIntelligenceError",
+    "ExternalIntelligenceRecord",
+    "FreshnessMetadata",
+    "HTTPFetchRequest",
+    "HTTPFetchResponse",
+    "HTTPStatusTransportError",
+    "INTELLIGENCE_SCHEMA_VERSION",
+    "IntelligenceParseError",
+    "IntelligenceSchemaError",
+    "IntelligenceTransportError",
+    "InvalidTransportResponseError",
+    "LicenseMetadata",
+    "MAX_HTTP_RESPONSE_BYTES",
+    "MAX_HTTP_TIMEOUT_SECONDS",
+    "MalformedIntelligenceJSONError",
+    "NetworkTransportError",
+    "OSV_QUERY_PARSER_VERSION",
+    "OSV_QUERY_URL",
+    "QueryNormalizationError",
+    "ResponseTooLargeError",
+    "TransportTimeoutError",
+    "build_cisa_kev_request",
+    "build_osv_query_request",
+    "canonical_json",
+    "canonical_json_sha256",
+    "concatenate_context_records",
+    "fetch_http_response",
+    "parse_cisa_kev_catalog",
+    "parse_osv_query_response",
+    "sha256_bytes",
+]

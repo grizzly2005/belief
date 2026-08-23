@@ -280,8 +280,24 @@ def test_validation_result_adapter_links_plan_to_audit_case():
     assert result.subject_kind == "audit_case"
     assert result.outcome == "enforced"
     assert result.tested is True
+    assert result.human_validated is False
+    assert result.metadata["claimed_tested"] is True
+    assert result.metadata["claimed_human_validated"] is False
+    assert result.metadata["proof_state"] == "unverified_legacy_claim"
     assert result.metadata["validation_plan_id"] == plan.plan_id
     assert result.metadata["validation_strategy"] == plan.strategy
+
+
+def test_validation_result_adapter_rejects_reserved_metadata_overrides():
+    plan = build_validation_plan(_case())
+
+    with pytest.raises(ValueError, match="reserved bindings"):
+        validation_result_from_plan(
+            plan,
+            source="test",
+            outcome="inconclusive",
+            metadata={"validation_plan_id": "attacker-plan"},
+        )
 
 
 def test_validation_result_adapter_rejects_unknown_outcome():

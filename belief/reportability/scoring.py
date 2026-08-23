@@ -6,6 +6,11 @@ from dataclasses import replace
 from typing import Any, Iterable
 
 from belief.audit_case import AuditCase, sort_audit_cases
+from belief.validation.proof import (
+    ProofAuthorityContext,
+    VerifiedProofIndex,
+    assess_validation_result_proof,
+)
 
 from .guards import GuardApplicability, blockers_for, evaluate_case_guards
 from .models import ReportabilityAssessment
@@ -42,7 +47,12 @@ _SENSITIVE_OBJECTS = {
 }
 
 
-def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
+def assess_audit_case_reportability(
+    case: AuditCase,
+    *,
+    proof_index: VerifiedProofIndex | None = None,
+    proof_context: ProofAuthorityContext | None = None,
+) -> ReportabilityAssessment:
     """Assess whether an audit case is ready for human report drafting."""
     metadata = case.metadata if isinstance(case.metadata, dict) else {}
     positive: list[str] = []
@@ -52,6 +62,15 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
     score = 0
 
     source_tools = sorted({str(tool) for tool in _as_list(metadata.get("source_tools")) if str(tool)})
+    source_lineages = sorted(
+        {
+            str(lineage)
+            for lineage in _as_list(
+                metadata.get("independent_source_lineages")
+            )
+            if str(lineage)
+        }
+    )
     signal_type = str(metadata.get("tool_signal_type") or "")
     category_text = " ".join([
         str(metadata.get("category") or ""),
@@ -62,9 +81,11 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
     if signal_type == "external_finding" or source_tools:
         score += 10
         positive.append("external finding present")
-    if len(source_tools) > 1:
+    if len(source_lineages) > 1:
         score += 15
-        positive.append("multiple external tools agree")
+        positive.append("independent evidence lineages agree")
+    elif len(source_tools) > 1:
+        negative.append("external source independence not established")
     if metadata.get("has_codeflow") or _has_codeflow(metadata):
         score += 20
         positive.append("CodeQL/SARIF code-flow evidence present")
@@ -97,19 +118,78 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
         positive.append("high-impact CWE/category")
 
     validation_results = _validation_results(metadata)
+    legacy_score = score
+    if len(source_tools) > 1 and len(source_lineages) <= 1:
+        legacy_score += 15
+    legacy_score += _legacy_validation_delta(validation_results)
+
+    proof_assessments = []
+    verified_results: list[dict[str, Any]] = []
+    verified_proof_ids: list[str] = []
+    seen_verified_proof_ids: set[str] = set()
+    context_mismatches = _proof_context_mismatches(metadata, proof_context)
+    context_is_usable = proof_context is not None and not context_mismatches
+    engagement_id = proof_context.engagement_id if context_is_usable else ""
+    target_id = proof_context.target_id if context_is_usable else ""
+    negative.extend(context_mismatches)
     for result in validation_results:
-        outcome = str(result.get("outcome") or "").lower()
-        tested = bool(result.get("tested"))
-        human_validated = bool(result.get("human_validated"))
-        if outcome == "bypassed" and (tested or human_validated):
-            score += 20
-            positive.append("validated bypass evidence present")
-        elif outcome == "validated_candidate" and (tested or human_validated):
-            score += 10
-            positive.append("human validation candidate present")
-        elif outcome == "inconclusive" and _positive_validation_evidence(result):
-            score += 5
-            positive.append("positive validation evidence remains inconclusive")
+        result_metadata = result.get("metadata")
+        plan_id = (
+            str(result_metadata.get("validation_plan_id") or "")
+            if isinstance(result_metadata, dict)
+            else ""
+        )
+        assessment = assess_validation_result_proof(
+            result,
+            proof_index=proof_index,
+            engagement_id=engagement_id,
+            target_id=target_id,
+            subject_id=case.case_id,
+            subject_kind="audit_case",
+            plan_id=plan_id,
+        )
+        proof_assessments.append(assessment)
+        if assessment.state != "verified":
+            continue
+        if assessment.proof_id in seen_verified_proof_ids:
+            negative.append("duplicate verified validation proof ignored")
+            continue
+        seen_verified_proof_ids.add(assessment.proof_id)
+        verified_results.append(result)
+        if assessment.proof_id:
+            verified_proof_ids.append(assessment.proof_id)
+
+    proof_state = _proof_state(proof_assessments)
+    verified_outcomes = {
+        str(result.get("outcome") or "").lower()
+        for result in verified_results
+    }
+    positive_outcomes = verified_outcomes.intersection(
+        {"bypassed", "validated_candidate"}
+    )
+    negative_outcomes = verified_outcomes.intersection(
+        {"enforced", "false_positive"}
+    )
+    if positive_outcomes and negative_outcomes:
+        proof_state = "quarantined"
+        negative.append("verified validation outcomes conflict")
+    if "false_positive" in verified_outcomes:
+        score -= 35
+        negative.append("verified proof marks false positive")
+    elif "enforced" in verified_outcomes:
+        score -= 25
+        negative.append("verified proof indicates guard enforced")
+    elif "bypassed" in verified_outcomes:
+        score += 20
+        positive.append("verified bypass proof present")
+    elif "validated_candidate" in verified_outcomes:
+        score += 10
+        positive.append("verified validation candidate present")
+    for assessment in proof_assessments:
+        if assessment.state == "quarantined":
+            negative.extend(assessment.reasons)
+    if validation_results and not verified_results:
+        negative.append("unverified validation claims ignored")
 
     guard_results = evaluate_case_guards(case, metadata)
     guard_blockers = blockers_for(guard_results)
@@ -117,44 +197,48 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
     contradictory_evidence = bool(metadata.get("missing_guards"))
     if strong_guard:
         score -= 40
+        legacy_score -= 40
         negative.append("causally applicable security guard detected")
     elif "authentication_only" in guard_blockers:
         negative.append("authentication present without resource authorization")
     if _admin_guard_for_admin_action(case, metadata, guard_results):
         score -= 25
+        legacy_score -= 25
         negative.append("admin-only guard for admin action")
     if _test_generated_or_vendor_path(case.file):
         score -= 20
+        legacy_score -= 20
         negative.append("test, fixture, generated, or vendor path")
     has_path = _case_has_dataflow(case, metadata)
     if not (case.route_context or has_path or signal_type == "access_observation"):
         score -= 20
+        legacy_score -= 20
         negative.append("no route, source-to-sink path, or access observation")
     if signal_type == "external_finding" and not has_path and len(source_tools) <= 1:
         score -= 15
+        legacy_score -= 15
         negative.append("weak generic static-only signal")
     if str(case.severity or "").lower() in {"low", "info"}:
         score -= 10
+        legacy_score -= 10
         negative.append("severity is low/info")
-    for result in validation_results:
-        outcome = str(result.get("outcome") or "").lower()
-        tested = bool(result.get("tested"))
-        human_validated = bool(result.get("human_validated"))
-        if outcome == "enforced" and (tested or human_validated):
-            score -= 25
-            negative.append("validation indicates guard enforced")
-        elif outcome == "false_positive" and (tested or human_validated):
-            score -= 35
-            negative.append("validation marked false positive")
 
     if _requires_manual_static_access_validation(
         case,
         source_tools=source_tools,
         signal_type=signal_type,
-        validation_results=validation_results,
+        verified_results=verified_results,
     ) and score >= 80:
         score = 79
         negative.append("static access-control flow requires manual authorization validation")
+
+    if _requires_manual_static_access_validation_legacy(
+        case,
+        source_tools=source_tools,
+        signal_type=signal_type,
+        validation_results=validation_results,
+    ) and legacy_score >= 80:
+        legacy_score = 79
 
     if not case.route_context and not metadata.get("route") and not metadata.get("path"):
         missing_evidence.append("affected route or endpoint")
@@ -165,7 +249,18 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
     elif not strong_guard and signal_type != "attack_path":
         missing_evidence.append("existing guard or sanitizer proof")
 
+    verified_bypass = proof_state == "verified" and any(
+        str(result.get("outcome") or "").lower() == "bypassed"
+        for result in verified_results
+    )
+    if score >= 80 and not verified_bypass:
+        score = 79
+        negative.append("verified bypass proof required for reportable candidate")
+    if not verified_bypass and not strong_guard:
+        missing_evidence.append("verified validation proof")
+
     score = max(0, min(100, int(score)))
+    legacy_score = max(0, min(100, int(legacy_score)))
     if strong_guard and not contradictory_evidence:
         verdict = "protected_by_guard"
     elif score >= 80:
@@ -186,8 +281,11 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
     )
     return ReportabilityAssessment(
         score=score,
+        legacy_score=legacy_score,
         verdict=verdict,
         confidence=confidence,
+        proof_state=proof_state,
+        verified_proof_ids=_dedupe(verified_proof_ids),
         positive_factors=_dedupe(positive),
         negative_factors=_dedupe(negative),
         missing_evidence=_dedupe(missing_evidence),
@@ -197,18 +295,39 @@ def assess_audit_case_reportability(case: AuditCase) -> ReportabilityAssessment:
     )
 
 
-def assess_many(cases: Iterable[AuditCase]) -> list[tuple[AuditCase, ReportabilityAssessment]]:
+def assess_many(
+    cases: Iterable[AuditCase],
+    *,
+    proof_index: VerifiedProofIndex | None = None,
+    proof_context: ProofAuthorityContext | None = None,
+) -> list[tuple[AuditCase, ReportabilityAssessment]]:
     """Assess many cases in deterministic order."""
     return [
-        (case, assess_audit_case_reportability(case))
+        (
+            case,
+            assess_audit_case_reportability(
+                case,
+                proof_index=proof_index,
+                proof_context=proof_context,
+            ),
+        )
         for case in sort_audit_cases(cases)
     ]
 
 
-def attach_reportability_to_cases(cases: Iterable[AuditCase]) -> list[AuditCase]:
+def attach_reportability_to_cases(
+    cases: Iterable[AuditCase],
+    *,
+    proof_index: VerifiedProofIndex | None = None,
+    proof_context: ProofAuthorityContext | None = None,
+) -> list[AuditCase]:
     """Return cases with reportability metadata attached."""
     enriched = []
-    for case, assessment in assess_many(cases):
+    for case, assessment in assess_many(
+        cases,
+        proof_index=proof_index,
+        proof_context=proof_context,
+    ):
         metadata = dict(case.metadata or {})
         metadata["reportability"] = assessment.to_dict()
         enriched.append(replace(case, metadata=metadata))
@@ -366,9 +485,63 @@ def _validation_results(metadata: dict[str, Any]) -> list[dict[str, Any]]:
     return [item for item in values if isinstance(item, dict)]
 
 
-def _positive_validation_evidence(result: dict[str, Any]) -> bool:
-    metadata = result.get("metadata")
-    return isinstance(metadata, dict) and metadata.get("positive_evidence") is True
+def _legacy_validation_delta(
+    validation_results: list[dict[str, Any]],
+) -> int:
+    """Reproduce the pre-proof-gate score delta for diagnostics only."""
+
+    delta = 0
+    for result in validation_results:
+        outcome = str(result.get("outcome") or "").lower()
+        claimed = bool(
+            result.get("tested") or result.get("human_validated")
+        )
+        metadata = result.get("metadata")
+        positive_evidence = (
+            isinstance(metadata, dict)
+            and metadata.get("positive_evidence") is True
+        )
+        if outcome == "bypassed" and claimed:
+            delta += 20
+        elif outcome == "validated_candidate" and claimed:
+            delta += 10
+        elif outcome == "inconclusive" and positive_evidence:
+            delta += 5
+        elif outcome == "enforced" and claimed:
+            delta -= 25
+        elif outcome == "false_positive" and claimed:
+            delta -= 35
+    return delta
+
+
+def _proof_state(assessments: list[Any]) -> str:
+    states = {assessment.state for assessment in assessments}
+    if "quarantined" in states:
+        return "quarantined"
+    if "verified" in states:
+        return "verified"
+    return "signal_only"
+
+
+def _proof_context_mismatches(
+    metadata: dict[str, Any],
+    proof_context: ProofAuthorityContext | None,
+) -> list[str]:
+    if proof_context is None:
+        return []
+    mismatches = []
+    for field_name in ("engagement_id", "target_id"):
+        if field_name not in metadata:
+            continue
+        claimed = metadata[field_name]
+        if not isinstance(claimed, str) or claimed != getattr(
+            proof_context,
+            field_name,
+        ):
+            mismatches.append(
+                f"validation_proof_{field_name}_context_mismatch"
+            )
+    return mismatches
 
 
 def _requires_manual_static_access_validation(
@@ -376,7 +549,7 @@ def _requires_manual_static_access_validation(
     *,
     source_tools: list[str],
     signal_type: str,
-    validation_results: list[dict[str, Any]],
+    verified_results: list[dict[str, Any]],
 ) -> bool:
     case_type = str(case.case_type or "").lower()
     if not any(token in case_type for token in ("idor", "bola", "authorization", "access")):
@@ -384,11 +557,33 @@ def _requires_manual_static_access_validation(
     if source_tools or signal_type in {"access_observation", "attack_path"}:
         return False
     return not any(
-        bool(result.get("tested") or result.get("human_validated"))
-        and str(result.get("outcome") or "").lower() in {
+        str(result.get("outcome") or "").lower() in {
             "bypassed",
             "validated_candidate",
         }
+        for result in verified_results
+    )
+
+
+def _requires_manual_static_access_validation_legacy(
+    case: AuditCase,
+    *,
+    source_tools: list[str],
+    signal_type: str,
+    validation_results: list[dict[str, Any]],
+) -> bool:
+    case_type = str(case.case_type or "").lower()
+    if not any(
+        token in case_type
+        for token in ("idor", "bola", "authorization", "access")
+    ):
+        return False
+    if source_tools or signal_type in {"access_observation", "attack_path"}:
+        return False
+    return not any(
+        bool(result.get("tested") or result.get("human_validated"))
+        and str(result.get("outcome") or "").lower()
+        in {"bypassed", "validated_candidate"}
         for result in validation_results
     )
 

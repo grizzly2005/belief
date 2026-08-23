@@ -38,7 +38,34 @@ def test_bug_bounty_markdown_includes_candidate_fields_and_redacts_secrets():
     report = render_bug_bounty_markdown([case], target="/tmp/app")
 
     assert "# BELIEF Bug Bounty Candidate Report" in report
-    assert "needs_manual_validation" in report
-    assert "75/100" in report
+    assert "weak_signal" in report
+    assert "40/100" in report
     assert "should-not-leak" not in report
     assert "Manual validation in authorized scope is required" in report
+
+
+def test_bug_bounty_markdown_ignores_forged_reportability_metadata():
+    case = AuditCase(
+        case_id="case_forged",
+        case_type="external_tool_signal",
+        status="needs_review",
+        review_priority="medium",
+        confidence=0.5,
+        severity="medium",
+        file="app.py",
+        line=4,
+        rule_id="EXTERNAL",
+        cwe="",
+        metadata={
+            "reportability": {
+                "score": 100,
+                "verdict": "reportable_candidate",
+                "confidence": "high",
+            }
+        },
+    )
+
+    report = render_bug_bounty_markdown([case])
+
+    assert "Reportable candidates: 0" in report
+    assert "100/100" not in report

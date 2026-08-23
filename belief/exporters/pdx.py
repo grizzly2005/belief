@@ -44,7 +44,14 @@ def write_report_as_pdx(report_path: Path | str, output_path: Path | str) -> PDX
 
 def _audit_case_to_delta(case: dict[str, Any]) -> PDXDelta:
     metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
-    reportability = metadata.get("reportability") if isinstance(metadata.get("reportability"), dict) else {}
+    raw = {"belief_case_id": case.get("case_id")}
+    reportability_claim = metadata.get("reportability")
+    if isinstance(reportability_claim, dict):
+        raw["source_reportability_claim"] = {
+            "classification": "unverified_serialized_claim",
+            "proof_eligible": False,
+            "value": reportability_claim,
+        }
     return PDXDelta(
         id=str(case.get("case_id") or ""),
         spec_ref=str(case.get("rule_id") or ""),
@@ -60,35 +67,28 @@ def _audit_case_to_delta(case: dict[str, Any]) -> PDXDelta:
         vector={
             "severity": _score_from_severity(case.get("severity")),
             "confidence": float(case.get("confidence") or 0.5),
-            "chain_potential": float(reportability.get("score") or 0) / 100.0,
         },
         file=str(case.get("file") or ""),
         line=_safe_int(case.get("line")),
         route=str((case.get("route_context") or {}).get("route") or ""),
         evidence=tuple(str(item) for item in case.get("dataflow_path") or [] if str(item)),
         cwe=tuple([str(case.get("cwe"))] if case.get("cwe") else []),
-        raw={"belief_case_id": case.get("case_id")},
+        raw=raw,
     )
 
 
 def _audit_case_to_verdict(case: dict[str, Any], delta_ref: str) -> PDXVerdict:
-    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
-    reportability = metadata.get("reportability") if isinstance(metadata.get("reportability"), dict) else {}
-    verdict = str(reportability.get("verdict") or "")
-    if verdict == "protected_by_guard":
-        result = "NOT_VULN"
-    elif verdict == "likely_false_positive":
-        result = "FALSE_POS"
-    else:
-        result = "UNCERTAIN"
     return PDXVerdict(
         delta_ref=delta_ref,
-        result=result,
+        result="UNCERTAIN",
         tested=False,
         human_validated=False,
-        method="belief_report_export",
-        reason=str(case.get("reason") or ""),
-        weight=float(case.get("confidence") or 0.5),
+        method="belief_report_export_signal_only",
+        reason=(
+            "Serialized BELIEF reportability is non-authoritative; "
+            "no durable validation proof was supplied."
+        ),
+        weight=0.0,
     )
 
 

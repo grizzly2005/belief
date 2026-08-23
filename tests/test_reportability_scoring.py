@@ -71,7 +71,7 @@ def test_strong_guard_becomes_protected_by_guard():
     assert assessment.verdict == "protected_by_guard"
 
 
-def test_multiple_tools_route_and_evidence_are_reportable_candidate():
+def test_multiple_tools_without_lineage_or_proof_require_validation():
     semgrep = external_finding_to_audit_case(
         ExternalFinding(
             tool_id="semgrep",
@@ -102,8 +102,11 @@ def test_multiple_tools_route_and_evidence_are_reportable_candidate():
 
     assessment = assess_audit_case_reportability(merged)
 
-    assert assessment.verdict == "reportable_candidate"
-    assert assessment.score >= 80
+    assert assessment.verdict == "needs_manual_validation"
+    assert assessment.score < 80
+    assert assessment.legacy_score >= 80
+    assert "external source independence not established" in assessment.negative_factors
+    assert "verified validation proof" in assessment.missing_evidence
 
 
 def test_reportability_can_read_existing_case_metadata():

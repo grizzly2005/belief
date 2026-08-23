@@ -18,13 +18,17 @@ ReportabilityVerdict = Literal[
 
 
 ReportabilityConfidence = Literal["low", "medium", "high"]
+ReportabilityProofState = Literal["signal_only", "quarantined", "verified"]
 
 
 @dataclass(frozen=True)
 class ReportabilityAssessment:
     score: int
+    legacy_score: int
     verdict: ReportabilityVerdict
     confidence: ReportabilityConfidence
+    proof_state: ReportabilityProofState
+    verified_proof_ids: list[str] = field(default_factory=list)
     positive_factors: list[str] = field(default_factory=list)
     negative_factors: list[str] = field(default_factory=list)
     missing_evidence: list[str] = field(default_factory=list)
@@ -35,8 +39,11 @@ class ReportabilityAssessment:
     def to_dict(self) -> dict:
         return {
             "score": int(self.score),
+            "legacy_score": int(self.legacy_score),
             "verdict": self.verdict,
             "confidence": self.confidence,
+            "proof_state": self.proof_state,
+            "verified_proof_ids": list(self.verified_proof_ids),
             "positive_factors": list(self.positive_factors),
             "negative_factors": list(self.negative_factors),
             "missing_evidence": list(self.missing_evidence),
@@ -49,5 +56,6 @@ class ReportabilityAssessment:
 __all__ = [
     "ReportabilityAssessment",
     "ReportabilityConfidence",
+    "ReportabilityProofState",
     "ReportabilityVerdict",
 ]

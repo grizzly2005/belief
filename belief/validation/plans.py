@@ -102,16 +102,44 @@ def validation_result_from_plan(
     evidence: Sequence[str] = (),
     metadata: Mapping[str, Any] | None = None,
 ) -> ValidationResult:
-    """Create a ValidationResult linked to a plan and its audit case."""
+    """Create a ValidationResult linked to a plan and its audit case.
+
+    ``tested`` and ``human_validated`` are retained as legacy input claims,
+    but they cannot authorize proof promotion.  A separate verified proof
+    index must resolve ``metadata.validation_proof`` before reportability or
+    reasoning may treat the result as conclusive.
+    """
 
     normalized = clean_text(outcome).lower()
     if normalized not in VALIDATION_OUTCOMES:
         raise ValueError(f"unsupported validation outcome: {normalized!r}")
+    if not isinstance(tested, bool) or not isinstance(human_validated, bool):
+        raise ValueError(
+            "tested and human_validated legacy claims must be booleans"
+        )
+    supplied_metadata = json_object(metadata)
+    reserved_metadata = {
+        "validation_plan_id",
+        "validation_strategy",
+        "case_type",
+        "claimed_tested",
+        "claimed_human_validated",
+        "proof_state",
+    }
+    overwritten = sorted(reserved_metadata.intersection(supplied_metadata))
+    if overwritten:
+        raise ValueError(
+            "validation result metadata cannot override reserved bindings: "
+            + ", ".join(overwritten)
+        )
     result_metadata = {
+        **supplied_metadata,
         "validation_plan_id": plan.plan_id,
         "validation_strategy": plan.strategy,
         "case_type": plan.case_type,
-        **json_object(metadata),
+        "claimed_tested": tested,
+        "claimed_human_validated": human_validated,
+        "proof_state": "unverified_legacy_claim",
     }
     return ValidationResult(
         subject_id=plan.subject_id,

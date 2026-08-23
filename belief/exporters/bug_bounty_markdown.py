@@ -13,11 +13,28 @@ from typing import Any, Iterable
 from belief.audit_case import AuditCase, sort_audit_cases
 from belief.reportability.scoring import assess_audit_case_reportability
 from belief.tool_results.io import sanitize_for_json
+from belief.validation.proof import ProofAuthorityContext, VerifiedProofIndex
 
 
-def render_bug_bounty_markdown(audit_cases: Iterable[AuditCase], target: str = "") -> str:
+def render_bug_bounty_markdown(
+    audit_cases: Iterable[AuditCase],
+    target: str = "",
+    *,
+    proof_index: VerifiedProofIndex | None = None,
+    proof_context: ProofAuthorityContext | None = None,
+) -> str:
     cases = sort_audit_cases(audit_cases)
-    assessed = [(case, _assessment(case)) for case in cases]
+    assessed = [
+        (
+            case,
+            _assessment(
+                case,
+                proof_index=proof_index,
+                proof_context=proof_context,
+            ),
+        )
+        for case in cases
+    ]
     assessed = sorted(
         assessed,
         key=lambda item: (
@@ -60,10 +77,21 @@ def write_bug_bounty_markdown(
     audit_cases: Iterable[AuditCase],
     output_path: str | Path,
     target: str = "",
+    *,
+    proof_index: VerifiedProofIndex | None = None,
+    proof_context: ProofAuthorityContext | None = None,
 ) -> None:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_bug_bounty_markdown(audit_cases, target=target), encoding="utf-8")
+    path.write_text(
+        render_bug_bounty_markdown(
+            audit_cases,
+            target=target,
+            proof_index=proof_index,
+            proof_context=proof_context,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _case_section(index: int, case: AuditCase, assessment: dict[str, Any]) -> list[str]:
@@ -134,12 +162,17 @@ def _case_section(index: int, case: AuditCase, assessment: dict[str, Any]) -> li
     return lines
 
 
-def _assessment(case: AuditCase) -> dict[str, Any]:
-    metadata = case.metadata if isinstance(case.metadata, dict) else {}
-    existing = metadata.get("reportability")
-    if isinstance(existing, dict):
-        return existing
-    return assess_audit_case_reportability(case).to_dict()
+def _assessment(
+    case: AuditCase,
+    *,
+    proof_index: VerifiedProofIndex | None,
+    proof_context: ProofAuthorityContext | None,
+) -> dict[str, Any]:
+    return assess_audit_case_reportability(
+        case,
+        proof_index=proof_index,
+        proof_context=proof_context,
+    ).to_dict()
 
 
 def _evidence(case: AuditCase, metadata: dict[str, Any]) -> list[str]:
