@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://belief.local/schemas/belief-pdx-engagement-v1.schema.json",
+  "title": "BELIEF PDX engagement authority binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "engagement_id",
+    "engagement_version",
+    "status",
+    "owner_ref",
+    "scope_ref",
+    "scope_sha256",
+    "authorization_ref",
+    "policy_ref",
+    "budget_ref",
+    "valid_from",
+    "valid_until",
+    "target_ids"
+  ],
+  "properties": {
+    "schema_version": {"const": "belief.pdx_engagement.v1"},
+    "engagement_id": {"$ref": "#/$defs/opaque_ref"},
+    "engagement_version": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["active", "suspended", "closed"]},
+    "owner_ref": {"$ref": "#/$defs/opaque_ref"},
+    "scope_ref": {"$ref": "#/$defs/opaque_ref"},
+    "scope_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "authorization_ref": {"$ref": "#/$defs/opaque_ref"},
+    "policy_ref": {"$ref": "#/$defs/opaque_ref"},
+    "budget_ref": {"$ref": "#/$defs/opaque_ref"},
+    "valid_from": {"type": "string", "format": "date-time"},
+    "valid_until": {"type": "string", "format": "date-time"},
+    "target_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^pdx:target:sha256:[0-9a-f]{64}$"}
+    }
+  },
+  "$defs": {
+    "opaque_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    }
+  }
+}

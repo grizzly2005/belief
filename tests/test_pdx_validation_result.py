@@ -25,24 +25,44 @@ def test_pdx_vulnerable_untested_is_inconclusive_not_confirmed():
     result = pdx_verdict_to_validation_result(verdict)
 
     assert result.outcome == "inconclusive"
-    assert result.metadata["positive_evidence"] is True
+    assert result.metadata["positive_signal"] is True
+    assert result.metadata["positive_evidence"] is False
+    assert result.metadata["proof_state"] == "missing_belief_attempt_result_evidence"
 
 
-def test_pdx_vulnerable_tested_maps_to_bypassed():
-    verdict = PDXVerdict(delta_ref="delta-1", result="VULNERABLE", tested=True, human_validated=False)
+def test_pdx_vulnerable_tested_remains_an_unproven_source_assertion():
+    verdict = PDXVerdict(
+        delta_ref="delta-1",
+        result="VULNERABLE",
+        tested=True,
+        human_validated=True,
+        weight=1.0,
+    )
     result = pdx_verdict_to_validation_result(verdict)
 
-    assert result.outcome == "bypassed"
+    assert result.outcome == "inconclusive"
+    assert result.tested is False
+    assert result.human_validated is False
+    assert result.confidence == 0.5
+    assert result.metadata["source_tested"] is True
+    assert result.metadata["source_human_validated"] is True
+    assert result.metadata["positive_evidence"] is False
+    assert result.metadata["missing_proof_references"] == [
+        "attempt_id",
+        "result_id",
+        "evidence_refs",
+    ]
 
 
-def test_pdx_not_vuln_tested_maps_to_enforced():
+def test_pdx_not_vuln_tested_does_not_claim_enforcement():
     verdict = PDXVerdict(delta_ref="delta-1", result="NOT_VULN", tested=True)
     result = pdx_verdict_to_validation_result(verdict)
 
-    assert result.outcome == "enforced"
+    assert result.outcome == "inconclusive"
+    assert result.tested is False
 
 
-def test_untested_pdx_positive_evidence_is_conservative_in_reportability():
+def test_untested_pdx_signal_does_not_enter_positive_validation_evidence():
     validation = pdx_verdict_to_validation_result(
         PDXVerdict(delta_ref="delta-1", result="VULNERABLE", tested=False)
     )
@@ -70,7 +90,7 @@ def test_untested_pdx_positive_evidence_is_conservative_in_reportability():
 
     assessment = assess_audit_case_reportability(case)
 
-    assert "positive validation evidence remains inconclusive" in assessment.positive_factors
+    assert "positive validation evidence remains inconclusive" not in assessment.positive_factors
     assert "validated bypass evidence present" not in assessment.positive_factors
 
 

@@ -1609,6 +1609,37 @@ def _import_passive_tool_result(tool_id: str, path: str | Path, registry=None):
 
 def cmd_pdx(args):
     """Import/export BELIEF's JSON-only PDX adapter format."""
+    if args.pdx_command == "register-engagement":
+        from .json_contracts import StrictJSONError, load_json_file
+        from .pdx.attestation import PDXAttestationError
+        from .pdx.attestation_store import PDXEvidenceStore, PDXEvidenceStoreError
+
+        try:
+            engagement = load_json_file(args.input)
+            result = PDXEvidenceStore(args.store_dir).register_engagement(engagement)
+        except (OSError, StrictJSONError, PDXAttestationError, PDXEvidenceStoreError, ValueError) as exc:
+            safe_print(f"ERROR: failed to register PDX engagement: {exc}", file=sys.stderr)
+            sys.exit(2)
+        safe_print(json.dumps(result, indent=2, sort_keys=True))
+        return
+
+    if args.pdx_command == "import-attestation":
+        from .pdx.attestation import PDXAttestationError
+        from .pdx.attestation_store import PDXEvidenceStore, PDXEvidenceStoreError
+
+        try:
+            result = PDXEvidenceStore(args.store_dir).import_attestation_file(args.input)
+        except (OSError, PDXAttestationError, PDXEvidenceStoreError, ValueError) as exc:
+            safe_print(f"ERROR: failed to import PDX attestation: {exc}", file=sys.stderr)
+            sys.exit(2)
+        payload = result.to_dict()
+        safe_print(json.dumps(payload, indent=2, sort_keys=True))
+        if result.receipt["status"] == "REJECT":
+            sys.exit(2)
+        if result.receipt["status"] == "QUARANTINE":
+            sys.exit(3)
+        return
+
     if args.pdx_command == "import":
         from .importers.pdx import import_pdx_bundle
         from .pdx.io import PDXSchemaError
@@ -2289,6 +2320,28 @@ def main():
     p_pdx_export = pdx_sub.add_parser("export", help="Export a BELIEF report/audit JSON as PDX JSON")
     p_pdx_export.add_argument("input_report", help="Path to BELIEF scan/audit JSON")
     p_pdx_export.add_argument("--pdx-output", required=True, help="Output PDX JSON path")
+
+    p_pdx_engagement = pdx_sub.add_parser(
+        "register-engagement",
+        help="Register one immutable BELIEF authority/scope binding for PDX observations",
+    )
+    p_pdx_engagement.add_argument("input", help="Path to belief.pdx_engagement.v1 JSON")
+    p_pdx_engagement.add_argument(
+        "--store-dir",
+        default="belief_pdx_evidence",
+        help="Persistent PDX evidence journal directory",
+    )
+
+    p_pdx_attestation = pdx_sub.add_parser(
+        "import-attestation",
+        help="Strictly import a byte-free PDX observation attestation",
+    )
+    p_pdx_attestation.add_argument("input", help="Path to pdx.observation_attestation.v1 JSON")
+    p_pdx_attestation.add_argument(
+        "--store-dir",
+        default="belief_pdx_evidence",
+        help="Persistent PDX evidence journal directory",
+    )
 
     # feedback
     p_feedback = sub.add_parser("feedback", help="Manage append-only BELIEF feedback JSONL")
