@@ -251,6 +251,10 @@ def test_real_pdx_cli_attestation_imports_and_replays_through_belief_cli(tmp_pat
     )
     assert second["replayed"] is True
     assert second["receipt"]["receipt_id"] == first["receipt"]["receipt_id"]
-    assert (pdx_repo / "schemas" / "pdx-observation-attestation-v1.schema.json").read_bytes() == (
+    pdx_schema = (
+        pdx_repo / "schemas" / "pdx-observation-attestation-v1.schema.json"
+    ).read_bytes().replace(b"\r\n", b"\n")
+    belief_schema = (
         belief_repo / "schemas" / "pdx-observation-attestation-v1.schema.json"
-    ).read_bytes()
+    ).read_bytes().replace(b"\r\n", b"\n")
+    assert pdx_schema == belief_schema
