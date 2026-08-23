@@ -11,24 +11,13 @@ from .models import ValidationResult
 
 def pdx_verdict_to_validation_result(verdict: PDXVerdict) -> ValidationResult:
     result = (verdict.result or "UNCERTAIN").upper()
-    tested = bool(verdict.tested)
-    human_validated = bool(verdict.human_validated)
+    source_tested = bool(verdict.tested)
+    source_human_validated = bool(verdict.human_validated)
 
-    if result == "VULNERABLE":
-        if tested:
-            outcome = "bypassed"
-        elif human_validated:
-            outcome = "validated_candidate"
-        else:
-            outcome = "inconclusive"
-    elif result == "NOT_VULN":
-        outcome = "enforced" if tested or human_validated else "inconclusive"
-    elif result == "FALSE_POS":
-        outcome = "false_positive" if tested or human_validated else "inconclusive"
-    elif result == "INFORMATIONAL":
-        outcome = "informational"
-    else:
-        outcome = "inconclusive"
+    # A legacy belief.pdx.v1 bundle has no joinable BELIEF Attempt, Result, or
+    # Evidence references.  Producer booleans are retained as source assertions
+    # but cannot be promoted into BELIEF proof state.
+    outcome = "informational" if result == "INFORMATIONAL" else "inconclusive"
 
     evidence = []
     if verdict.method:
@@ -43,9 +32,9 @@ def pdx_verdict_to_validation_result(verdict: PDXVerdict) -> ValidationResult:
         subject_kind="pdx_delta",
         source="pdx",
         outcome=outcome,
-        confidence=verdict.weight,
-        tested=tested,
-        human_validated=human_validated,
+        confidence=min(verdict.weight, 0.5),
+        tested=False,
+        human_validated=False,
         method=verdict.method,
         reason=verdict.reason,
         evidence=tuple(evidence),
@@ -55,7 +44,12 @@ def pdx_verdict_to_validation_result(verdict: PDXVerdict) -> ValidationResult:
             "train_negative": bool(verdict.train_negative),
             "human_agreement": verdict.human_agreement,
             "original_result": verdict.original_result,
-            "positive_evidence": result == "VULNERABLE",
+            "source_tested": source_tested,
+            "source_human_validated": source_human_validated,
+            "positive_signal": result == "VULNERABLE",
+            "positive_evidence": False,
+            "proof_state": "missing_belief_attempt_result_evidence",
+            "missing_proof_references": ["attempt_id", "result_id", "evidence_refs"],
         },
     )
 

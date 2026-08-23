@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pdx.local/schemas/pdx-observation-attestation-v1.schema.json",
+  "title": "PDX verified HTTP observation attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "attestation_id",
+    "created_at",
+    "engagement",
+    "producer",
+    "observations",
+    "loss_manifest",
+    "integrity"
+  ],
+  "properties": {
+    "schema_version": {"const": "pdx.observation_attestation.v1"},
+    "attestation_id": {
+      "type": "string",
+      "pattern": "^pdx:observation-attestation:sha256:[0-9a-f]{64}$"
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "engagement": {"$ref": "#/$defs/engagement"},
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool_id", "exporter_version", "observation_contract", "observation_canonicalization"],
+      "properties": {
+        "tool_id": {"const": "pdx"},
+        "exporter_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "observation_contract": {"const": "pdx.http_observation.v2"},
+        "observation_canonicalization": {"const": "pdx-json-digest-v1"}
+      }
+    },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/observation"}
+    },
+    "loss_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projection", "omitted", "cas_exposed", "source_truncated_capture_ids", "projected_fields_lossless"],
+      "properties": {
+        "projection": {"const": "metadata-and-digests-only"},
+        "omitted": {
+          "type": "array",
+          "const": ["request_bytes", "response_bytes", "headers", "timing", "pdx_cas_references"]
+        },
+        "cas_exposed": {"const": false},
+        "source_truncated_capture_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/capture_id"}
+        },
+        "projected_fields_lossless": {"const": true}
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonicalization", "attestation_sha256"],
+      "properties": {
+        "canonicalization": {"const": "pdx-observation-attestation-json-v1"},
+        "attestation_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  },
+  "$defs": {
+    "opaque_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "capture_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "engagement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engagement_id", "engagement_version", "scope_ref", "scope_sha256", "authorization_ref"],
+      "properties": {
+        "engagement_id": {"$ref": "#/$defs/opaque_ref"},
+        "engagement_version": {"type": "integer", "minimum": 1},
+        "scope_ref": {"$ref": "#/$defs/opaque_ref"},
+        "scope_sha256": {"$ref": "#/$defs/sha256"},
+        "authorization_ref": {"$ref": "#/$defs/opaque_ref"}
+      }
+    },
+    "payload_integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_raw", "request_body", "response_raw", "response_body"],
+      "properties": {
+        "request_raw": {"enum": ["verified", "producer_declared"]},
+        "request_body": {"enum": ["verified", "producer_declared"]},
+        "response_raw": {"enum": ["verified", "producer_declared"]},
+        "response_body": {"enum": ["verified", "producer_declared"]}
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity_state", "engagement_id", "target_id", "endpoint_id", "correlation_state", "correlation_key", "missing"],
+      "properties": {
+        "identity_state": {"enum": ["partial", "complete"]},
+        "engagement_id": {"$ref": "#/$defs/opaque_ref"},
+        "target_id": {"type": "string", "pattern": "^pdx:target:sha256:[0-9a-f]{64}$"},
+        "endpoint_id": {"type": "string", "pattern": "^pdx:endpoint:sha256:[0-9a-f]{64}$"},
+        "correlation_state": {"enum": ["joinable", "non_joinable"]},
+        "correlation_key": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "pattern": "^pdx:context:sha256:[0-9a-f]{64}$"}
+          ]
+        },
+        "missing": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["engagement", "session", "actor", "role", "tenant", "workflow", "workflow_step"]}
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capture_id", "observed_at", "observation_hash", "request_sha256", "response_sha256", "contract_state", "truncated_any", "payload_integrity", "identity"],
+      "properties": {
+        "capture_id": {"$ref": "#/$defs/capture_id"},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "observation_hash": {"$ref": "#/$defs/sha256"},
+        "request_sha256": {"$ref": "#/$defs/sha256"},
+        "response_sha256": {"$ref": "#/$defs/sha256"},
+        "contract_state": {"const": "accepted"},
+        "truncated_any": {"type": "boolean"},
+        "payload_integrity": {"$ref": "#/$defs/payload_integrity"},
+        "identity": {"$ref": "#/$defs/identity"}
+      }
+    }
+  }
+}
