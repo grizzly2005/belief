@@ -351,7 +351,8 @@ def test_repository_schema_is_present_and_structurally_strict():
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     assert schema["additionalProperties"] is False
     assert schema["properties"]["loss_manifest"]["properties"]["cas_exposed"] == {"const": False}
-    assert hashlib.sha256(schema_path.read_bytes()).hexdigest() == (
+    schema_bytes = schema_path.read_bytes().replace(b"\r\n", b"\n")
+    assert hashlib.sha256(schema_bytes).hexdigest() == (
         "66f00c7c70f30caeb31adf7c8209110386eb59478f52d733846e26b8d44c7850"
     )
 
