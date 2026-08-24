@@ -48,3 +48,7 @@ belief_demo_video/
 Thumbs.db
 .vscode/
 .idea/
+
+# Local bridge coordination and validation-proof authority state.
+.bridge/
+belief_validation_ledger/

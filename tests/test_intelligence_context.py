@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import copy
+import inspect
 import json
 from dataclasses import FrozenInstanceError
 from email.message import Message
@@ -9,21 +11,29 @@ from urllib.error import HTTPError, URLError
 import pytest
 
 from belief.intelligence import (
+    GITHUB_API_VERSION,
+    GITHUB_GLOBAL_ADVISORIES_URL,
     HTTPStatusTransportError,
     HTTPFetchRequest,
+    HTTPFetchResponse,
     IntelligenceSchemaError,
     InvalidTransportResponseError,
     LicenseMetadata,
     MalformedIntelligenceJSONError,
+    NVD_CVE_API_URL,
     NetworkTransportError,
     ResponseTooLargeError,
     TransportTimeoutError,
     build_cisa_kev_request,
+    build_github_advisory_request,
+    build_nvd_cve_request,
     build_osv_query_request,
     canonical_json_sha256,
     concatenate_context_records,
     fetch_http_response,
     parse_cisa_kev_catalog,
+    parse_github_advisory_response,
+    parse_nvd_cve_response,
     parse_osv_query_response,
 )
 
@@ -34,6 +44,8 @@ CISA_URL = (
     "https://www.cisa.gov/sites/default/files/feeds/"
     "known_exploited_vulnerabilities.json"
 )
+NVD_URL = NVD_CVE_API_URL
+GITHUB_URL = GITHUB_GLOBAL_ADVISORIES_URL
 
 
 @pytest.fixture
@@ -106,6 +118,112 @@ def cisa_response_bytes() -> bytes:
         },
         separators=(",", ":"),
     ).encode("utf-8")
+
+
+@pytest.fixture
+def nvd_query() -> dict:
+    return {
+        "cveIds": ["CVE-2026-0001"],
+        "resultsPerPage": 1,
+        "startIndex": 0,
+    }
+
+
+@pytest.fixture
+def nvd_response_bytes() -> bytes:
+    return json.dumps(
+        {
+            "resultsPerPage": 1,
+            "startIndex": 0,
+            "totalResults": 1,
+            "format": "NVD_CVE",
+            "version": "2.0",
+            "timestamp": "2026-08-23T11:59:58.125",
+            "vulnerabilities": [
+                {
+                    "cve": {
+                        "id": "CVE-2026-0001",
+                        "sourceIdentifier": "security@example.test",
+                        "published": "2026-08-19T00:00:00.000",
+                        "lastModified": "2026-08-22T00:00:00.500",
+                        "vulnStatus": "Analyzed",
+                        "descriptions": [
+                            {"lang": "fr", "value": "Description fournisseur."},
+                            {"lang": "en", "value": "NVD provider statement"},
+                        ],
+                        "metrics": {},
+                        "weaknesses": [],
+                        "configurations": [],
+                        "references": [],
+                    }
+                }
+            ],
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+@pytest.fixture
+def github_query() -> dict:
+    return {
+        "cve_id": "CVE-2026-0001",
+        "type": "reviewed",
+        "per_page": 1,
+    }
+
+
+@pytest.fixture
+def github_response_bytes() -> bytes:
+    return _github_response_bytes()
+
+
+def _github_response_bytes() -> bytes:
+    return json.dumps(
+        [
+            {
+                "ghsa_id": "GHSA-2345-cfgh-jmpq",
+                "cve_id": "CVE-2026-0001",
+                "summary": "GitHub provider statement",
+                "description": "Context only.",
+                "type": "reviewed",
+                "severity": "high",
+                "identifiers": [
+                    {"type": "GHSA", "value": "GHSA-2345-cfgh-jmpq"},
+                    {"type": "CVE", "value": "CVE-2026-0001"},
+                ],
+                "references": ["https://example.test/advisory"],
+                "published_at": "2026-08-19T00:00:00Z",
+                "updated_at": "2026-08-22T00:00:00Z",
+                "withdrawn_at": None,
+                "vulnerabilities": [
+                    {
+                        "package": {"ecosystem": "pip", "name": "example"},
+                        "vulnerable_version_range": "< 2.0",
+                        "first_patched_version": "2.0",
+                    }
+                ],
+                "cvss_severities": {},
+                "cwes": [{"cwe_id": "CWE-79", "name": "XSS"}],
+                "credits": [],
+            }
+        ],
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _github_headers(*, link: str | None = None) -> tuple[tuple[str, str], ...]:
+    headers = [
+        ("Content-Type", "application/json; charset=utf-8"),
+        ("X-GitHub-Api-Version-Selected", GITHUB_API_VERSION),
+        ("X-RateLimit-Limit", "60"),
+        ("X-RateLimit-Remaining", "59"),
+        ("X-RateLimit-Used", "1"),
+        ("X-RateLimit-Reset", "1787529079"),
+        ("X-RateLimit-Resource", "core"),
+    ]
+    if link is not None:
+        headers.append(("Link", link))
+    return tuple(headers)
 
 
 def test_osv_happy_path_is_immutable_context_only_with_full_provenance(
@@ -389,6 +507,7 @@ def test_live_transport_is_injectable_bounded_and_sets_user_agent(osv_query):
         user_agent="BELIEF-tests/1",
     )
     response = _FakeResponse(b'{"vulns":[]}', content_length=12)
+    response.headers["Set-Cookie"] = "transport-secret"
     observed = {}
 
     def opener(wire_request, timeout):
@@ -406,6 +525,8 @@ def test_live_transport_is_injectable_bounded_and_sets_user_agent(osv_query):
 
     assert fetched.body == b'{"vulns":[]}'
     assert fetched.retrieved_at_utc == RETRIEVED_AT
+    assert fetched.headers == (("content-type", "application/json"),)
+    assert "transport-secret" not in repr(fetched)
     assert observed == {
         "method": "POST",
         "user_agent": "BELIEF-tests/1",
@@ -502,3 +623,429 @@ def test_request_bounds_and_user_agent_are_mandatory(osv_query):
             max_response_bytes=1024,
             user_agent="",
         )
+
+
+def test_nvd_adapter_is_context_only_complete_and_normalizes_documented_utc(
+    nvd_query,
+    nvd_response_bytes,
+):
+    request = build_nvd_cve_request(
+        nvd_query,
+        timeout_seconds=3,
+        max_response_bytes=4096,
+        user_agent="BELIEF-tests/1",
+        api_key="nvd-secret-value",
+    )
+    assert request.url.startswith(f"{NVD_URL}?cveIds=CVE-2026-0001")
+    assert "nvd-secret-value" not in repr(request)
+    assert "nvd-secret-value" not in request.url
+    assert all(name.lower() != "apikey" for name, _value in request.headers)
+
+    response = HTTPFetchResponse(
+        source_url=request.url,
+        status_code=200,
+        retrieved_at_utc=RETRIEVED_AT,
+        body=nvd_response_bytes,
+        headers=(("Content-Type", "application/json"),),
+    )
+    page = parse_nvd_cve_response(
+        response,
+        query=nvd_query,
+        freshness_max_age_seconds=2 * 24 * 60 * 60,
+    )
+
+    assert page.classification == "context_only"
+    assert page.proof_eligible is False
+    assert page.schema_version == "belief.external_intelligence_page.v1"
+    assert page.api_contract_version == "NVD_CVE/2.0"
+    assert page.pagination.to_dict() == {
+        "mode": "offset",
+        "request_position": 0,
+        "next_position": None,
+        "page_size": 1,
+        "provider_total": 1,
+        "page_complete": True,
+        "collection_complete": True,
+    }
+    assert page.rate_limit.policy_limit is None
+    assert page.rate_limit.policy_window_seconds is None
+    assert page.response_generated_at_utc == "2026-08-23T11:59:58.125000Z"
+    record = page.batch.records[0]
+    assert record.provider == "nvd_cve"
+    assert record.record_id == "CVE-2026-0001"
+    assert record.summary == "NVD provider statement"
+    assert record.source_revision == "2026-08-22T00:00:00.500000Z"
+    assert record.freshness.state == "fresh"
+    assert record.license.identifier == "NIST-PUBLIC-DOMAIN-US"
+    assert record.payload()["lastModified"] == "2026-08-22T00:00:00.500"
+    assert not hasattr(record, "to_finding")
+    serialized = json.dumps(page.to_dict(), sort_keys=True)
+    assert "nvd-secret-value" not in serialized
+    assert "reportability" not in serialized
+
+
+def test_nvd_adapter_retains_incomplete_collection_offset(nvd_response_bytes):
+    query = {
+        "cveIds": ["CVE-2026-0001", "CVE-2026-0002"],
+        "resultsPerPage": 1,
+        "startIndex": 0,
+    }
+    payload = json.loads(nvd_response_bytes)
+    payload["totalResults"] = 2
+    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    request = build_nvd_cve_request(
+        query,
+        timeout_seconds=3,
+        max_response_bytes=4096,
+        user_agent="BELIEF-tests/1",
+    )
+    page = parse_nvd_cve_response(
+        HTTPFetchResponse(
+            source_url=request.url,
+            status_code=200,
+            retrieved_at_utc=RETRIEVED_AT,
+            body=body,
+            headers=(("Content-Type", "application/json"),),
+        ),
+        query=query,
+    )
+
+    assert page.pagination.collection_complete is False
+    assert page.pagination.next_position == 1
+    assert page.pagination.provider_total == 2
+
+
+def test_github_adapter_retains_cursor_rate_limit_license_and_version(
+    github_query,
+    github_response_bytes,
+):
+    request = build_github_advisory_request(
+        github_query,
+        timeout_seconds=3,
+        max_response_bytes=4096,
+        user_agent="BELIEF-tests/1",
+        token="github-secret-value",
+    )
+    assert request.url.startswith(f"{GITHUB_URL}?cve_id=CVE-2026-0001")
+    assert "github-secret-value" not in repr(request)
+    assert "github-secret-value" not in request.url
+    assert all(name.lower() != "authorization" for name, _value in request.headers)
+
+    page = parse_github_advisory_response(
+        HTTPFetchResponse(
+            source_url=request.url,
+            status_code=200,
+            retrieved_at_utc=RETRIEVED_AT,
+            body=github_response_bytes,
+            headers=(*_github_headers(), ("Set-Cookie", "provider-secret")),
+        ),
+        query=github_query,
+    )
+
+    assert page.classification == "context_only"
+    assert page.proof_eligible is False
+    assert page.api_contract_version == GITHUB_API_VERSION
+    assert page.pagination.mode == "cursor"
+    assert page.pagination.collection_complete is True
+    assert page.pagination.next_position is None
+    assert page.rate_limit.observed_limit == 60
+    assert page.rate_limit.policy_limit is None
+    assert page.rate_limit.policy_window_seconds is None
+    assert page.rate_limit.remaining == 59
+    assert page.rate_limit.used == 1
+    assert page.rate_limit.resource == "core"
+    record = page.batch.records[0]
+    assert record.record_id == "GHSA-2345-cfgh-jmpq"
+    assert record.identifiers == ("GHSA-2345-cfgh-jmpq", "CVE-2026-0001")
+    assert record.license.identifier == "CC-BY-4.0"
+    assert record.classification == "context_only"
+    assert record.proof_eligible is False
+    serialized = json.dumps(page.to_dict(), sort_keys=True)
+    assert "github-secret-value" not in serialized
+    assert "provider-secret" not in serialized
+    assert "reportability" not in serialized
+
+
+def test_provider_quota_policy_cannot_be_reclassified_by_auth_boolean():
+    assert "authenticated" not in inspect.signature(
+        parse_nvd_cve_response
+    ).parameters
+    assert "authenticated" not in inspect.signature(
+        parse_github_advisory_response
+    ).parameters
+
+
+def test_github_modified_filter_matches_published_or_updated_semantics():
+    query = {
+        "modified": "2026-08-18..2026-08-20",
+        "type": "reviewed",
+        "per_page": 1,
+    }
+    request = build_github_advisory_request(
+        query,
+        timeout_seconds=3,
+        max_response_bytes=4096,
+        user_agent="BELIEF-tests/1",
+    )
+    payload = json.loads(_github_response_bytes())
+
+    published_match = copy.deepcopy(payload)
+    published_match[0]["published_at"] = "2026-08-19T00:00:00Z"
+    published_match[0]["updated_at"] = "2026-08-22T00:00:00Z"
+    updated_match = copy.deepcopy(payload)
+    updated_match[0]["published_at"] = "2026-08-01T00:00:00Z"
+    updated_match[0]["updated_at"] = "2026-08-19T00:00:00Z"
+
+    for matching_payload in (published_match, updated_match):
+        page = parse_github_advisory_response(
+            HTTPFetchResponse(
+                source_url=request.url,
+                status_code=200,
+                retrieved_at_utc=RETRIEVED_AT,
+                body=json.dumps(
+                    matching_payload,
+                    separators=(",", ":"),
+                ).encode("utf-8"),
+                headers=_github_headers(),
+            ),
+            query=query,
+        )
+        assert page.batch.records[0].record_id == "GHSA-2345-cfgh-jmpq"
+
+
+def test_github_adapter_validates_and_retains_only_the_next_cursor(github_response_bytes):
+    query = {
+        "modified": "2026-08-01..2026-08-23",
+        "type": "reviewed",
+        "direction": "asc",
+        "sort": "updated",
+        "per_page": 1,
+    }
+    next_query = dict(query, after="cursor_2")
+    request = build_github_advisory_request(
+        query,
+        timeout_seconds=3,
+        max_response_bytes=4096,
+        user_agent="BELIEF-tests/1",
+    )
+    next_request = build_github_advisory_request(
+        next_query,
+        timeout_seconds=3,
+        max_response_bytes=4096,
+        user_agent="BELIEF-tests/1",
+    )
+    link = f'<{next_request.url}>; rel="next"'
+    page = parse_github_advisory_response(
+        HTTPFetchResponse(
+            source_url=request.url,
+            status_code=200,
+            retrieved_at_utc=RETRIEVED_AT,
+            body=github_response_bytes,
+            headers=_github_headers(link=link),
+        ),
+        query=query,
+    )
+
+    assert page.pagination.collection_complete is False
+    assert page.pagination.request_position is None
+    assert page.pagination.next_position == "cursor_2"
+    assert page.selected_response_headers_sha256 == canonical_json_sha256(
+        [list(item) for item in page.selected_response_headers]
+    )
+
+
+def test_github_adapter_rejects_cross_host_or_non_advancing_next_link(
+    github_query,
+    github_response_bytes,
+):
+    request = build_github_advisory_request(
+        github_query,
+        timeout_seconds=3,
+        max_response_bytes=4096,
+        user_agent="BELIEF-tests/1",
+    )
+    for link in (
+        '<https://api.github.com.evil.example/advisories?after=x>; rel="next"',
+        f'<{request.url}>; rel="next"',
+    ):
+        response = HTTPFetchResponse(
+            source_url=request.url,
+            status_code=200,
+            retrieved_at_utc=RETRIEVED_AT,
+            body=github_response_bytes,
+            headers=_github_headers(link=link),
+        )
+        with pytest.raises(IntelligenceSchemaError) as raised:
+            parse_github_advisory_response(response, query=github_query)
+        assert raised.value.path == "$.headers.link"
+
+
+def test_provider_query_policies_reject_unbounded_deprecated_or_ambiguous_inputs():
+    common = {
+        "timeout_seconds": 3,
+        "max_response_bytes": 4096,
+        "user_agent": "BELIEF-tests/1",
+    }
+    with pytest.raises(ValueError, match="cveIds or"):
+        build_nvd_cve_request({}, **common)
+    with pytest.raises(ValueError, match="unsupported parameters"):
+        build_nvd_cve_request({"cveId": "CVE-2026-0001"}, **common)
+    with pytest.raises(ValueError, match="duplicates"):
+        build_nvd_cve_request(
+            {"cveIds": ["CVE-2026-0001", "CVE-2026-0001"]}, **common
+        )
+    with pytest.raises(ValueError, match="require"):
+        build_github_advisory_request({"type": "reviewed"}, **common)
+    with pytest.raises(ValueError, match="unsupported parameters"):
+        build_github_advisory_request(
+            {"cve_id": "CVE-2026-0001", "redirect": "https://example.test"},
+            **common,
+        )
+    with pytest.raises(ValueError, match="registered intelligence endpoint"):
+        HTTPFetchRequest(
+            url=(
+                "https://api.github.com.evil.example/advisories"
+                "?cve_id=CVE-2026-0001&type=reviewed&direction=desc&per_page=1&sort=published"
+            ),
+            method="GET",
+            timeout_seconds=3,
+            max_response_bytes=4096,
+            user_agent="BELIEF-tests/1",
+        )
+    valid_nvd = build_nvd_cve_request(
+        {"cveIds": ["CVE-2026-0001"]}, **common
+    )
+    with pytest.raises(ValueError, match="unsupported public request header"):
+        HTTPFetchRequest(
+            url=valid_nvd.url,
+            method="GET",
+            timeout_seconds=3,
+            max_response_bytes=4096,
+            user_agent="BELIEF-tests/1",
+            headers=(("Accept", "application/json"), ("Host", "example.test")),
+        )
+
+
+def test_provider_parsers_enforce_page_cardinality_bounds(
+    nvd_query,
+    nvd_response_bytes,
+    github_query,
+    github_response_bytes,
+):
+    nvd_payload = json.loads(nvd_response_bytes)
+    nvd_payload["resultsPerPage"] = 2001
+    nvd_request = build_nvd_cve_request(
+        nvd_query,
+        timeout_seconds=3,
+        max_response_bytes=1024 * 1024,
+        user_agent="BELIEF-tests/1",
+    )
+    with pytest.raises(IntelligenceSchemaError) as nvd_raised:
+        parse_nvd_cve_response(
+            HTTPFetchResponse(
+                source_url=nvd_request.url,
+                status_code=200,
+                retrieved_at_utc=RETRIEVED_AT,
+                body=json.dumps(nvd_payload).encode("utf-8"),
+                headers=(("Content-Type", "application/json"),),
+            ),
+            query=nvd_query,
+        )
+    assert nvd_raised.value.path == "$.resultsPerPage"
+
+    github_payload = json.loads(github_response_bytes)
+    github_payload *= 101
+    bounded_query = dict(github_query, per_page=100)
+    github_request = build_github_advisory_request(
+        bounded_query,
+        timeout_seconds=3,
+        max_response_bytes=1024 * 1024,
+        user_agent="BELIEF-tests/1",
+    )
+    with pytest.raises(IntelligenceSchemaError) as github_raised:
+        parse_github_advisory_response(
+            HTTPFetchResponse(
+                source_url=github_request.url,
+                status_code=200,
+                retrieved_at_utc=RETRIEVED_AT,
+                body=json.dumps(github_payload).encode("utf-8"),
+                headers=_github_headers(),
+            ),
+            query=bounded_query,
+        )
+    assert github_raised.value.path == "$"
+
+
+def test_github_adapter_rejects_wrong_contract_version_and_partial_rate_state(
+    github_query,
+    github_response_bytes,
+):
+    request = build_github_advisory_request(
+        github_query,
+        timeout_seconds=3,
+        max_response_bytes=4096,
+        user_agent="BELIEF-tests/1",
+    )
+    wrong_version = tuple(
+        (name, "2022-11-28") if name == "X-GitHub-Api-Version-Selected" else (name, value)
+        for name, value in _github_headers()
+    )
+    with pytest.raises(IntelligenceSchemaError) as version_raised:
+        parse_github_advisory_response(
+            HTTPFetchResponse(
+                source_url=request.url,
+                status_code=200,
+                retrieved_at_utc=RETRIEVED_AT,
+                body=github_response_bytes,
+                headers=wrong_version,
+            ),
+            query=github_query,
+        )
+    assert version_raised.value.path == "$.headers.x-github-api-version-selected"
+
+    partial_rate = (
+        ("Content-Type", "application/json"),
+        ("X-GitHub-Api-Version-Selected", GITHUB_API_VERSION),
+        ("X-RateLimit-Limit", "60"),
+    )
+    with pytest.raises(IntelligenceSchemaError) as rate_raised:
+        parse_github_advisory_response(
+            HTTPFetchResponse(
+                source_url=request.url,
+                status_code=200,
+                retrieved_at_utc=RETRIEVED_AT,
+                body=github_response_bytes,
+                headers=partial_rate,
+            ),
+            query=github_query,
+        )
+    assert rate_raised.value.path == "$.headers"
+
+
+def test_secret_headers_reach_wire_only_and_redirects_still_fail_closed(nvd_query):
+    request = build_nvd_cve_request(
+        nvd_query,
+        timeout_seconds=3,
+        max_response_bytes=1024,
+        user_agent="BELIEF-tests/1",
+        api_key="wire-only-secret",
+    )
+    observed = {}
+
+    def opener(wire_request, _timeout):
+        observed["api_key"] = wire_request.get_header("Apikey")
+        return _FakeResponse(b"{}", final_url=request.url)
+
+    fetched = fetch_http_response(request, opener=opener, clock=lambda: RETRIEVED_AT)
+    assert fetched.body == b"{}"
+    assert observed == {"api_key": "wire-only-secret"}
+
+    redirected = _FakeResponse(
+        b"{}",
+        final_url=(
+            "https://services.nvd.nist.gov.evil.example/rest/json/cves/2.0"
+            "?cveIds=CVE-2026-0001&resultsPerPage=1&startIndex=0"
+        ),
+    )
+    with pytest.raises(InvalidTransportResponseError):
+        fetch_http_response(request, opener=lambda _request, _timeout: redirected)

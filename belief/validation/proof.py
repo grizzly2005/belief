@@ -14,7 +14,8 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
+from types import MappingProxyType
 from typing import Any, Literal
 
 from belief.json_contracts import StrictJSONError, strict_json_clone, strict_json_dumps
@@ -263,7 +264,38 @@ class VerifiedProofMaterial:
     outcome: str
     oracle_id: str
     oracle_version: str
-    evidence_sha256: Mapping[str, str] = field(default_factory=dict)
+    subject_sha256: str
+    plan_sha256: str
+    result_sha256: str
+    evidence_bindings: Mapping[str, ValidationEvidenceRef]
+    evidence_sha256: Mapping[str, str]
+    evidence_sizes: Mapping[str, int]
+
+    def __post_init__(self) -> None:
+        for field_name in ("subject_sha256", "plan_sha256", "result_sha256"):
+            object.__setattr__(
+                self,
+                field_name,
+                _sha256(
+                    getattr(self, field_name),
+                    field_name=field_name.replace("_", " "),
+                ),
+            )
+        object.__setattr__(
+            self,
+            "evidence_bindings",
+            MappingProxyType(dict(self.evidence_bindings)),
+        )
+        object.__setattr__(
+            self,
+            "evidence_sha256",
+            MappingProxyType(dict(self.evidence_sha256)),
+        )
+        object.__setattr__(
+            self,
+            "evidence_sizes",
+            MappingProxyType(dict(self.evidence_sizes)),
+        )
 
     def validate(self) -> None:
         expected = {
@@ -321,20 +353,105 @@ class VerifiedProofMaterial:
                 + ",".join(mismatched_digests)
             )
 
+        trusted_bindings: dict[str, ValidationEvidenceRef] = {}
+        for evidence_id, reference in dict(self.evidence_bindings).items():
+            normalized_id = _identifier(evidence_id, field_name="evidence id")
+            if not isinstance(reference, ValidationEvidenceRef):
+                raise ValidationProofError(
+                    "trusted evidence binding must be a ValidationEvidenceRef"
+                )
+            if normalized_id != reference.evidence_id:
+                raise ValidationProofError(
+                    "trusted evidence binding key does not match evidence_id"
+                )
+            trusted_bindings[normalized_id] = reference
+        serialized_bindings = {
+            reference.evidence_id: reference
+            for reference in self.proof.evidence_refs
+        }
+        if trusted_bindings != serialized_bindings:
+            raise ValidationProofError(
+                "validation proof evidence metadata binding mismatch"
+            )
+        trusted_sizes = dict(self.evidence_sizes)
+        if set(trusted_sizes) != set(trusted_bindings) or any(
+            not isinstance(size, int)
+            or isinstance(size, bool)
+            or size < 0
+            for size in trusted_sizes.values()
+        ):
+            raise ValidationProofError(
+                "validation proof evidence size binding mismatch"
+            )
+
 
 class VerifiedProofIndex:
     """In-memory projection of proof records verified against trusted stores."""
 
     def __init__(self, materials: Iterable[VerifiedProofMaterial] = ()) -> None:
-        proofs: dict[str, ValidationProof] = {}
+        proofs: dict[str, VerifiedProofMaterial] = {}
+        attempt_ids: dict[str, str] = {}
+        result_digests: dict[str, str] = {}
+        plan_digests: dict[str, str] = {}
+        subject_digests: dict[tuple[str, str, str, str], str] = {}
+        evidence_ids: dict[str, tuple[str, str, str, int]] = {}
         for material in materials:
             material.validate()
             existing = proofs.get(material.proof.proof_id)
-            if existing is not None and existing != material.proof:
+            if existing is not None and existing != material:
                 raise ValidationProofError(
                     "duplicate proof id has conflicting canonical content"
                 )
-            proofs[material.proof.proof_id] = material.proof
+            _bind_global_identifier(
+                attempt_ids,
+                identifier=material.attempt_id,
+                proof_id=material.proof.proof_id,
+                field_name="attempt_id",
+            )
+            _bind_global_digest(
+                result_digests,
+                identifier=material.result_id,
+                digest=material.result_sha256,
+                field_name="result_id",
+            )
+            _bind_global_digest(
+                plan_digests,
+                identifier=material.plan_id,
+                digest=material.plan_sha256,
+                field_name="plan_id",
+            )
+            subject_key = (
+                material.engagement_id,
+                material.target_id,
+                material.subject_kind,
+                material.subject_id,
+            )
+            previous_subject = subject_digests.get(subject_key)
+            if (
+                previous_subject is not None
+                and previous_subject != material.subject_sha256
+            ):
+                raise ValidationProofError(
+                    "subject identity has conflicting canonical digests: "
+                    f"{material.engagement_id}:{material.target_id}:"
+                    f"{material.subject_kind}:{material.subject_id}"
+                )
+            subject_digests[subject_key] = material.subject_sha256
+            for reference in material.evidence_bindings.values():
+                identity = (
+                    reference.sha256,
+                    reference.kind,
+                    reference.media_type,
+                    material.evidence_sizes[reference.evidence_id],
+                )
+                previous = evidence_ids.get(reference.evidence_id)
+                if previous is not None and previous != identity:
+                    raise ValidationProofError(
+                        "evidence_id has conflicting global identity: "
+                        + reference.evidence_id
+                    )
+                evidence_ids[reference.evidence_id] = identity
+            proofs[material.proof.proof_id] = material
         self._proofs = proofs
 
     def resolve(
@@ -348,10 +465,14 @@ class VerifiedProofIndex:
         plan_id: str,
         result_id: str,
         outcome: str,
+        subject_sha256: str,
+        plan_sha256: str,
+        result_sha256: str,
     ) -> tuple[bool, tuple[str, ...]]:
-        stored = self._proofs.get(proof.proof_id)
-        if stored is None:
+        material = self._proofs.get(proof.proof_id)
+        if material is None:
             return False, ("validation_proof_orphaned",)
+        stored = material.proof
         if stored != proof:
             return False, ("validation_proof_content_mismatch",)
         expected = {
@@ -368,7 +489,29 @@ class VerifiedProofIndex:
             for field_name, value in expected.items()
             if getattr(stored, field_name) != value
         )
-        return (not mismatches), mismatches
+        digest_mismatches = tuple(
+            reason
+            for supplied, trusted, reason in (
+                (
+                    str(subject_sha256 or "").lower(),
+                    material.subject_sha256,
+                    "validation_proof_subject_sha256_mismatch",
+                ),
+                (
+                    str(result_sha256 or "").lower(),
+                    material.result_sha256,
+                    "validation_proof_result_sha256_mismatch",
+                ),
+                (
+                    str(plan_sha256 or "").lower(),
+                    material.plan_sha256,
+                    "validation_proof_plan_sha256_mismatch",
+                ),
+            )
+            if supplied != trusted
+        )
+        reasons = (*mismatches, *digest_mismatches)
+        return (not reasons), reasons
 
 
 @dataclass(frozen=True)
@@ -407,6 +550,7 @@ def assess_validation_result_proof(
     subject_id: str,
     subject_kind: str,
     plan_id: str,
+    subject_sha256: str,
 ) -> ProofAssessment:
     """Classify a result without trusting any self-asserted verification flag."""
 
@@ -462,7 +606,18 @@ def assess_validation_result_proof(
             proof_id=proof.proof_id,
             reasons=("validation_proof_unresolved",),
         )
-    if not all((engagement_id, target_id, subject_id, subject_kind, plan_id)):
+    plan_sha256 = str(metadata.get("validation_plan_digest") or "").lower()
+    if not all(
+        (
+            engagement_id,
+            target_id,
+            subject_id,
+            subject_kind,
+            plan_id,
+            subject_sha256,
+            plan_sha256,
+        )
+    ):
         return ProofAssessment(
             "quarantined",
             proof_id=proof.proof_id,
@@ -477,6 +632,9 @@ def assess_validation_result_proof(
         plan_id=plan_id,
         result_id=str(payload.get("result_id") or ""),
         outcome=str(payload.get("outcome") or ""),
+        subject_sha256=subject_sha256,
+        plan_sha256=plan_sha256,
+        result_sha256=validation_result_proof_digest(payload),
     )
     if not resolved:
         return ProofAssessment(
@@ -485,6 +643,103 @@ def assess_validation_result_proof(
             reasons=reasons,
         )
     return ProofAssessment("verified", proof_id=proof.proof_id)
+
+
+def proof_subject_digest(subject: Any) -> str:
+    """Digest a subject snapshot while excluding post-validation projections.
+
+    Validation results and reportability are derived children of an audit case;
+    including them would make a proof recursively depend on itself. External
+    intelligence is context-only and may be refreshed independently, so it is
+    excluded for the same reason. Every other subject field remains bound.
+    """
+
+    serializer = getattr(subject, "to_dict", None)
+    source_metadata = getattr(subject, "metadata", None)
+    if callable(serializer) and isinstance(source_metadata, Mapping):
+        bound_metadata = dict(source_metadata)
+        for field_name in (
+            "external_intelligence",
+            "reasoning",
+            "reportability",
+            "validation_results",
+        ):
+            bound_metadata.pop(field_name, None)
+        try:
+            value = replace(subject, metadata=bound_metadata).to_dict()
+        except TypeError:
+            value = serializer()
+    else:
+        value = serializer() if callable(serializer) else subject
+    if not isinstance(value, Mapping):
+        raise ValidationProofError("proof subject must be a JSON object")
+    payload = _json_object(value)
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict):
+        bound_metadata = dict(metadata)
+        for field_name in (
+            "external_intelligence",
+            "reasoning",
+            "reportability",
+            "validation_results",
+        ):
+            bound_metadata.pop(field_name, None)
+        if bound_metadata:
+            payload["metadata"] = bound_metadata
+        else:
+            payload.pop("metadata", None)
+    return _canonical_sha256(payload)
+
+
+def validation_result_proof_digest(
+    result: ValidationResult | Mapping[str, Any],
+) -> str:
+    """Digest the complete result claim, excluding only its embedded proof link."""
+
+    payload = (
+        result.to_dict()
+        if isinstance(result, ValidationResult)
+        else _json_object(result)
+    )
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict):
+        unlinked = dict(metadata)
+        unlinked.pop("validation_proof", None)
+        if unlinked:
+            payload["metadata"] = unlinked
+        else:
+            payload.pop("metadata", None)
+    return _canonical_sha256(payload)
+
+
+def _bind_global_identifier(
+    identities: dict[str, str],
+    *,
+    identifier: str,
+    proof_id: str,
+    field_name: str,
+) -> None:
+    previous = identities.get(identifier)
+    if previous is not None and previous != proof_id:
+        raise ValidationProofError(
+            f"{field_name} is bound to multiple validation proofs: {identifier}"
+        )
+    identities[identifier] = proof_id
+
+
+def _bind_global_digest(
+    identities: dict[str, str],
+    *,
+    identifier: str,
+    digest: str,
+    field_name: str,
+) -> None:
+    previous = identities.get(identifier)
+    if previous is not None and previous != digest:
+        raise ValidationProofError(
+            f"{field_name} has conflicting canonical digests: {identifier}"
+        )
+    identities[identifier] = digest
 
 
 def _strict_object(
@@ -563,4 +818,6 @@ __all__ = [
     "VerifiedProofIndex",
     "VerifiedProofMaterial",
     "assess_validation_result_proof",
+    "proof_subject_digest",
+    "validation_result_proof_digest",
 ]

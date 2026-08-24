@@ -525,6 +525,7 @@ def run_isolated_web_validation_plan(
     timeout_ms: int = 5_000,
     correlation_id: str = "",
     on_handle: Callable[[WorkerRunHandle], None] | None = None,
+    on_response: Callable[[WorkerResponse], None] | None = None,
 ) -> ValidationResult:
     """Run one registered web fixture through the existing BELIEF runner."""
 
@@ -546,6 +547,8 @@ def run_isolated_web_validation_plan(
     )
     if executor.last_response is None:
         return result
+    if on_response is not None:
+        on_response(executor.last_response)
     metadata = dict(result.metadata)
     metadata["isolated_worker"] = {
         "worker_status": executor.last_response.worker_status,

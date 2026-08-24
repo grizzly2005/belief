@@ -1,5 +1,6 @@
 import copy
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,10 +16,13 @@ from belief.validation.proof import (
     VerifiedProofIndex,
     VerifiedProofMaterial,
     assess_validation_result_proof,
+    proof_subject_digest,
+    validation_result_proof_digest,
 )
 
 
 _EVIDENCE_DIGEST = "a" * 64
+_PLAN_DIGEST = "b" * 64
 
 
 def _authority_context() -> ProofAuthorityContext:
@@ -31,6 +35,7 @@ def _authority_context() -> ProofAuthorityContext:
 def _proof_and_result(
     *,
     outcome: str = "bypassed",
+    attempt_id: str = "attempt-1",
 ) -> tuple[ValidationProof, dict]:
     result = ValidationResult(
         subject_id="case-1",
@@ -48,7 +53,7 @@ def _proof_and_result(
         subject_id=result.subject_id,
         subject_kind=result.subject_kind,
         plan_id="plan-1",
-        attempt_id="attempt-1",
+        attempt_id=attempt_id,
         result_id=result.result_id,
         outcome=result.outcome,
         oracle_id="path_boundary_invariant",
@@ -65,12 +70,13 @@ def _proof_and_result(
     payload = result.to_dict()
     payload["metadata"] = {
         "validation_plan_id": proof.plan_id,
+        "validation_plan_digest": _PLAN_DIGEST,
         "validation_proof": proof.to_dict(),
     }
     return proof, payload
 
 
-def _material(proof: ValidationProof) -> VerifiedProofMaterial:
+def _material(proof: ValidationProof, result: dict) -> VerifiedProofMaterial:
     return VerifiedProofMaterial(
         proof=proof,
         engagement_id=proof.engagement_id,
@@ -83,7 +89,15 @@ def _material(proof: ValidationProof) -> VerifiedProofMaterial:
         outcome=proof.outcome,
         oracle_id=proof.oracle_id,
         oracle_version=proof.oracle_version,
+        subject_sha256=proof_subject_digest(_high_signal_case({})),
+        plan_sha256=_PLAN_DIGEST,
+        result_sha256=validation_result_proof_digest(result),
+        evidence_bindings={
+            reference.evidence_id: reference
+            for reference in proof.evidence_refs
+        },
         evidence_sha256={"evidence-1": _EVIDENCE_DIGEST},
+        evidence_sizes={"evidence-1": 1},
     )
 
 
@@ -135,8 +149,8 @@ def test_validation_proof_rejects_changed_content_with_old_id():
 
 
 def test_verified_index_rejects_missing_or_orphaned_evidence():
-    proof, _ = _proof_and_result()
-    material = _material(proof)
+    proof, result = _proof_and_result()
+    material = _material(proof, result)
     missing = VerifiedProofMaterial(
         **{
             **material.__dict__,
@@ -150,7 +164,7 @@ def test_verified_index_rejects_missing_or_orphaned_evidence():
 
 def test_cross_target_proof_is_quarantined():
     proof, result = _proof_and_result()
-    index = VerifiedProofIndex([_material(proof)])
+    index = VerifiedProofIndex([_material(proof, result)])
 
     assessment = assess_validation_result_proof(
         result,
@@ -160,6 +174,7 @@ def test_cross_target_proof_is_quarantined():
         subject_id="case-1",
         subject_kind="audit_case",
         plan_id="plan-1",
+        subject_sha256=proof_subject_digest(_high_signal_case({})),
     )
 
     assert assessment.state == "quarantined"
@@ -205,7 +220,7 @@ def test_non_finite_validation_result_is_quarantined_without_scoring_crash():
 
 def test_duplicate_verified_proof_cannot_stack_reportability_score():
     proof, result = _proof_and_result()
-    index = VerifiedProofIndex([_material(proof)])
+    index = VerifiedProofIndex([_material(proof, result)])
     single_case = _high_signal_case(result)
     duplicate_case = copy.deepcopy(single_case)
     duplicate_case.metadata["validation_results"] = [result] * 5
@@ -231,9 +246,15 @@ def test_duplicate_verified_proof_cannot_stack_reportability_score():
 
 def test_conflicting_verified_outcomes_are_quarantined():
     bypass_proof, bypass_result = _proof_and_result(outcome="bypassed")
-    enforced_proof, enforced_result = _proof_and_result(outcome="enforced")
+    enforced_proof, enforced_result = _proof_and_result(
+        outcome="enforced",
+        attempt_id="attempt-2",
+    )
     index = VerifiedProofIndex(
-        [_material(bypass_proof), _material(enforced_proof)]
+        [
+            _material(bypass_proof, bypass_result),
+            _material(enforced_proof, enforced_result),
+        ]
     )
     case = _high_signal_case(bypass_result)
     case.metadata["validation_results"] = [bypass_result, enforced_result]
@@ -251,7 +272,7 @@ def test_conflicting_verified_outcomes_are_quarantined():
 
 def test_verified_bypass_proof_can_cross_reportability_gate():
     proof, result = _proof_and_result()
-    index = VerifiedProofIndex([_material(proof)])
+    index = VerifiedProofIndex([_material(proof, result)])
 
     assessment = assess_audit_case_reportability(
         _high_signal_case(result),
@@ -268,7 +289,7 @@ def test_verified_bypass_proof_can_cross_reportability_gate():
 
 def test_case_metadata_cannot_supply_the_authority_context():
     proof, result = _proof_and_result()
-    index = VerifiedProofIndex([_material(proof)])
+    index = VerifiedProofIndex([_material(proof, result)])
 
     assessment = assess_audit_case_reportability(
         _high_signal_case(result),
@@ -284,7 +305,7 @@ def test_case_metadata_cannot_supply_the_authority_context():
 
 def test_case_metadata_conflicting_with_authority_context_is_quarantined():
     proof, result = _proof_and_result()
-    index = VerifiedProofIndex([_material(proof)])
+    index = VerifiedProofIndex([_material(proof, result)])
     case = _high_signal_case(result)
     case.metadata["target_id"] = "target-2"
 
@@ -321,3 +342,177 @@ def test_validation_proof_matches_strict_json_schema():
     ref_schema = schema["properties"]["evidence_refs"]["items"]
     assert ref_schema["additionalProperties"] is False
     assert set(ref_schema["required"]) == set(payload["evidence_refs"][0])
+
+
+def test_same_case_id_with_changed_subject_content_is_quarantined():
+    proof, result = _proof_and_result()
+    index = VerifiedProofIndex([_material(proof, result)])
+    changed = replace(
+        _high_signal_case(result),
+        file="different.py",
+        line=999,
+    )
+
+    assessment = assess_audit_case_reportability(
+        changed,
+        proof_index=index,
+        proof_context=_authority_context(),
+    )
+
+    assert assessment.proof_state == "quarantined"
+    assert assessment.verdict != "reportable_candidate"
+    assert (
+        "validation_proof_subject_sha256_mismatch"
+        in assessment.negative_factors
+    )
+
+
+def test_index_allows_identical_result_id_and_digest_across_distinct_attempts():
+    first_proof, first_result = _proof_and_result(attempt_id="attempt-1")
+    second_proof = ValidationProof(
+        **{
+            **first_proof.__dict__,
+            "attempt_id": "attempt-2",
+            "proof_id": "",
+        }
+    )
+    second_result = copy.deepcopy(first_result)
+    second_result["metadata"]["validation_proof"] = second_proof.to_dict()
+
+    index = VerifiedProofIndex(
+        [
+            _material(first_proof, first_result),
+            _material(second_proof, second_result),
+        ]
+    )
+
+    resolved, reasons = index.resolve(
+        second_proof,
+        engagement_id="engagement-1",
+        target_id="target-1",
+        subject_id="case-1",
+        subject_kind="audit_case",
+        plan_id="plan-1",
+        result_id=second_proof.result_id,
+        outcome=second_proof.outcome,
+        subject_sha256=proof_subject_digest(_high_signal_case({})),
+        plan_sha256=_PLAN_DIGEST,
+        result_sha256=validation_result_proof_digest(second_result),
+    )
+
+    assert resolved is True
+    assert reasons == ()
+
+
+def test_index_rejects_one_result_id_with_conflicting_full_digests():
+    first_proof, first_result = _proof_and_result(attempt_id="attempt-1")
+    second_proof = ValidationProof(
+        **{
+            **first_proof.__dict__,
+            "attempt_id": "attempt-2",
+            "proof_id": "",
+        }
+    )
+    second_result = copy.deepcopy(first_result)
+    second_result["reason"] = "conflicting result content with the same result_id"
+    second_result["metadata"]["validation_proof"] = second_proof.to_dict()
+
+    with pytest.raises(
+        ValidationProofError,
+        match="result_id has conflicting canonical digests",
+    ):
+        VerifiedProofIndex(
+            [
+                _material(first_proof, first_result),
+                _material(second_proof, second_result),
+            ]
+        )
+
+
+def test_index_rejects_one_plan_id_with_conflicting_full_digests():
+    first_proof, first_result = _proof_and_result(
+        outcome="bypassed",
+        attempt_id="attempt-1",
+    )
+    second_proof, second_result = _proof_and_result(
+        outcome="enforced",
+        attempt_id="attempt-2",
+    )
+    first = _material(first_proof, first_result)
+    second = VerifiedProofMaterial(
+        **{
+            **_material(second_proof, second_result).__dict__,
+            "plan_sha256": "c" * 64,
+        }
+    )
+
+    with pytest.raises(
+        ValidationProofError,
+        match="plan_id has conflicting canonical digests",
+    ):
+        VerifiedProofIndex([first, second])
+
+
+def test_index_rejects_evidence_id_relabelled_to_another_blob():
+    first_proof, first_result = _proof_and_result(
+        outcome="bypassed",
+        attempt_id="attempt-1",
+    )
+    second_result = ValidationResult(
+        subject_id="case-1",
+        subject_kind="audit_case",
+        source="belief.local_validation_executor.v1",
+        outcome="enforced",
+        tested=True,
+        method="local_fixture/path_traversal/test-adapter",
+        reason="A second terminal outcome.",
+    ).to_dict()
+    changed_ref = ValidationEvidenceRef(
+        evidence_id="evidence-1",
+        kind="response",
+        sha256="d" * 64,
+        media_type="application/json",
+    )
+    second_proof = ValidationProof(
+        engagement_id="engagement-1",
+        target_id="target-1",
+        subject_id="case-1",
+        subject_kind="audit_case",
+        plan_id="plan-2",
+        attempt_id="attempt-2",
+        result_id=second_result["result_id"],
+        outcome="enforced",
+        oracle_id="path_boundary_invariant",
+        oracle_version="1",
+        evidence_refs=(changed_ref,),
+    )
+    second_result["metadata"] = {
+        "validation_plan_id": "plan-2",
+        "validation_plan_digest": "c" * 64,
+        "validation_proof": second_proof.to_dict(),
+    }
+    second = VerifiedProofMaterial(
+        proof=second_proof,
+        engagement_id="engagement-1",
+        target_id="target-1",
+        subject_id="case-1",
+        subject_kind="audit_case",
+        plan_id="plan-2",
+        attempt_id="attempt-2",
+        result_id=second_proof.result_id,
+        outcome="enforced",
+        oracle_id="path_boundary_invariant",
+        oracle_version="1",
+        subject_sha256=proof_subject_digest(_high_signal_case({})),
+        plan_sha256="c" * 64,
+        result_sha256=validation_result_proof_digest(second_result),
+        evidence_bindings={"evidence-1": changed_ref},
+        evidence_sha256={"evidence-1": "d" * 64},
+        evidence_sizes={"evidence-1": 2},
+    )
+
+    with pytest.raises(
+        ValidationProofError,
+        match="evidence_id has conflicting global identity",
+    ):
+        VerifiedProofIndex([_material(first_proof, first_result), second])

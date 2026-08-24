@@ -60,9 +60,17 @@ class HTTPStatusTransportError(IntelligenceTransportError):
 
     error_code = "http_status"
 
-    def __init__(self, message: str, *, url: str, status_code: int) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        url: str,
+        status_code: int,
+        response_headers: tuple[tuple[str, str], ...] = (),
+    ) -> None:
         super().__init__(message, url=url)
         self.status_code = status_code
+        self.response_headers = response_headers
 
 
 class ResponseTooLargeError(IntelligenceTransportError):

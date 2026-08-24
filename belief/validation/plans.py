@@ -26,6 +26,7 @@ from .plan_models import (
     unique_strings,
 )
 from .plan_templates import STOP_CONDITIONS, safety_contract, strategy_spec
+from .proof import proof_subject_digest
 
 _PRIORITY_ORDER = {
     "critical": 0,
@@ -371,6 +372,7 @@ def _metadata(case: Mapping[str, Any]) -> dict[str, Any]:
             if contract_seed
             else "source_case_sha256"
         ): canonical_digest(dict(case)),
+        "proof_subject_sha256": proof_subject_digest(case),
         "human_next_steps": list(
             unique_strings(case.get("human_next_steps"))
         ),

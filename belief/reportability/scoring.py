@@ -8,8 +8,10 @@ from typing import Any, Iterable
 from belief.audit_case import AuditCase, sort_audit_cases
 from belief.validation.proof import (
     ProofAuthorityContext,
+    ValidationProofError,
     VerifiedProofIndex,
     assess_validation_result_proof,
+    proof_subject_digest,
 )
 
 from .guards import GuardApplicability, blockers_for, evaluate_case_guards
@@ -131,6 +133,10 @@ def assess_audit_case_reportability(
     context_is_usable = proof_context is not None and not context_mismatches
     engagement_id = proof_context.engagement_id if context_is_usable else ""
     target_id = proof_context.target_id if context_is_usable else ""
+    try:
+        subject_sha256 = proof_subject_digest(case)
+    except (TypeError, ValueError, ValidationProofError):
+        subject_sha256 = ""
     negative.extend(context_mismatches)
     for result in validation_results:
         result_metadata = result.get("metadata")
@@ -147,6 +153,7 @@ def assess_audit_case_reportability(
             subject_id=case.case_id,
             subject_kind="audit_case",
             plan_id=plan_id,
+            subject_sha256=subject_sha256,
         )
         proof_assessments.append(assessment)
         if assessment.state != "verified":
