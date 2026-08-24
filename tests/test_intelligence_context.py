@@ -22,6 +22,7 @@ from belief.intelligence import (
     MalformedIntelligenceJSONError,
     NVD_CVE_API_URL,
     NetworkTransportError,
+    PaginationMetadata,
     ResponseTooLargeError,
     TransportTimeoutError,
     build_cisa_kev_request,
@@ -40,12 +41,48 @@ from belief.intelligence import (
 
 RETRIEVED_AT = "2026-08-23T12:00:00Z"
 OSV_URL = "https://api.osv.dev/v1/query"
-CISA_URL = (
-    "https://www.cisa.gov/sites/default/files/feeds/"
-    "known_exploited_vulnerabilities.json"
-)
+CISA_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 NVD_URL = NVD_CVE_API_URL
 GITHUB_URL = GITHUB_GLOBAL_ADVISORIES_URL
+
+
+def test_pagination_metadata_preserves_legacy_projection_and_unknown_is_fail_closed():
+    legacy = PaginationMetadata(
+        mode="cursor",
+        request_position=None,
+        next_position=None,
+        page_size=1,
+        provider_total=None,
+        page_complete=True,
+        collection_complete=True,
+    )
+    assert legacy.collection_status == "complete"
+    assert legacy.requested_page_size == 1
+
+    unknown = PaginationMetadata(
+        mode="cursor",
+        request_position=None,
+        next_position=None,
+        page_size=1,
+        provider_total=None,
+        page_complete=True,
+        collection_complete=False,
+        collection_status="unknown",
+        requested_page_size=100,
+    )
+    assert unknown.collection_complete is False
+    with pytest.raises(ValueError, match="unknown collection status"):
+        PaginationMetadata(
+            mode="cursor",
+            request_position=None,
+            next_position="cursor_2",
+            page_size=1,
+            provider_total=None,
+            page_complete=True,
+            collection_complete=False,
+            collection_status="unknown",
+            requested_page_size=100,
+        )
 
 
 @pytest.fixture
@@ -295,8 +332,9 @@ def test_cisa_happy_path_retains_catalog_revision_and_unknown_license(
     ]
     assert [record.occurrence_index for record in batch.records] == [0, 1]
     assert batch.records[0].freshness.basis == "source_modified_at"
-    assert batch.records[0].payload()["requiredAction"] != (
-        batch.records[1].payload()["requiredAction"]
+    assert (
+        batch.records[0].payload()["requiredAction"]
+        != (batch.records[1].payload()["requiredAction"])
     )
 
 
@@ -455,10 +493,7 @@ def test_cisa_declared_count_must_match_catalog_rows(cisa_query):
 
 
 def test_cisa_catalog_without_count_is_rejected_as_incomplete(cisa_query):
-    raw = (
-        b'{"title":"KEV","catalogVersion":"1","dateReleased":"2026-08-22",'
-        b'"vulnerabilities":[]}'
-    )
+    raw = b'{"title":"KEV","catalogVersion":"1","dateReleased":"2026-08-22","vulnerabilities":[]}'
 
     with pytest.raises(IntelligenceSchemaError) as raised:
         parse_cisa_kev_catalog(
@@ -656,7 +691,7 @@ def test_nvd_adapter_is_context_only_complete_and_normalizes_documented_utc(
 
     assert page.classification == "context_only"
     assert page.proof_eligible is False
-    assert page.schema_version == "belief.external_intelligence_page.v1"
+    assert page.schema_version == "belief.external_intelligence_page.v2"
     assert page.api_contract_version == "NVD_CVE/2.0"
     assert page.pagination.to_dict() == {
         "mode": "offset",
@@ -666,7 +701,10 @@ def test_nvd_adapter_is_context_only_complete_and_normalizes_documented_utc(
         "provider_total": 1,
         "page_complete": True,
         "collection_complete": True,
+        "collection_status": "complete",
+        "requested_page_size": 1,
     }
+    assert page.raw_response_bytes == len(nvd_response_bytes)
     assert page.rate_limit.policy_limit is None
     assert page.rate_limit.policy_window_seconds is None
     assert page.response_generated_at_utc == "2026-08-23T11:59:58.125000Z"
@@ -711,6 +749,7 @@ def test_nvd_adapter_retains_incomplete_collection_offset(nvd_response_bytes):
     )
 
     assert page.pagination.collection_complete is False
+    assert page.pagination.collection_status == "incomplete"
     assert page.pagination.next_position == 1
     assert page.pagination.provider_total == 2
 
@@ -746,7 +785,8 @@ def test_github_adapter_retains_cursor_rate_limit_license_and_version(
     assert page.proof_eligible is False
     assert page.api_contract_version == GITHUB_API_VERSION
     assert page.pagination.mode == "cursor"
-    assert page.pagination.collection_complete is True
+    assert page.pagination.collection_complete is False
+    assert page.pagination.collection_status == "unknown"
     assert page.pagination.next_position is None
     assert page.rate_limit.observed_limit == 60
     assert page.rate_limit.policy_limit is None
@@ -767,12 +807,8 @@ def test_github_adapter_retains_cursor_rate_limit_license_and_version(
 
 
 def test_provider_quota_policy_cannot_be_reclassified_by_auth_boolean():
-    assert "authenticated" not in inspect.signature(
-        parse_nvd_cve_response
-    ).parameters
-    assert "authenticated" not in inspect.signature(
-        parse_github_advisory_response
-    ).parameters
+    assert "authenticated" not in inspect.signature(parse_nvd_cve_response).parameters
+    assert "authenticated" not in inspect.signature(parse_github_advisory_response).parameters
 
 
 def test_github_modified_filter_matches_published_or_updated_semantics():
@@ -847,6 +883,7 @@ def test_github_adapter_validates_and_retains_only_the_next_cursor(github_respon
     )
 
     assert page.pagination.collection_complete is False
+    assert page.pagination.collection_status == "incomplete"
     assert page.pagination.request_position is None
     assert page.pagination.next_position == "cursor_2"
     assert page.selected_response_headers_sha256 == canonical_json_sha256(
@@ -891,9 +928,7 @@ def test_provider_query_policies_reject_unbounded_deprecated_or_ambiguous_inputs
     with pytest.raises(ValueError, match="unsupported parameters"):
         build_nvd_cve_request({"cveId": "CVE-2026-0001"}, **common)
     with pytest.raises(ValueError, match="duplicates"):
-        build_nvd_cve_request(
-            {"cveIds": ["CVE-2026-0001", "CVE-2026-0001"]}, **common
-        )
+        build_nvd_cve_request({"cveIds": ["CVE-2026-0001", "CVE-2026-0001"]}, **common)
     with pytest.raises(ValueError, match="require"):
         build_github_advisory_request({"type": "reviewed"}, **common)
     with pytest.raises(ValueError, match="unsupported parameters"):
@@ -912,9 +947,7 @@ def test_provider_query_policies_reject_unbounded_deprecated_or_ambiguous_inputs
             max_response_bytes=4096,
             user_agent="BELIEF-tests/1",
         )
-    valid_nvd = build_nvd_cve_request(
-        {"cveIds": ["CVE-2026-0001"]}, **common
-    )
+    valid_nvd = build_nvd_cve_request({"cveIds": ["CVE-2026-0001"]}, **common)
     with pytest.raises(ValueError, match="unsupported public request header"):
         HTTPFetchRequest(
             url=valid_nvd.url,

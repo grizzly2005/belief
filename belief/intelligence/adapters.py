@@ -111,9 +111,7 @@ def parse_nvd_cve_response(
     generated_at = _normalize_nvd_timestamp(
         _required_non_empty_string(root, "timestamp", "$"), path="$.timestamp"
     )
-    results_per_page = _required_int(
-        root, "resultsPerPage", "$", minimum=0, maximum=2000
-    )
+    results_per_page = _required_int(root, "resultsPerPage", "$", minimum=0, maximum=2000)
     start_index = _required_int(root, "startIndex", "$", minimum=0)
     total_results = _required_int(root, "totalResults", "$", minimum=0)
     vulnerabilities = _required_list(root, "vulnerabilities", "$")
@@ -127,13 +125,9 @@ def parse_nvd_cve_response(
     if start_index != normalized_query["startIndex"]:
         raise IntelligenceSchemaError("does not match the requested offset", path="$.startIndex")
     if results_per_page > normalized_query["resultsPerPage"]:
-        raise IntelligenceSchemaError(
-            "exceeds the requested page size", path="$.resultsPerPage"
-        )
+        raise IntelligenceSchemaError("exceeds the requested page size", path="$.resultsPerPage")
     if start_index + results_per_page > total_results:
-        raise IntelligenceSchemaError(
-            "page extends beyond totalResults", path="$.totalResults"
-        )
+        raise IntelligenceSchemaError("page extends beyond totalResults", path="$.totalResults")
     if start_index < total_results and not vulnerabilities:
         raise IntelligenceSchemaError(
             "non-final page contains no records", path="$.vulnerabilities"
@@ -237,6 +231,8 @@ def parse_nvd_cve_response(
             provider_total=total_results,
             page_complete=True,
             collection_complete=collection_complete,
+            collection_status="complete" if collection_complete else "incomplete",
+            requested_page_size=normalized_query["resultsPerPage"],
         ),
         rate_limit=RateLimitMetadata(
             policy_limit=None,
@@ -258,7 +254,7 @@ def parse_github_advisory_response(
     query: Mapping[str, Any],
     freshness_max_age_seconds: int | None = None,
 ) -> ExternalIntelligencePage:
-    """Parse one complete GitHub Global Security Advisories cursor page."""
+    """Parse one GitHub cursor page without treating an absent Link as completeness."""
 
     _response_type(response)
     normalized_query = normalize_github_advisory_query(query)
@@ -404,7 +400,9 @@ def parse_github_advisory_response(
             page_size=len(records),
             provider_total=None,
             page_complete=True,
-            collection_complete=next_cursor is None,
+            collection_complete=False,
+            collection_status="incomplete" if next_cursor is not None else "unknown",
+            requested_page_size=normalized_query["per_page"],
         ),
         rate_limit=rate_limit,
         batch=batch,
@@ -438,6 +436,7 @@ def _page(
             [[name, value] for name, value in selected_headers]
         ),
         response_generated_at_utc=response_generated_at_utc,
+        raw_response_bytes=len(response.body),
         pagination=pagination,
         rate_limit=rate_limit,
         batch=batch,
@@ -496,9 +495,7 @@ def _github_next_cursor(
             raise IntelligenceSchemaError("has invalid Link syntax", path="$.headers.link")
         relation = match.group("rel")
         if relation in relations:
-            raise IntelligenceSchemaError(
-                "contains a duplicate relation", path="$.headers.link"
-            )
+            raise IntelligenceSchemaError("contains a duplicate relation", path="$.headers.link")
         relations[relation] = match.group("url")
     next_url = relations.get("next")
     if next_url is None:
@@ -510,18 +507,12 @@ def _github_next_cursor(
             "next link violates the registered endpoint policy", path="$.headers.link"
         ) from exc
     if github_collection_query(next_query) != dict(collection_query):
-        raise IntelligenceSchemaError(
-            "next link changes collection filters", path="$.headers.link"
-        )
+        raise IntelligenceSchemaError("next link changes collection filters", path="$.headers.link")
     if next_query["per_page"] != per_page:
-        raise IntelligenceSchemaError(
-            "next link changes page size", path="$.headers.link"
-        )
+        raise IntelligenceSchemaError("next link changes page size", path="$.headers.link")
     cursor = next_query.get("after")
     if cursor is None or cursor == current_cursor:
-        raise IntelligenceSchemaError(
-            "next link must advance the cursor", path="$.headers.link"
-        )
+        raise IntelligenceSchemaError("next link must advance the cursor", path="$.headers.link")
     return cursor
 
 
@@ -534,9 +525,7 @@ def _github_rate_limit(headers: Mapping[str, str]) -> RateLimitMetadata:
     }
     present = names.intersection(headers)
     if present and present != names:
-        raise IntelligenceSchemaError(
-            "GitHub rate-limit state is incomplete", path="$.headers"
-        )
+        raise IntelligenceSchemaError("GitHub rate-limit state is incomplete", path="$.headers")
     observed_limit = _optional_header_int(headers, "x-ratelimit-limit")
     remaining = _optional_header_int(headers, "x-ratelimit-remaining")
     if observed_limit is not None and remaining is not None and remaining > observed_limit:
@@ -566,9 +555,7 @@ def _optional_header_int(headers: Mapping[str, str], name: str) -> int | None:
             "must be a non-negative integer", path=f"$.headers.{name}"
         ) from exc
     if parsed < 0:
-        raise IntelligenceSchemaError(
-            "must be a non-negative integer", path=f"$.headers.{name}"
-        )
+        raise IntelligenceSchemaError("must be a non-negative integer", path=f"$.headers.{name}")
     return parsed
 
 

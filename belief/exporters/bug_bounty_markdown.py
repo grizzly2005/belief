@@ -11,8 +11,12 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from belief.audit_case import AuditCase, sort_audit_cases
-from belief.reportability.scoring import assess_audit_case_reportability
+from belief.reportability.scoring import (
+    _resolve_proof_inputs,
+    assess_audit_case_reportability,
+)
 from belief.tool_results.io import sanitize_for_json
+from belief.validation.ledger import VerifiedProofSnapshot
 from belief.validation.proof import ProofAuthorityContext, VerifiedProofIndex
 
 
@@ -20,9 +24,15 @@ def render_bug_bounty_markdown(
     audit_cases: Iterable[AuditCase],
     target: str = "",
     *,
+    proof_snapshot: VerifiedProofSnapshot | None = None,
     proof_index: VerifiedProofIndex | None = None,
     proof_context: ProofAuthorityContext | None = None,
 ) -> str:
+    proof_index, proof_context = _resolve_proof_inputs(
+        proof_snapshot=proof_snapshot,
+        proof_index=proof_index,
+        proof_context=proof_context,
+    )
     cases = sort_audit_cases(audit_cases)
     assessed = [
         (
@@ -60,11 +70,13 @@ def render_bug_bounty_markdown(
     ]
     if target:
         lines.append(f"Target: `{_safe_text(target)}`")
-    lines.extend([
-        "",
-        "---",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "---",
+            "",
+        ]
+    )
     for index, (case, assessment) in enumerate(assessed, start=1):
         lines.extend(_case_section(index, case, assessment))
     if not assessed:
@@ -78,20 +90,24 @@ def write_bug_bounty_markdown(
     output_path: str | Path,
     target: str = "",
     *,
+    proof_snapshot: VerifiedProofSnapshot | None = None,
     proof_index: VerifiedProofIndex | None = None,
     proof_context: ProofAuthorityContext | None = None,
 ) -> None:
+    proof_index, proof_context = _resolve_proof_inputs(
+        proof_snapshot=proof_snapshot,
+        proof_index=proof_index,
+        proof_context=proof_context,
+    )
+    rendered = render_bug_bounty_markdown(
+        audit_cases,
+        target=target,
+        proof_index=proof_index,
+        proof_context=proof_context,
+    )
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        render_bug_bounty_markdown(
-            audit_cases,
-            target=target,
-            proof_index=proof_index,
-            proof_context=proof_context,
-        ),
-        encoding="utf-8",
-    )
+    path.write_text(rendered, encoding="utf-8")
 
 
 def _case_section(index: int, case: AuditCase, assessment: dict[str, Any]) -> list[str]:
@@ -124,41 +140,63 @@ def _case_section(index: int, case: AuditCase, assessment: dict[str, Any]) -> li
         "",
         "### Evidence",
     ]
-    lines.extend(_bullets(evidence or [case.reason or "Imported/static evidence requires manual review."]))
-    lines.extend([
-        "",
-        "### Why this may be exploitable",
-        _safe_text(_why_exploitable(case, assessment)),
-        "",
-        "### Existing protections detected",
-    ])
-    lines.extend(_bullets(existing_protections or ["No strong protection evidence was imported or inferred."]))
-    lines.extend([
-        "",
-        "### Missing evidence",
-    ])
-    lines.extend(_bullets(assessment.get("missing_evidence") or ["Manual validation result in authorized scope."]))
-    lines.extend([
-        "",
-        "### Validation steps",
-    ])
-    for number, step in enumerate(assessment.get("validation_steps") or case.human_next_steps or (), start=1):
+    lines.extend(
+        _bullets(evidence or [case.reason or "Imported/static evidence requires manual review."])
+    )
+    lines.extend(
+        [
+            "",
+            "### Why this may be exploitable",
+            _safe_text(_why_exploitable(case, assessment)),
+            "",
+            "### Existing protections detected",
+        ]
+    )
+    lines.extend(
+        _bullets(
+            existing_protections or ["No strong protection evidence was imported or inferred."]
+        )
+    )
+    lines.extend(
+        [
+            "",
+            "### Missing evidence",
+        ]
+    )
+    lines.extend(
+        _bullets(
+            assessment.get("missing_evidence") or ["Manual validation result in authorized scope."]
+        )
+    )
+    lines.extend(
+        [
+            "",
+            "### Validation steps",
+        ]
+    )
+    for number, step in enumerate(
+        assessment.get("validation_steps") or case.human_next_steps or (), start=1
+    ):
         lines.append(f"{number}. {_safe_text(step)}")
     if not (assessment.get("validation_steps") or case.human_next_steps):
         lines.append("1. Review the candidate manually in an authorized test scope.")
-    lines.extend([
-        "",
-        "### Source tools",
-    ])
+    lines.extend(
+        [
+            "",
+            "### Source tools",
+        ]
+    )
     lines.extend(_bullets(source_tools or ["belief"]))
-    lines.extend([
-        "",
-        "### Limitations",
-        "This is a candidate based on local/static/imported evidence. Manual validation in authorized scope is required.",
-        "",
-        "---",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "### Limitations",
+            "This is a candidate based on local/static/imported evidence. Manual validation in authorized scope is required.",
+            "",
+            "---",
+            "",
+        ]
+    )
     return lines
 
 
@@ -187,9 +225,15 @@ def _evidence(case: AuditCase, metadata: dict[str, Any]) -> list[str]:
 def _why_exploitable(case: AuditCase, assessment: dict[str, Any]) -> str:
     positives = assessment.get("positive_factors") or []
     if positives:
-        return "The candidate has supporting factors: " + ", ".join(_safe_text(item) for item in positives) + "."
+        return (
+            "The candidate has supporting factors: "
+            + ", ".join(_safe_text(item) for item in positives)
+            + "."
+        )
     if case.missing_guarantees:
-        return "The candidate is missing local proof for: " + ", ".join(case.missing_guarantees) + "."
+        return (
+            "The candidate is missing local proof for: " + ", ".join(case.missing_guarantees) + "."
+        )
     return "The imported signal needs additional evidence before it can be treated as reportable."
 
 

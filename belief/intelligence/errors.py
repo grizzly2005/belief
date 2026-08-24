@@ -11,6 +11,32 @@ class QueryNormalizationError(ExternalIntelligenceError, ValueError):
     """A provider query cannot be represented as canonical JSON."""
 
 
+class CollectionIntegrityError(ExternalIntelligenceError, ValueError):
+    """A page sequence cannot form one continuous provider collection."""
+
+
+class CollectionIncompleteError(ExternalIntelligenceError, RuntimeError):
+    """A bounded live collection stopped before a trusted terminal state."""
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        next_position: int | str | None,
+        page_count: int,
+        record_count: int,
+        total_response_bytes: int,
+        quota_state: str,
+    ) -> None:
+        super().__init__(f"external-intelligence collection incomplete: {reason}")
+        self.reason = reason
+        self.next_position = next_position
+        self.page_count = page_count
+        self.record_count = record_count
+        self.total_response_bytes = total_response_bytes
+        self.quota_state = quota_state
+
+
 class IntelligenceParseError(ExternalIntelligenceError, ValueError):
     """A provider response could not be parsed under its strict contract."""
 
@@ -90,6 +116,8 @@ class InvalidTransportResponseError(IntelligenceTransportError):
 
 
 __all__ = [
+    "CollectionIncompleteError",
+    "CollectionIntegrityError",
     "ExternalIntelligenceError",
     "HTTPStatusTransportError",
     "IntelligenceParseError",

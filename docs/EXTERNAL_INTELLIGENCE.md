@@ -1,6 +1,6 @@
 # External intelligence boundary
 
-Status: phase 2 implemented on 2026-08-24. This document records a dated
+Status: phase 3 implemented on 2026-08-24. This document records a dated
 provider snapshot; it is not a permanent availability claim.
 
 ## Decision
@@ -22,8 +22,8 @@ BELIEF supports strict parsing and opt-in bounded retrieval for:
 The live transport permits only those exact HTTPS endpoints, refuses redirects,
 requires an explicit timeout, byte limit, and user agent, and returns typed
 failures. Parsers preserve every source occurrence, bind records to the exact
-query and response SHA-256 digests, and reject malformed, ambiguous, paginated,
-or count-inconsistent responses. Valid empty results remain distinguishable
+query and response SHA-256 digests, and reject malformed, ambiguous, or
+count-inconsistent responses. Valid empty results remain distinguishable
 from transport and parse failures.
 
 NVD and GitHub use structured endpoint policies rather than caller-provided
@@ -42,14 +42,15 @@ page envelopes.
 ## Page provenance
 
 NVD and GitHub parsers return a companion
-`belief.external_intelligence_page.v1` envelope around the existing immutable
+`belief.external_intelligence_page.v2` envelope around the existing immutable
 batch. The envelope retains:
 
 - separate collection-query and exact page-query SHA-256 digests;
 - the exact request URL and raw-response digest;
 - a safe, allowlisted response-header snapshot and its digest;
-- offset or cursor position, next position, page completeness, and collection
-  completeness without claiming provider snapshot isolation;
+- offset or cursor position, next position, returned and requested page sizes,
+  and a three-state collection status (`complete`, `incomplete`, `unknown`);
+- exact raw-response byte length for cumulative collection budgets;
 - documented rate-limit policy and any observed limit, remaining, used, reset,
   retry, and resource fields;
 - the selected API contract and provider response timestamp when supplied.
@@ -57,8 +58,36 @@ batch. The envelope retains:
 For GitHub, BELIEF validates a `rel="next"` URL but never follows it directly:
 the URL must retain the exact GitHub origin, path, collection filters, and page
 size, after which only the bounded cursor is retained and a new request is
-rebuilt. An interrupted or inconsistent page is an explicit parse failure, not
-an empty result.
+rebuilt. Absence of a validated `rel="next"` is `unknown`, never a positive
+completeness claim, because an intermediary can remove the header or one of its
+relations without changing the response body. An interrupted or inconsistent
+page is an explicit failure, not an empty result.
+
+## Bounded multi-page collection
+
+`CollectionLimits` makes page, record, cumulative-response-byte, and per-page
+byte limits mandatory. BELIEF also applies local hard maxima of 100 pages,
+10,000 records, 64 MiB cumulatively, and 16 MiB per response. These are safety
+ceilings, not provider quota claims.
+
+`collect_nvd_cves` and `collect_github_advisories` always start at offset zero
+or without a cursor, rebuild every request from the previously validated next
+position, and never sleep or retry automatically. Before another fetch they
+enforce remaining page, record, byte, and observed quota budgets. A bounded
+stop raises `CollectionIncompleteError` with counts, next position, and quota
+state instead of returning a collection marked complete.
+
+`belief.external_intelligence_collection.v1` rejects provider, contract,
+collection-query, unplanned requested-page-size, or NVD-total drift; gaps,
+overlaps, repeated requests, cursor cycles, pages after terminal state, and
+duplicate provider record IDs. Because NVD defines `resultsPerPage` as a
+maximum, BELIEF permits only a collector-calculated reduction to the exact
+remaining stable `totalResults` count; arbitrary size changes still fail. A
+terminal NVD chain must contain exactly `totalResults` records. GitHub can
+finish only as `unknown` because its terminal signal is a hop-modifiable header.
+Every collection records
+`snapshot_consistency="unverified"`: pagination termination does not prove that
+the provider dataset stayed unchanged during traversal.
 
 Because parser input does not carry a trusted credential class, NVD/GitHub
 pages do not guess a policy limit from a caller-provided authentication flag.

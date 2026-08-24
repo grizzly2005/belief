@@ -54,9 +54,7 @@ VALIDATION_ATTEMPT_SCHEMA_VERSION = "belief.validation_attempt.v1"
 VALIDATION_TERMINAL_SCHEMA_VERSION = "belief.validation_terminal.v1"
 VALIDATION_LEDGER_CANONICALIZATION = "belief-validation-ledger-json-v1"
 
-TERMINAL_STATUSES = frozenset(
-    {"completed", "timed_out", "cancelled", "crashed", "failed"}
-)
+TERMINAL_STATUSES = frozenset({"completed", "timed_out", "cancelled", "crashed", "failed"})
 DEFAULT_MAX_EVIDENCE_BYTES = 4 * 1024 * 1024
 DEFAULT_MAX_TOTAL_EVIDENCE_BYTES = 16 * 1024 * 1024
 DEFAULT_MAX_EVIDENCE_REFS = 32
@@ -90,9 +88,7 @@ class EvidenceArtifact:
     def __post_init__(self) -> None:
         kind = str(self.kind or "").strip().lower()
         if kind not in EVIDENCE_KINDS:
-            raise ValidationProofLedgerError(
-                f"unsupported evidence kind: {kind!r}"
-            )
+            raise ValidationProofLedgerError(f"unsupported evidence kind: {kind!r}")
         if not isinstance(self.content, bytes):
             raise TypeError("evidence content must be bytes")
         object.__setattr__(self, "kind", kind)
@@ -141,6 +137,7 @@ class VerifiedProofSnapshot:
     sealed_results: tuple[ValidationResult, ...]
     ledger_snapshot_id: str
     authority_sha256: str
+    unterminated_attempt_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -192,9 +189,7 @@ def _validate_record_integrity(record: Mapping[str, Any]) -> str:
     }:
         raise ValidationProofLedgerError("ledger record integrity is invalid")
     if integrity["canonicalization"] != VALIDATION_LEDGER_CANONICALIZATION:
-        raise ValidationProofLedgerError(
-            "unsupported ledger canonicalization"
-        )
+        raise ValidationProofLedgerError("unsupported ledger canonicalization")
     supplied = _sha256(integrity["record_sha256"], "record_sha256")
     expected = _record_sha256(record)
     if supplied != expected:
@@ -208,9 +203,7 @@ def _parse_timestamp(value: Any, field_name: str) -> str:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise ValidationProofLedgerError(
-            f"{field_name} must be an ISO timestamp"
-        ) from exc
+        raise ValidationProofLedgerError(f"{field_name} must be an ISO timestamp") from exc
     if parsed.tzinfo is None:
         raise ValidationProofLedgerError(f"{field_name} requires an offset")
     return value
@@ -255,9 +248,7 @@ def _canonical_result(result: ValidationResult) -> tuple[ValidationResult, dict[
     payload = result.to_dict()
     metadata = payload.get("metadata")
     if isinstance(metadata, dict) and "validation_proof" in metadata:
-        raise ValidationProofLedgerError(
-            "terminal result already contains a validation proof"
-        )
+        raise ValidationProofLedgerError("terminal result already contains a validation proof")
     try:
         canonical = ValidationResult.from_dict(copy.deepcopy(payload))
         identity_payload = copy.deepcopy(payload)
@@ -268,9 +259,7 @@ def _canonical_result(result: ValidationResult) -> tuple[ValidationResult, dict[
     if canonical.to_dict() != payload:
         raise ValidationProofLedgerError("terminal result is not canonical")
     if canonical.result_id != expected_identity:
-        raise ValidationProofLedgerError(
-            "terminal result_id does not match canonical content"
-        )
+        raise ValidationProofLedgerError("terminal result_id does not match canonical content")
     return canonical, payload
 
 
@@ -359,9 +348,7 @@ class ValidationProofLedger:
             if inventory_path.is_file():
                 inventory = self._load_scope_inventory(context)
                 if inventory["attempts"] or inventory["terminals"]:
-                    raise ValidationProofLedgerError(
-                        "unregistered scope inventory is not empty"
-                    )
+                    raise ValidationProofLedgerError("unregistered scope inventory is not empty")
             else:
                 inventory = self._new_scope_inventory(context)
                 self._atomic_write(
@@ -467,9 +454,7 @@ class ValidationProofLedger:
                 )
                 return self._attempt_handle(stored)
             if len(inventory["attempts"]) >= self.max_scope_attempts:
-                raise ValidationProofLedgerError(
-                    "scope exceeds configured attempt limit"
-                )
+                raise ValidationProofLedgerError("scope exceeds configured attempt limit")
             self._write_prepared_evidence(request)
             self._publish_record_transactionally(
                 context,
@@ -527,9 +512,7 @@ class ValidationProofLedger:
             raise TypeError("finish_attempt requires an AttemptHandle")
         status = str(terminal_status or "").strip().lower()
         if status not in TERMINAL_STATUSES:
-            raise ValidationProofLedgerError(
-                f"unsupported terminal status: {status!r}"
-            )
+            raise ValidationProofLedgerError(f"unsupported terminal status: {status!r}")
         context = ProofAuthorityContext(
             engagement_id=attempt.engagement_id,
             target_id=attempt.target_id,
@@ -547,9 +530,7 @@ class ValidationProofLedger:
                 record=stored_attempt,
             )
             if self._attempt_handle(stored_attempt) != attempt:
-                raise ValidationProofLedgerError(
-                    "attempt handle does not match durable attempt"
-                )
+                raise ValidationProofLedgerError("attempt handle does not match durable attempt")
             prepared, canonical_result, proof = self._prepare_terminal_material(
                 stored_attempt,
                 status=status,
@@ -576,9 +557,7 @@ class ValidationProofLedger:
                     "terminal_status": status,
                     "finished_at": timestamp,
                     "result": (
-                        canonical_result.to_dict()
-                        if canonical_result is not None
-                        else None
+                        canonical_result.to_dict() if canonical_result is not None else None
                     ),
                     "proof": proof.to_dict() if proof is not None else None,
                     "evidence_refs": [item.to_dict() for item in refs],
@@ -592,9 +571,7 @@ class ValidationProofLedger:
                     destination,
                     stored_attempt,
                 )
-                if self._terminal_semantic(stored_terminal) != self._terminal_semantic(
-                    record
-                ):
+                if self._terminal_semantic(stored_terminal) != self._terminal_semantic(record):
                     raise ValidationProofLedgerError(
                         "attempt already has a different terminal result"
                     )
@@ -639,9 +616,7 @@ class ValidationProofLedger:
             terminal_status=terminal_status,
             result=result,
             response_bytes=response_bytes,
-            response_media_type=(
-                "application/vnd.belief.validation-worker-response.v4+json"
-            ),
+            response_media_type=("application/vnd.belief.validation-worker-response.v4+json"),
             publish_proof=True,
         )
 
@@ -695,38 +670,29 @@ class ValidationProofLedger:
         if expected_ledger_snapshot_id is not None:
             snapshot_pin = str(expected_ledger_snapshot_id or "").strip().lower()
             if not _SNAPSHOT_ID_RE.fullmatch(snapshot_pin):
-                raise ValidationProofLedgerError(
-                    "expected_ledger_snapshot_id is invalid"
-                )
+                raise ValidationProofLedgerError("expected_ledger_snapshot_id is invalid")
         materials: list[VerifiedProofMaterial] = []
         sealed_results: list[ValidationResult] = []
+        unterminated_attempt_ids: tuple[str, ...] = ()
         snapshot_records: list[tuple[str, str]] = []
         with self._exclusive():
             manifest = self._load_scope_manifest(
                 context,
                 expected_authority_sha256=authority_digest,
             )
-            snapshot_records.append(
-                ("scope", manifest["integrity"]["record_sha256"])
-            )
-            if snapshot_pin is not None and self._scope_has_pending_transactions(
-                context
-            ):
+            snapshot_records.append(("scope", manifest["integrity"]["record_sha256"]))
+            if snapshot_pin is not None and self._scope_has_pending_transactions(context):
                 raise ValidationProofLedgerError(
                     "pending ledger transaction requires unpinned recovery"
                 )
             self._recover_scope_transactions(context)
             inventory = self._load_scope_inventory(context)
-            snapshot_records.append(
-                ("inventory", inventory["integrity"]["record_sha256"])
-            )
+            snapshot_records.append(("inventory", inventory["integrity"]["record_sha256"]))
             inventory_attempts = {
-                item["attempt_id"]: item["record_sha256"]
-                for item in inventory["attempts"]
+                item["attempt_id"]: item["record_sha256"] for item in inventory["attempts"]
             }
             inventory_terminals = {
-                item["attempt_id"]: item["record_sha256"]
-                for item in inventory["terminals"]
+                item["attempt_id"]: item["record_sha256"] for item in inventory["terminals"]
             }
             directory = self._scope_directory(context)
             attempts: dict[str, dict[str, Any]] = {}
@@ -739,19 +705,13 @@ class ValidationProofLedger:
                     )
                 )
                 if len(attempt_paths) > self.max_scope_attempts:
-                    raise ValidationProofLedgerError(
-                        "scope exceeds configured attempt limit"
-                    )
+                    raise ValidationProofLedgerError("scope exceeds configured attempt limit")
                 for path in sorted(attempt_paths):
                     record = self._load_attempt_path(context, path)
                     if path.name != f"{record['attempt_id']}.json":
-                        raise ValidationProofLedgerError(
-                            "attempt path does not match attempt_id"
-                        )
+                        raise ValidationProofLedgerError("attempt path does not match attempt_id")
                     if record["attempt_id"] in attempts:
-                        raise ValidationProofLedgerError(
-                            "duplicate durable attempt_id"
-                        )
+                        raise ValidationProofLedgerError("duplicate durable attempt_id")
                     if (
                         inventory_attempts.get(record["attempt_id"])
                         != record["integrity"]["record_sha256"]
@@ -767,9 +727,7 @@ class ValidationProofLedger:
                         )
                     )
             if set(attempts) != set(inventory_attempts):
-                raise ValidationProofLedgerError(
-                    "scope inventory attempt set is incomplete"
-                )
+                raise ValidationProofLedgerError("scope inventory attempt set is incomplete")
             terminals_dir = directory / "terminals"
             seen_terminals: set[str] = set()
             if terminals_dir.exists():
@@ -780,29 +738,21 @@ class ValidationProofLedger:
                     )
                 )
                 if len(terminal_paths) > self.max_scope_attempts:
-                    raise ValidationProofLedgerError(
-                        "scope exceeds configured terminal limit"
-                    )
+                    raise ValidationProofLedgerError("scope exceeds configured terminal limit")
                 for path in sorted(terminal_paths):
                     identifier = path.stem
                     attempt_record = attempts.get(identifier)
                     if attempt_record is None:
-                        raise ValidationProofLedgerError(
-                            "terminal result has no durable attempt"
-                        )
+                        raise ValidationProofLedgerError("terminal result has no durable attempt")
                     terminal = self._load_terminal_path(
                         context,
                         path,
                         attempt_record,
                     )
                     if path.name != f"{terminal['attempt_id']}.json":
-                        raise ValidationProofLedgerError(
-                            "terminal path does not match attempt_id"
-                        )
+                        raise ValidationProofLedgerError("terminal path does not match attempt_id")
                     if terminal["attempt_id"] in seen_terminals:
-                        raise ValidationProofLedgerError(
-                            "duplicate terminal result for attempt"
-                        )
+                        raise ValidationProofLedgerError("duplicate terminal result for attempt")
                     if (
                         inventory_terminals.get(terminal["attempt_id"])
                         != terminal["integrity"]["record_sha256"]
@@ -829,28 +779,27 @@ class ValidationProofLedger:
                     metadata["validation_proof"] = material.proof.to_dict()
                     sealed_results.append(replace(result, metadata=metadata))
             if seen_terminals != set(inventory_terminals):
-                raise ValidationProofLedgerError(
-                    "scope inventory terminal set is incomplete"
-                )
+                raise ValidationProofLedgerError("scope inventory terminal set is incomplete")
+            unterminated_attempt_ids = tuple(sorted(set(attempts).difference(seen_terminals)))
 
-        snapshot_id = "vledger_snapshot_" + _canonical_sha256(
-            {
-                "scope_sha256": _scope_digest(context),
-                "records": sorted(snapshot_records),
-            }
-        )[:24]
+        snapshot_id = (
+            "vledger_snapshot_"
+            + _canonical_sha256(
+                {
+                    "scope_sha256": _scope_digest(context),
+                    "records": sorted(snapshot_records),
+                }
+            )[:24]
+        )
         if snapshot_pin is not None and snapshot_id != snapshot_pin:
-            raise ValidationProofLedgerError(
-                "ledger snapshot does not match the external pin"
-            )
+            raise ValidationProofLedgerError("ledger snapshot does not match the external pin")
         return VerifiedProofSnapshot(
             context=context,
             proof_index=VerifiedProofIndex(materials),
-            sealed_results=tuple(
-                sorted(sealed_results, key=lambda item: item.result_id)
-            ),
+            sealed_results=tuple(sorted(sealed_results, key=lambda item: item.result_id)),
             ledger_snapshot_id=snapshot_id,
             authority_sha256=authority_digest,
+            unterminated_attempt_ids=unterminated_attempt_ids,
         )
 
     def _prepare_terminal_material(
@@ -870,9 +819,7 @@ class ValidationProofLedger:
     ]:
         request_ref = ValidationEvidenceRef.from_dict(attempt["request_ref"])
         request_content = self._read_cas(request_ref.sha256)
-        prepared: list[_PreparedEvidence] = [
-            _PreparedEvidence(request_ref, request_content)
-        ]
+        prepared: list[_PreparedEvidence] = [_PreparedEvidence(request_ref, request_content)]
         if response_bytes is not None:
             prepared.append(
                 self._prepare_evidence(
@@ -880,9 +827,7 @@ class ValidationProofLedger:
                         kind="response",
                         content=response_bytes,
                         media_type=response_media_type,
-                        evidence_id=(
-                            "validation-response:" + str(attempt["attempt_id"])
-                        ),
+                        evidence_id=("validation-response:" + str(attempt["attempt_id"])),
                     )
                 )
             )
@@ -898,14 +843,11 @@ class ValidationProofLedger:
                 canonical_result.subject_id != attempt["subject_id"]
                 or canonical_result.subject_kind != attempt["subject_kind"]
             ):
-                raise ValidationProofLedgerError(
-                    "terminal result subject does not match attempt"
-                )
+                raise ValidationProofLedgerError("terminal result subject does not match attempt")
             metadata = canonical_result.metadata
             if (
                 metadata.get("validation_plan_id") != attempt["plan_id"]
-                or metadata.get("validation_plan_digest")
-                != attempt["plan_sha256"]
+                or metadata.get("validation_plan_digest") != attempt["plan_sha256"]
             ):
                 raise ValidationProofLedgerError(
                     "terminal result plan binding does not match attempt"
@@ -923,17 +865,11 @@ class ValidationProofLedger:
                     evidence_id=f"validation-result:{canonical_result.result_id}",
                 )
             )
-            if result_artifact.reference.sha256 != validation_result_proof_digest(
-                canonical_result
-            ):
-                raise ValidationProofLedgerError(
-                    "terminal result artifact digest mismatch"
-                )
+            if result_artifact.reference.sha256 != validation_result_proof_digest(canonical_result):
+                raise ValidationProofLedgerError("terminal result artifact digest mismatch")
             prepared.append(result_artifact)
         elif status == "completed":
-            raise ValidationProofLedgerError(
-                "completed terminal requires a validation result"
-            )
+            raise ValidationProofLedgerError("completed terminal requires a validation result")
         for artifact in evidence:
             if not isinstance(artifact, EvidenceArtifact):
                 raise TypeError("additional evidence must be EvidenceArtifact values")
@@ -944,16 +880,13 @@ class ValidationProofLedger:
             prepared.append(self._prepare_evidence(artifact))
         prepared = self._dedupe_prepared(prepared)
         if len(prepared) > self.max_evidence_refs:
-            raise ValidationProofLedgerError(
-                "terminal evidence exceeds reference limit"
-            )
+            raise ValidationProofLedgerError("terminal evidence exceeds reference limit")
         if sum(len(item.content) for item in prepared) > self.max_total_evidence_bytes:
             raise ValidationProofLedgerError("terminal evidence exceeds total byte limit")
         if canonical_result is not None and publish_proof:
-            if (
-                attempt["subject_kind"] != "validation_contract_seed"
-                or not str(attempt["target_id"]).startswith("registered-fixture:")
-            ):
+            if attempt["subject_kind"] != "validation_contract_seed" or not str(
+                attempt["target_id"]
+            ).startswith("registered-fixture:"):
                 raise ValidationProofLedgerError(
                     "only registered fixture seeds can publish durable proof"
                 )
@@ -1017,9 +950,7 @@ class ValidationProofLedger:
         try:
             execution_context = ValidationExecutionContext.from_dict(request_payload)
         except (TypeError, ValueError) as exc:
-            raise ValidationProofLedgerError(
-                "registered fixture request is not canonical"
-            ) from exc
+            raise ValidationProofLedgerError("registered fixture request is not canonical") from exc
         if (
             execution_context.validation_plan_id != plan.plan_id
             or execution_context.expected_plan_digest != plan_digest
@@ -1027,9 +958,7 @@ class ValidationProofLedger:
             or execution_context.fixture_id != fixture_id
             or execution_context.adapter != ISOLATED_WEB_WORKER_ADAPTER
         ):
-            raise ValidationProofLedgerError(
-                "registered fixture request binding mismatch"
-            )
+            raise ValidationProofLedgerError("registered fixture request binding mismatch")
 
         expected_worker_status = {
             "completed": "completed",
@@ -1046,21 +975,15 @@ class ValidationProofLedger:
             and canonical_response.correlation_id == config.get("correlation_id")
             and terminal_status == expected_worker_status
             and attestation.source_revision == execution_context.source_revision
-            and attestation.fixture_registry_digest
-            == config.get("fixture_registry_digest")
-            and attestation.fixture_source_digest
-            == config.get("fixture_source_digest")
-            and attestation.fixture_descriptor_digest
-            == config.get("fixture_descriptor_digest")
+            and attestation.fixture_registry_digest == config.get("fixture_registry_digest")
+            and attestation.fixture_source_digest == config.get("fixture_source_digest")
+            and attestation.fixture_descriptor_digest == config.get("fixture_descriptor_digest")
             and attestation.fixture_execution_bundle_digest
             == config.get("fixture_execution_bundle_digest")
-            and attestation.fixture_code_object_digest
-            == config.get("fixture_code_object_digest")
+            and attestation.fixture_code_object_digest == config.get("fixture_code_object_digest")
         )
         if not response_bindings_match:
-            raise ValidationProofLedgerError(
-                "registered fixture response binding mismatch"
-            )
+            raise ValidationProofLedgerError("registered fixture response binding mismatch")
 
         decision = evaluate_evidence(
             canonical_response.observations,
@@ -1110,9 +1033,7 @@ class ValidationProofLedger:
         from .worker.contracts import WorkerResponse
         from .worker.process import ISOLATED_WEB_WORKER_ADAPTER
 
-        expected_fixture = str(attempt["target_id"]).removeprefix(
-            "registered-fixture:"
-        )
+        expected_fixture = str(attempt["target_id"]).removeprefix("registered-fixture:")
         request_ref = ValidationEvidenceRef.from_dict(attempt["request_ref"])
         if (
             not expected_fixture
@@ -1127,9 +1048,7 @@ class ValidationProofLedger:
                 "stored proof is outside the registered fixture policy"
             )
         try:
-            request_payload = strict_json_loads(
-                self._read_cas(request_ref.sha256)
-            )
+            request_payload = strict_json_loads(self._read_cas(request_ref.sha256))
             response_payload = strict_json_loads(self._read_cas(response_ref.sha256))
             if not isinstance(request_payload, Mapping) or not isinstance(
                 response_payload,
@@ -1165,24 +1084,16 @@ class ValidationProofLedger:
             or response.correlation_id != config.get("correlation_id")
             or terminal_status != expected_terminal_status
             or attestation.source_revision != execution_context.source_revision
-            or attestation.fixture_registry_digest
-            != config.get("fixture_registry_digest")
-            or attestation.fixture_source_digest
-            != config.get("fixture_source_digest")
-            or attestation.fixture_descriptor_digest
-            != config.get("fixture_descriptor_digest")
+            or attestation.fixture_registry_digest != config.get("fixture_registry_digest")
+            or attestation.fixture_source_digest != config.get("fixture_source_digest")
+            or attestation.fixture_descriptor_digest != config.get("fixture_descriptor_digest")
             or attestation.fixture_execution_bundle_digest
             != config.get("fixture_execution_bundle_digest")
-            or attestation.fixture_code_object_digest
-            != config.get("fixture_code_object_digest")
+            or attestation.fixture_code_object_digest != config.get("fixture_code_object_digest")
         ):
-            raise ValidationProofLedgerError(
-                "stored registered fixture evidence binding mismatch"
-            )
+            raise ValidationProofLedgerError("stored registered fixture evidence binding mismatch")
 
-        safe_outcome = (
-            "false_positive" if result.outcome == "false_positive" else "enforced"
-        )
+        safe_outcome = "false_positive" if result.outcome == "false_positive" else "enforced"
         decision = evaluate_evidence(
             response.observations,
             completed=response.worker_status == "completed",
@@ -1223,18 +1134,11 @@ class ValidationProofLedger:
             return None
         result = ValidationResult.from_dict(terminal["result"])
         proof = ValidationProof.from_dict(terminal["proof"])
-        refs = tuple(
-            ValidationEvidenceRef.from_dict(item)
-            for item in terminal["evidence_refs"]
-        )
+        refs = tuple(ValidationEvidenceRef.from_dict(item) for item in terminal["evidence_refs"])
         if refs != proof.evidence_refs:
-            raise ValidationProofLedgerError(
-                "terminal evidence references do not match proof"
-            )
+            raise ValidationProofLedgerError("terminal evidence references do not match proof")
         evidence_bindings = {item.evidence_id: item for item in refs}
-        evidence_sizes = {
-            item.evidence_id: len(self._read_cas(item.sha256)) for item in refs
-        }
+        evidence_sizes = {item.evidence_id: len(self._read_cas(item.sha256)) for item in refs}
         material = VerifiedProofMaterial(
             proof=proof,
             engagement_id=str(attempt["engagement_id"]),
@@ -1251,24 +1155,18 @@ class ValidationProofLedger:
             plan_sha256=str(attempt["plan_sha256"]),
             result_sha256=validation_result_proof_digest(result),
             evidence_bindings=evidence_bindings,
-            evidence_sha256={
-                item.evidence_id: item.sha256 for item in refs
-            },
+            evidence_sha256={item.evidence_id: item.sha256 for item in refs},
             evidence_sizes=evidence_sizes,
         )
         try:
             material.validate()
         except ValidationProofError as exc:
-            raise ValidationProofLedgerError(
-                "terminal proof material is inconsistent"
-            ) from exc
+            raise ValidationProofLedgerError("terminal proof material is inconsistent") from exc
         return material
 
     def _prepare_evidence(self, artifact: EvidenceArtifact) -> _PreparedEvidence:
         if len(artifact.content) > self.max_evidence_bytes:
-            raise ValidationProofLedgerError(
-                "evidence exceeds configured byte limit"
-            )
+            raise ValidationProofLedgerError("evidence exceeds configured byte limit")
         digest = hashlib.sha256(artifact.content).hexdigest()
         identifier = artifact.evidence_id or (
             "validation-evidence:"
@@ -1296,9 +1194,7 @@ class ValidationProofLedger:
         for item in prepared:
             previous = by_id.get(item.reference.evidence_id)
             if previous is not None and previous != item:
-                raise ValidationProofLedgerError(
-                    "evidence_id is bound to conflicting content"
-                )
+                raise ValidationProofLedgerError("evidence_id is bound to conflicting content")
             by_id[item.reference.evidence_id] = item
         return list(by_id.values())
 
@@ -1317,9 +1213,7 @@ class ValidationProofLedger:
         try:
             size = path.stat().st_size
             if size > self.max_evidence_bytes:
-                raise ValidationProofLedgerError(
-                    "CAS object exceeds configured byte limit"
-                )
+                raise ValidationProofLedgerError("CAS object exceeds configured byte limit")
             content = path.read_bytes()
         except ValidationProofLedgerError:
             raise
@@ -1351,8 +1245,7 @@ class ValidationProofLedger:
             raise ValidationProofLedgerError("scope manifest keys are not exact")
         if (
             record["schema_version"] != VALIDATION_SCOPE_SCHEMA_VERSION
-            or record["ledger_schema_version"]
-            != VALIDATION_LEDGER_SCHEMA_VERSION
+            or record["ledger_schema_version"] != VALIDATION_LEDGER_SCHEMA_VERSION
             or record["scope_sha256"] != _scope_digest(context)
             or record["engagement_id"] != context.engagement_id
             or record["target_id"] != context.target_id
@@ -1397,25 +1290,18 @@ class ValidationProofLedger:
         _validate_record_integrity(record)
         if (
             record["schema_version"] != VALIDATION_INVENTORY_SCHEMA_VERSION
-            or record["ledger_schema_version"]
-            != VALIDATION_LEDGER_SCHEMA_VERSION
+            or record["ledger_schema_version"] != VALIDATION_LEDGER_SCHEMA_VERSION
             or record["scope_sha256"] != _scope_digest(context)
         ):
             raise ValidationProofLedgerError("scope inventory binding mismatch")
         revision = record["revision"]
-        if (
-            not isinstance(revision, int)
-            or isinstance(revision, bool)
-            or revision < 0
-        ):
+        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
             raise ValidationProofLedgerError("scope inventory revision is invalid")
         normalized: dict[str, list[dict[str, str]]] = {}
         for field_name in ("attempts", "terminals"):
             values = record[field_name]
             if not isinstance(values, list):
-                raise ValidationProofLedgerError(
-                    f"scope inventory {field_name} are invalid"
-                )
+                raise ValidationProofLedgerError(f"scope inventory {field_name} are invalid")
             if len(values) > self.max_scope_attempts:
                 raise ValidationProofLedgerError(
                     f"scope exceeds configured {field_name[:-1]} limit"
@@ -1439,26 +1325,15 @@ class ValidationProofLedger:
                     }
                 )
             if entries != sorted(entries, key=lambda item: item["attempt_id"]):
-                raise ValidationProofLedgerError(
-                    f"scope inventory {field_name} are not canonical"
-                )
+                raise ValidationProofLedgerError(f"scope inventory {field_name} are not canonical")
             if len({item["attempt_id"] for item in entries}) != len(entries):
-                raise ValidationProofLedgerError(
-                    f"scope inventory {field_name} contain duplicates"
-                )
+                raise ValidationProofLedgerError(f"scope inventory {field_name} contain duplicates")
             normalized[field_name] = entries
-        if revision != len(normalized["attempts"]) + len(
-            normalized["terminals"]
-        ):
+        if revision != len(normalized["attempts"]) + len(normalized["terminals"]):
             raise ValidationProofLedgerError("scope inventory revision mismatch")
         attempt_ids = {item["attempt_id"] for item in normalized["attempts"]}
-        if any(
-            item["attempt_id"] not in attempt_ids
-            for item in normalized["terminals"]
-        ):
-            raise ValidationProofLedgerError(
-                "scope inventory terminal has no registered attempt"
-            )
+        if any(item["attempt_id"] not in attempt_ids for item in normalized["terminals"]):
+            raise ValidationProofLedgerError("scope inventory terminal has no registered attempt")
         return record
 
     def _append_scope_inventory_entry(
@@ -1492,15 +1367,11 @@ class ValidationProofLedger:
                 )
             return inventory
         if len(entries) >= self.max_scope_attempts:
-            raise ValidationProofLedgerError(
-                f"scope exceeds configured {field_name[:-1]} limit"
-            )
+            raise ValidationProofLedgerError(f"scope exceeds configured {field_name[:-1]} limit")
         if field_name == "terminals" and attempt_id not in {
             item["attempt_id"] for item in inventory["attempts"]
         }:
-            raise ValidationProofLedgerError(
-                "scope inventory terminal has no registered attempt"
-            )
+            raise ValidationProofLedgerError("scope inventory terminal has no registered attempt")
         entries.append(expected)
         entries.sort(key=lambda item: item["attempt_id"])
         updated = copy.deepcopy(inventory)
@@ -1528,9 +1399,7 @@ class ValidationProofLedger:
             raise AssertionError("unsupported transactional record field")
         expected_bytes = self._record_bytes(record)
         if record_bytes != expected_bytes:
-            raise ValidationProofLedgerError(
-                "transactional record bytes are not canonical"
-            )
+            raise ValidationProofLedgerError("transactional record bytes are not canonical")
         pending = self._pending_record_path(
             context,
             field_name=field_name,
@@ -1540,9 +1409,7 @@ class ValidationProofLedger:
             stored = self._read_json(pending)
             _validate_record_integrity(stored)
             if stored != dict(record):
-                raise ValidationProofLedgerError(
-                    "pending ledger transaction conflicts with record"
-                )
+                raise ValidationProofLedgerError("pending ledger transaction conflicts with record")
         else:
             self._atomic_write(pending, record_bytes)
         self._roll_forward_pending_record(
@@ -1645,15 +1512,9 @@ class ValidationProofLedger:
         inventory = self._load_scope_inventory(context)
         attempt_id = str(record["attempt_id"])
         expected_digest = str(record["integrity"]["record_sha256"])
-        matches = tuple(
-            item
-            for item in inventory[field_name]
-            if item["attempt_id"] == attempt_id
-        )
+        matches = tuple(item for item in inventory[field_name] if item["attempt_id"] == attempt_id)
         if len(matches) != 1 or matches[0]["record_sha256"] != expected_digest:
-            raise ValidationProofLedgerError(
-                "durable record is missing from the scope inventory"
-            )
+            raise ValidationProofLedgerError("durable record is missing from the scope inventory")
 
     def _load_attempt_path(
         self,
@@ -1683,8 +1544,7 @@ class ValidationProofLedger:
             raise ValidationProofLedgerError("attempt record keys are not exact")
         if (
             record["schema_version"] != VALIDATION_ATTEMPT_SCHEMA_VERSION
-            or record["ledger_schema_version"]
-            != VALIDATION_LEDGER_SCHEMA_VERSION
+            or record["ledger_schema_version"] != VALIDATION_LEDGER_SCHEMA_VERSION
             or record["scope_sha256"] != _scope_digest(context)
             or record["engagement_id"] != context.engagement_id
             or record["target_id"] != context.target_id
@@ -1704,8 +1564,7 @@ class ValidationProofLedger:
         request_ref = ValidationEvidenceRef.from_dict(record["request_ref"])
         if (
             request_ref.kind != "request"
-            or request_ref.evidence_id
-            != f"validation-request:{record['attempt_id']}"
+            or request_ref.evidence_id != f"validation-request:{record['attempt_id']}"
         ):
             raise ValidationProofLedgerError("attempt request_ref kind is invalid")
         self._read_cas(request_ref.sha256)
@@ -1739,8 +1598,7 @@ class ValidationProofLedger:
         _validate_record_integrity(record)
         if (
             record["schema_version"] != VALIDATION_TERMINAL_SCHEMA_VERSION
-            or record["ledger_schema_version"]
-            != VALIDATION_LEDGER_SCHEMA_VERSION
+            or record["ledger_schema_version"] != VALIDATION_LEDGER_SCHEMA_VERSION
             or record["attempt_id"] != attempt["attempt_id"]
             or record["scope_sha256"] != _scope_digest(context)
             or record["engagement_id"] != context.engagement_id
@@ -1759,23 +1617,17 @@ class ValidationProofLedger:
                 key=lambda item: (item.evidence_id, item.kind, item.sha256),
             )
         ) or len({item.evidence_id for item in refs}) != len(refs):
-            raise ValidationProofLedgerError(
-                "terminal evidence_refs are not canonical"
-            )
+            raise ValidationProofLedgerError("terminal evidence_refs are not canonical")
         request_ref = ValidationEvidenceRef.from_dict(attempt["request_ref"])
         request_refs = tuple(item for item in refs if item.kind == "request")
         if request_refs != (request_ref,):
-            raise ValidationProofLedgerError(
-                "terminal request artifact binding mismatch"
-            )
+            raise ValidationProofLedgerError("terminal request artifact binding mismatch")
         response_refs = tuple(item for item in refs if item.kind == "response")
         expected_response_id = f"validation-response:{attempt['attempt_id']}"
         if len(response_refs) > 1 or (
             response_refs and response_refs[0].evidence_id != expected_response_id
         ):
-            raise ValidationProofLedgerError(
-                "terminal response artifact binding mismatch"
-            )
+            raise ValidationProofLedgerError("terminal response artifact binding mismatch")
         total = 0
         for reference in refs:
             total += len(self._read_cas(reference.sha256))
@@ -1783,9 +1635,7 @@ class ValidationProofLedger:
             raise ValidationProofLedgerError("terminal evidence exceeds total limit")
         if record["result"] is None:
             if record["proof"] is not None or record["terminal_status"] == "completed":
-                raise ValidationProofLedgerError(
-                    "terminal result/proof presence is inconsistent"
-                )
+                raise ValidationProofLedgerError("terminal result/proof presence is inconsistent")
         else:
             result = ValidationResult.from_dict(record["result"])
             canonical, payload = _canonical_result(result)
@@ -1795,41 +1645,31 @@ class ValidationProofLedger:
                 canonical.subject_id != attempt["subject_id"]
                 or canonical.subject_kind != attempt["subject_kind"]
             ):
-                raise ValidationProofLedgerError(
-                    "terminal result subject does not match attempt"
-                )
+                raise ValidationProofLedgerError("terminal result subject does not match attempt")
             metadata = canonical.metadata
             if (
                 metadata.get("validation_plan_id") != attempt["plan_id"]
-                or metadata.get("validation_plan_digest")
-                != attempt["plan_sha256"]
+                or metadata.get("validation_plan_digest") != attempt["plan_sha256"]
             ):
                 raise ValidationProofLedgerError(
                     "terminal result plan binding does not match attempt"
                 )
             if record["terminal_status"] != "completed" and canonical.outcome != "inconclusive":
-                raise ValidationProofLedgerError(
-                    "non-completed terminal has conclusive outcome"
-                )
+                raise ValidationProofLedgerError("non-completed terminal has conclusive outcome")
             if len(response_refs) != 1:
                 raise ValidationProofLedgerError(
                     "terminal result requires one captured worker response"
                 )
             if record["proof"] is not None:
                 proof = ValidationProof.from_dict(record["proof"])
-                if (
-                    attempt["subject_kind"] != "validation_contract_seed"
-                    or not str(attempt["target_id"]).startswith(
-                        "registered-fixture:"
-                    )
-                ):
+                if attempt["subject_kind"] != "validation_contract_seed" or not str(
+                    attempt["target_id"]
+                ).startswith("registered-fixture:"):
                     raise ValidationProofLedgerError(
                         "terminal proof is outside the registered fixture policy"
                     )
                 if proof.evidence_refs != refs:
-                    raise ValidationProofLedgerError(
-                        "terminal proof evidence set mismatch"
-                    )
+                    raise ValidationProofLedgerError("terminal proof evidence set mismatch")
                 proof_bindings = {
                     "engagement_id": attempt["engagement_id"],
                     "target_id": attempt["target_id"],
@@ -1849,8 +1689,7 @@ class ValidationProofLedger:
                 )
                 if mismatches:
                     raise ValidationProofLedgerError(
-                        "terminal proof binding mismatch: "
-                        + ", ".join(mismatches)
+                        "terminal proof binding mismatch: " + ", ".join(mismatches)
                     )
             result_refs = [
                 item
@@ -1860,14 +1699,10 @@ class ValidationProofLedger:
             if (
                 len(result_refs) != 1
                 or result_refs[0].kind != "artifact"
-                or result_refs[0].media_type
-                != "application/vnd.belief.validation-result.v1+json"
-                or result_refs[0].sha256
-                != validation_result_proof_digest(canonical)
+                or result_refs[0].media_type != "application/vnd.belief.validation-result.v1+json"
+                or result_refs[0].sha256 != validation_result_proof_digest(canonical)
             ):
-                raise ValidationProofLedgerError(
-                    "terminal result artifact binding mismatch"
-                )
+                raise ValidationProofLedgerError("terminal result artifact binding mismatch")
             if record["proof"] is not None:
                 self._validate_stored_registered_fixture_proof(
                     attempt,
@@ -1914,15 +1749,9 @@ class ValidationProofLedger:
         replayed: bool,
     ) -> TerminalReceipt:
         result = (
-            ValidationResult.from_dict(record["result"])
-            if record["result"] is not None
-            else None
+            ValidationResult.from_dict(record["result"]) if record["result"] is not None else None
         )
-        proof = (
-            ValidationProof.from_dict(record["proof"])
-            if record["proof"] is not None
-            else None
-        )
+        proof = ValidationProof.from_dict(record["proof"]) if record["proof"] is not None else None
         if result is not None and proof is not None:
             metadata = dict(result.metadata)
             metadata["validation_proof"] = proof.to_dict()
@@ -2011,9 +1840,7 @@ class ValidationProofLedger:
     def _record_bytes(self, record: Mapping[str, Any]) -> bytes:
         data = _canonical_json_bytes(record) + b"\n"
         if len(data) > self.max_record_bytes:
-            raise ValidationProofLedgerError(
-                "durable ledger record exceeds configured byte limit"
-            )
+            raise ValidationProofLedgerError("durable ledger record exceeds configured byte limit")
         return data
 
     @staticmethod
@@ -2133,13 +1960,9 @@ def run_registered_fixture_validation_with_ledger(
         raise ValidationProofLedgerError(
             "durable fixture validation cannot authorize a project target"
         )
-    subject_sha256 = str(
-        plan.metadata.get("proof_subject_sha256") or ""
-    ).lower()
+    subject_sha256 = str(plan.metadata.get("proof_subject_sha256") or "").lower()
     if not _SHA256_RE.fullmatch(subject_sha256):
-        raise ValidationProofLedgerError(
-            "validation plan lacks a proof subject snapshot digest"
-        )
+        raise ValidationProofLedgerError("validation plan lacks a proof subject snapshot digest")
 
     from .worker.contracts import WORKER_RESPONSE_SCHEMA_VERSION
     from .worker.process import (
@@ -2161,9 +1984,7 @@ def run_registered_fixture_validation_with_ledger(
         expected_authority_sha256=expected_authority_sha256,
         subject_sha256=subject_sha256,
         request_bytes=_canonical_json_bytes(execution_context.to_dict()),
-        request_media_type=(
-            "application/vnd.belief.validation-execution-context.v1+json"
-        ),
+        request_media_type=("application/vnd.belief.validation-execution-context.v1+json"),
         oracle_id=f"isolated-web:{plan.case_type}",
         oracle_version=WORKER_RESPONSE_SCHEMA_VERSION,
     )
@@ -2187,9 +2008,7 @@ def run_registered_fixture_validation_with_ledger(
             evidence=(
                 EvidenceArtifact(
                     kind="log",
-                    content=_canonical_json_bytes(
-                        {"exception_type": type(exc).__name__}
-                    ),
+                    content=_canonical_json_bytes({"exception_type": type(exc).__name__}),
                     media_type="application/json",
                 ),
             ),
@@ -2208,9 +2027,7 @@ def run_registered_fixture_validation_with_ledger(
                 ),
             ),
         )
-        raise ValidationProofLedgerError(
-            "isolated worker returned no durable response"
-        )
+        raise ValidationProofLedgerError("isolated worker returned no durable response")
     response = responses[0]
     status = {
         "completed": "completed",
@@ -2227,9 +2044,7 @@ def run_registered_fixture_validation_with_ledger(
         response=response,
     )
     if receipt.result is None:
-        raise ValidationProofLedgerError(
-            "durable worker terminal omitted its result"
-        )
+        raise ValidationProofLedgerError("durable worker terminal omitted its result")
     return receipt.result
 
 

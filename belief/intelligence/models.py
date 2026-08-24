@@ -22,7 +22,7 @@ from .canonical import (
 
 
 INTELLIGENCE_SCHEMA_VERSION = "belief.external_intelligence.v1"
-INTELLIGENCE_PAGE_SCHEMA_VERSION = "belief.external_intelligence_page.v1"
+INTELLIGENCE_PAGE_SCHEMA_VERSION = "belief.external_intelligence_page.v2"
 CONTEXT_ONLY_CLASSIFICATION = "context_only"
 
 ParserStatus = Literal["parsed", "parsed_empty"]
@@ -35,6 +35,7 @@ FreshnessState = Literal[
 ]
 LicenseStatus = Literal["declared", "provider_documented", "unknown"]
 PaginationMode = Literal["none", "offset", "cursor"]
+CollectionStatus = Literal["complete", "incomplete", "unknown"]
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_PAGE_HEADER_NAMES = frozenset(
@@ -296,6 +297,8 @@ class PaginationMetadata:
     provider_total: int | None
     page_complete: bool
     collection_complete: bool
+    collection_status: CollectionStatus | None = None
+    requested_page_size: int | None = None
 
     def __post_init__(self) -> None:
         if self.mode not in {"none", "offset", "cursor"}:
@@ -307,19 +310,34 @@ class PaginationMetadata:
             raise TypeError("page_complete must be a boolean")
         if not isinstance(self.collection_complete, bool):
             raise TypeError("collection_complete must be a boolean")
+        if self.collection_status is None:
+            object.__setattr__(
+                self,
+                "collection_status",
+                "complete" if self.collection_complete else "incomplete",
+            )
+        if self.collection_status not in {"complete", "incomplete", "unknown"}:
+            raise ValueError("invalid collection status")
+        if self.requested_page_size is None:
+            object.__setattr__(self, "requested_page_size", self.page_size)
+        _non_negative_int(self.requested_page_size, "requested_page_size")
         if not self.page_complete:
             raise ValueError("parsed page envelopes must contain one complete page")
-        if self.collection_complete and self.next_position is not None:
+        if self.collection_complete != (self.collection_status == "complete"):
+            raise ValueError("collection_complete must agree with collection_status")
+        if self.collection_status == "complete" and self.next_position is not None:
             raise ValueError("complete collections must not expose a next position")
-        if not self.collection_complete and self.next_position is None:
+        if self.collection_status == "incomplete" and self.next_position is None:
             raise ValueError("incomplete collections require a next position")
+        if self.collection_status == "unknown" and self.next_position is not None:
+            raise ValueError("unknown collection status must not expose a next position")
 
         if self.mode == "none":
             if self.request_position is not None or self.next_position is not None:
                 raise ValueError("non-paginated sources must not expose positions")
             if self.provider_total is not None:
                 raise ValueError("non-paginated sources must not expose a provider total")
-            if not self.collection_complete:
+            if self.collection_status != "complete":
                 raise ValueError("non-paginated pages must be collection-complete")
         elif self.mode == "offset":
             _non_negative_int(self.request_position, "request_position")
@@ -332,6 +350,11 @@ class PaginationMetadata:
             _optional_position_string(self.next_position, "next_position")
             if self.provider_total is not None:
                 raise ValueError("cursor pagination must not invent a provider total")
+        if self.mode != "none":
+            if self.requested_page_size == 0:
+                raise ValueError("paginated requests require a positive requested page size")
+            if self.page_size > self.requested_page_size:
+                raise ValueError("page size must not exceed the requested page size")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -342,6 +365,8 @@ class PaginationMetadata:
             "provider_total": self.provider_total,
             "page_complete": self.page_complete,
             "collection_complete": self.collection_complete,
+            "collection_status": self.collection_status,
+            "requested_page_size": self.requested_page_size,
         }
 
 
@@ -408,6 +433,7 @@ class ExternalIntelligencePage:
     selected_response_headers: tuple[tuple[str, str], ...]
     selected_response_headers_sha256: str
     response_generated_at_utc: str | None
+    raw_response_bytes: int
     pagination: PaginationMetadata
     rate_limit: RateLimitMetadata
     batch: ExternalIntelligenceBatch
@@ -429,6 +455,7 @@ class ExternalIntelligencePage:
             self.selected_response_headers_sha256,
             "selected_response_headers_sha256",
         )
+        _non_negative_int(self.raw_response_bytes, "raw_response_bytes")
         if not isinstance(self.selected_response_headers, tuple):
             raise TypeError("selected_response_headers must be an immutable tuple")
         previous_name: str | None = None
@@ -474,6 +501,7 @@ class ExternalIntelligencePage:
             "selected_response_headers": [list(item) for item in self.selected_response_headers],
             "selected_response_headers_sha256": self.selected_response_headers_sha256,
             "response_generated_at_utc": self.response_generated_at_utc,
+            "raw_response_bytes": self.raw_response_bytes,
             "pagination": self.pagination.to_dict(),
             "rate_limit": self.rate_limit.to_dict(),
             "batch": self.batch.to_dict(),
@@ -519,6 +547,7 @@ __all__ = [
     "ExternalIntelligenceBatch",
     "ExternalIntelligencePage",
     "ExternalIntelligenceRecord",
+    "CollectionStatus",
     "FreshnessMetadata",
     "FreshnessState",
     "LicenseMetadata",

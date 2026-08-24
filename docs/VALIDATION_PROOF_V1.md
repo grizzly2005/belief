@@ -24,11 +24,13 @@ PDX F3 already neutralizes this path for legacy PDX verdicts, but the generic
 3. Add strict `belief.validation_proof.v1` links containing engagement, target,
    subject, plan, attempt, terminal result, oracle identity/version, and at
    least one content-addressed evidence reference.
-4. A proof payload cannot verify itself.  Reportability accepts promotion only
-   when a separate `VerifiedProofIndex`, built from trusted ledger material,
-   resolves the canonical proof and every binding. The reportability caller
-   must also supply a `ProofAuthorityContext` obtained outside the audit-case
-   payload; `case.metadata` can never establish engagement or target scope.
+4. A proof payload cannot verify itself. Reportability accepts promotion only
+   when trusted ledger material resolves the canonical proof and every binding.
+   The preferred public input is one `VerifiedProofSnapshot`, which keeps its
+   `VerifiedProofIndex`, `ProofAuthorityContext`, and ledger pin in one atomic
+   object. The legacy separate `proof_index`/`proof_context` pair remains for
+   compatibility but carries no generation pin; mixing it with `proof_snapshot`
+   is rejected. `case.metadata` can never establish engagement or target scope.
 5. Missing proof is `signal_only`.  Malformed, orphaned, unresolved, or
    cross-engagement/cross-target proof is `quarantined`.
 6. A `reportable_candidate` requires a verified `bypassed` proof.  Heuristic
@@ -55,10 +57,18 @@ and evidence stores—not from the validation-result JSON being assessed.
 Trusted material additionally binds full SHA-256 digests for the projected
 subject, canonical plan, and complete result claim (excluding only the embedded
 `metadata.validation_proof` link). It also repeats trusted evidence id, kind,
-media type, digest, and byte size. The index rejects conflicting global
-collisions for attempt, result, plan, subject, and evidence identities before it
-can resolve a proof. Distinct attempts may share a deterministic `result_id`
-only when the complete trusted result digest is identical.
+media type, digest, and byte size. The index pre-scans deterministic `result_id`
+bindings because the v1 identifier omits confidence and metadata and is shorter
+than the complete trusted result digest. If one `result_id` maps to multiple full
+digests, every associated proof is quarantined with
+`validation_proof_result_id_collision`; the ambiguous derived
+`validation-result:<result_id>` evidence binding is excluded from the usable
+index. Unrelated proofs remain resolvable regardless of input order. Structural
+global identities for attempt, plan, subject, and every other evidence id are
+still checked across all materials, including quarantined ones, so a result-id
+collision cannot hide an unrelated identity conflict. Distinct attempts may
+share a deterministic `result_id` only when the complete trusted result digest
+is identical.
 
 ## Consequences
 
@@ -112,7 +122,10 @@ SHA-256 content-addressed store:
   terminal record digest, so deleting either a terminal or its attempt pair
   makes restart reconstruction fail closed;
 - a lock-consistent restart snapshot returns the authority context, sealed
-  results, and rebuilt `VerifiedProofIndex` together;
+  results, rebuilt `VerifiedProofIndex`, and sorted
+  `unterminated_attempt_ids` together. An unterminated ID means only that no
+  durable terminal exists in this ledger generation; it is a reconciliation
+  handle, not proof that a worker has stopped or that re-execution is safe;
 - pending attempts remain non-promotable, and any missing/tampered record or CAS
   object fails reconstruction closed.
 - a plain record outside the inventory is never adopted without its preceding

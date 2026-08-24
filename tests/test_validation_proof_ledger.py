@@ -43,9 +43,7 @@ def _canonical_bytes(value) -> bytes:
 
 def _rewrite_integrity(record: dict) -> None:
     record["integrity"]["record_sha256"] = None
-    record["integrity"]["record_sha256"] = hashlib.sha256(
-        _canonical_bytes(record)
-    ).hexdigest()
+    record["integrity"]["record_sha256"] = hashlib.sha256(_canonical_bytes(record)).hexdigest()
 
 
 def _finish_in_spawned_process(
@@ -166,12 +164,30 @@ def test_attempt_and_request_are_durable_before_execution_and_pending_is_not_pro
         _context(),
         expected_authority_sha256=_AUTHORITY_DIGEST,
     )
+    before_pinned_load = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    pinned = restarted.load_scope(
+        _context(),
+        expected_authority_sha256=_AUTHORITY_DIGEST,
+        expected_ledger_snapshot_id=snapshot.ledger_snapshot_id,
+    )
+    after_pinned_load = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
 
     assert next(tmp_path.rglob(f"{attempt.attempt_id}.json")).is_file()
     assert next(tmp_path.rglob(attempt.request_ref.sha256)).read_bytes() == (
         b'{"request":"bounded"}'
     )
     assert snapshot.sealed_results == ()
+    assert snapshot.unterminated_attempt_ids == (attempt.attempt_id,)
+    assert pinned.unterminated_attempt_ids == (attempt.attempt_id,)
+    assert after_pinned_load == before_pinned_load
 
 
 @pytest.mark.parametrize("attempt_id", ["attempt:ads", "CON", "NUL.txt"])
@@ -255,6 +271,7 @@ def test_restart_rolls_forward_auto_id_after_interrupted_attempt_inventory(
     assert recovered.attempt_id == generated_attempt_id
     assert not any(tmp_path.rglob("pending/attempts/*.json"))
     assert snapshot.sealed_results == ()
+    assert snapshot.unterminated_attempt_ids == (generated_attempt_id,)
 
 
 def test_restart_rolls_forward_attempt_when_only_pending_record_exists(
@@ -276,9 +293,7 @@ def test_restart_rolls_forward_attempt_when_only_pending_record_exists(
     pending = tuple(tmp_path.rglob("pending/attempts/*.json"))
     assert len(pending) == 1
     assert not any(
-        path
-        for path in tmp_path.rglob("attempts/*.json")
-        if "pending" not in path.parts
+        path for path in tmp_path.rglob("attempts/*.json") if "pending" not in path.parts
     )
 
     restarted = ValidationProofLedger(tmp_path)
@@ -294,6 +309,7 @@ def test_restart_rolls_forward_attempt_when_only_pending_record_exists(
         if "pending" not in path.parts
     ).is_file()
     assert snapshot.sealed_results == ()
+    assert snapshot.unterminated_attempt_ids == (pending[0].stem,)
 
 
 def test_plain_attempt_orphan_without_pending_intent_still_fails_closed(
@@ -335,6 +351,7 @@ def test_snapshot_pinned_load_refuses_pending_recovery_without_mutation(
         _context(),
         expected_authority_sha256=_AUTHORITY_DIGEST,
     )
+    assert committed.unterminated_attempt_ids == ("vattempt_committed",)
     original_append = store._append_scope_inventory_entry
 
     def _interrupt_inventory(_context, *, field_name, record):
@@ -388,6 +405,9 @@ def test_snapshot_pinned_load_refuses_pending_recovery_without_mutation(
         expected_authority_sha256=_AUTHORITY_DIGEST,
     )
     assert recovered.ledger_snapshot_id != committed.ledger_snapshot_id
+    assert recovered.unterminated_attempt_ids == tuple(
+        sorted(("vattempt_committed", pending_path.stem))
+    )
     assert not pending_path.exists()
 
 
@@ -513,6 +533,7 @@ def test_generic_completed_terminal_is_durable_but_cannot_cross_reportability(
     assert receipt.proof is None
     assert receipt.result is not None
     assert snapshot.sealed_results == ()
+    assert snapshot.unterminated_attempt_ids == ()
     assert assessment.proof_state == "signal_only"
     assert assessment.verdict != "reportable_candidate"
     assert snapshot.ledger_snapshot_id.startswith("vledger_snapshot_")
@@ -604,9 +625,7 @@ def test_tampered_cas_fails_scope_reconstruction_closed(tmp_path):
         result=result,
         response_bytes=b"response",
     )
-    terminal = json.loads(
-        next(tmp_path.rglob("terminals/*.json")).read_text(encoding="utf-8")
-    )
+    terminal = json.loads(next(tmp_path.rglob("terminals/*.json")).read_text(encoding="utf-8"))
     result_ref = next(
         item
         for item in terminal["evidence_refs"]
@@ -657,9 +676,7 @@ def test_rehashed_terminal_cannot_relabel_the_captured_worker_response(tmp_path)
     )
     terminal_path = next(tmp_path.rglob("terminals/*.json"))
     terminal = json.loads(terminal_path.read_text(encoding="utf-8"))
-    response_ref = next(
-        item for item in terminal["evidence_refs"] if item["kind"] == "response"
-    )
+    response_ref = next(item for item in terminal["evidence_refs"] if item["kind"] == "response")
     response_ref["evidence_id"] = "relabeled-worker-response"
     terminal["evidence_refs"].sort(
         key=lambda item: (item["evidence_id"], item["kind"], item["sha256"])
@@ -784,9 +801,7 @@ def test_registered_fixture_wrapper_persists_attempt_before_spawn_and_response(
     attempt_existed_before_spawn = []
 
     def _observe_pre_spawn(_handle):
-        attempt_existed_before_spawn.append(
-            any(tmp_path.rglob("attempts/*.json"))
-        )
+        attempt_existed_before_spawn.append(any(tmp_path.rglob("attempts/*.json")))
 
     result = run_registered_fixture_validation_with_ledger(
         store,
@@ -858,9 +873,7 @@ def test_registered_fixture_rerun_reconstructs_two_proofs_for_one_stable_result(
         != second.metadata["validation_proof"]["attempt_id"]
     )
     assert len(snapshot.sealed_results) == 2
-    assert {item.result_id for item in snapshot.sealed_results} == {
-        first.result_id
-    }
+    assert {item.result_id for item in snapshot.sealed_results} == {first.result_id}
     for result in snapshot.sealed_results:
         assessment = assess_validation_result_proof(
             result,

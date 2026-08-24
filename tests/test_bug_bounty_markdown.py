@@ -1,5 +1,25 @@
+import pytest
+
 from belief.audit_case import AuditCase
-from belief.exporters.bug_bounty_markdown import render_bug_bounty_markdown
+from belief.exporters.bug_bounty_markdown import (
+    render_bug_bounty_markdown,
+    write_bug_bounty_markdown,
+)
+from belief.validation.ledger import VerifiedProofSnapshot
+from belief.validation.proof import ProofAuthorityContext, VerifiedProofIndex
+
+
+def _proof_snapshot() -> VerifiedProofSnapshot:
+    return VerifiedProofSnapshot(
+        context=ProofAuthorityContext(
+            engagement_id="engagement-export",
+            target_id="target-export",
+        ),
+        proof_index=VerifiedProofIndex(),
+        sealed_results=(),
+        ledger_snapshot_id="vledger_snapshot_" + "c" * 24,
+        authority_sha256="d" * 64,
+    )
 
 
 def test_bug_bounty_markdown_includes_candidate_fields_and_redacts_secrets():
@@ -69,3 +89,41 @@ def test_bug_bounty_markdown_ignores_forged_reportability_metadata():
 
     assert "Reportable candidates: 0" in report
     assert "100/100" not in report
+
+
+def test_bug_bounty_export_accepts_atomic_snapshot_for_render_and_write(tmp_path):
+    snapshot = _proof_snapshot()
+    output_path = tmp_path / "report.md"
+
+    rendered = render_bug_bounty_markdown((), proof_snapshot=snapshot)
+    write_bug_bounty_markdown(
+        (),
+        output_path,
+        proof_snapshot=snapshot,
+    )
+
+    assert "_No candidate audit cases._" in rendered
+    assert output_path.read_text(encoding="utf-8") == rendered
+
+
+def test_bug_bounty_export_rejects_mixed_inputs_before_filesystem_side_effect(
+    tmp_path,
+):
+    snapshot = _proof_snapshot()
+    output_path = tmp_path / "not-created" / "report.md"
+
+    with pytest.raises(TypeError, match="cannot be combined"):
+        render_bug_bounty_markdown(
+            (),
+            proof_snapshot=snapshot,
+            proof_context=snapshot.context,
+        )
+    with pytest.raises(TypeError, match="cannot be combined"):
+        write_bug_bounty_markdown(
+            (),
+            output_path,
+            proof_snapshot=snapshot,
+            proof_index=snapshot.proof_index,
+        )
+
+    assert not output_path.parent.exists()
