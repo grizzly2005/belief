@@ -8,12 +8,15 @@ stable Finding model and they do not create a new analysis framework.
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import ast
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Iterable
 
 from .dataflow import DataFlowPath, DataFlowSummary
+from .json_contracts import StrictJSONError, strict_json_clone
 from .models import Belief, Finding, _json_safe
 
 
@@ -21,6 +24,7 @@ AUDIT_SCHEMA_VERSION = "belief.audit.v1"
 STRUCTURED_DATAFLOW_SCHEMA_VERSION = "belief.dataflow_evidence.v1"
 AUDIT_CASE_STATUSES = ("actionable", "needs_review", "protected", "false_positive_likely")
 REVIEW_PRIORITIES = ("critical", "high", "medium", "low", "info")
+_AUDIT_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,121 @@ class AuditCase:
     route_context: dict[str, Any] = field(default_factory=dict)
     structured_dataflow: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> AuditCase:
+        """Reconstruct one audit case without coercing untrusted JSON values."""
+        if not isinstance(payload, Mapping):
+            raise ValueError("audit case must be a JSON object")
+        if any(not isinstance(key, str) for key in payload):
+            raise ValueError("audit case field names must be strings")
+
+        required = {
+            "case_id",
+            "case_type",
+            "status",
+            "review_priority",
+            "confidence",
+            "severity",
+            "file",
+            "line",
+            "rule_id",
+            "cwe",
+        }
+        optional_strings = {
+            "source",
+            "sink",
+            "z3_status",
+            "related_finding_fingerprint",
+            "reason",
+        }
+        tuple_fields = {
+            "dataflow_path",
+            "sanitizers",
+            "guarantees",
+            "missing_guarantees",
+            "unsat_core",
+            "human_next_steps",
+        }
+        mapping_fields = {"route_context", "structured_dataflow", "metadata"}
+        allowed = required | optional_strings | tuple_fields | mapping_fields
+        unknown = sorted(set(payload).difference(allowed))
+        if unknown:
+            raise ValueError("audit case contains unknown fields: " + ", ".join(unknown))
+        missing = sorted(required.difference(payload))
+        if missing:
+            raise ValueError("audit case is missing required fields: " + ", ".join(missing))
+
+        string_fields = {
+            "case_id",
+            "case_type",
+            "status",
+            "review_priority",
+            "severity",
+            "file",
+            "rule_id",
+            "cwe",
+        }
+        values: dict[str, Any] = {}
+        for name in sorted(string_fields):
+            value = payload[name]
+            if not isinstance(value, str):
+                raise ValueError(f"audit case {name} must be a string")
+            values[name] = value
+        if (
+            _AUDIT_IDENTIFIER_RE.fullmatch(values["case_id"]) is None
+            or _AUDIT_IDENTIFIER_RE.fullmatch(values["case_type"]) is None
+        ):
+            raise ValueError("audit case case_id and case_type must be canonical identifiers")
+        if values["status"] not in AUDIT_CASE_STATUSES:
+            raise ValueError("audit case status is invalid")
+        if values["review_priority"] not in REVIEW_PRIORITIES:
+            raise ValueError("audit case review_priority is invalid")
+
+        confidence = payload["confidence"]
+        if (
+            not isinstance(confidence, (int, float))
+            or isinstance(confidence, bool)
+            or not math.isfinite(float(confidence))
+            or not 0.0 <= float(confidence) <= 1.0
+        ):
+            raise ValueError("audit case confidence must be finite and between 0 and 1")
+        values["confidence"] = float(confidence)
+
+        line = payload["line"]
+        if line is not None and (
+            not isinstance(line, int) or isinstance(line, bool) or line < 0
+        ):
+            raise ValueError("audit case line must be null or a non-negative integer")
+        values["line"] = line
+
+        optional_defaults = {
+            "related_finding_fingerprint": "",
+            "reason": "",
+            "sink": "",
+            "source": "",
+            "z3_status": "not_applicable",
+        }
+        for name in sorted(optional_strings):
+            value = payload.get(name, optional_defaults[name])
+            if not isinstance(value, str):
+                raise ValueError(f"audit case {name} must be a string")
+            values[name] = value
+        for name in sorted(tuple_fields):
+            value = payload.get(name, [])
+            if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+                raise ValueError(f"audit case {name} must be a list of strings")
+            values[name] = tuple(value)
+        for name in sorted(mapping_fields):
+            value = payload.get(name, {})
+            if not isinstance(value, dict):
+                raise ValueError(f"audit case {name} must be a JSON object")
+            try:
+                values[name] = strict_json_clone(value)
+            except StrictJSONError as exc:
+                raise ValueError(f"audit case {name} must contain strict JSON") from exc
+
+        return cls(**values)
 
     def to_dict(self) -> dict[str, Any]:
         data = {

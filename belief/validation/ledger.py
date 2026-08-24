@@ -21,7 +21,7 @@ import threading
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import InitVar, dataclass, field, replace
 from datetime import datetime, timezone
 from itertools import islice
 from pathlib import Path
@@ -70,6 +70,7 @@ _WINDOWS_RESERVED_STEMS = frozenset(
     | {f"COM{number}" for number in range(1, 10)}
     | {f"LPT{number}" for number in range(1, 10)}
 )
+_SNAPSHOT_CONSTRUCTION_TOKEN = object()
 
 
 class ValidationProofLedgerError(ValueError):
@@ -138,8 +139,50 @@ class VerifiedProofSnapshot:
     ledger_snapshot_id: str
     authority_sha256: str
     unterminated_attempt_ids: tuple[str, ...] = ()
+    _construction_token: InitVar[object | None] = None
+    _ledger_origin: object = field(init=False, repr=False, compare=False)
 
+    def __post_init__(self, _construction_token: object | None) -> None:
+        if _construction_token is not _SNAPSHOT_CONSTRUCTION_TOKEN:
+            raise TypeError(
+                "VerifiedProofSnapshot can only be created by ValidationProofLedger.load_scope"
+            )
+        if type(self.context) is not ProofAuthorityContext:
+            raise TypeError("verified proof snapshot context is invalid")
+        if type(self.proof_index) is not VerifiedProofIndex:
+            raise TypeError("verified proof snapshot index is invalid")
+        if not isinstance(self.sealed_results, tuple) or any(
+            type(result) is not ValidationResult for result in self.sealed_results
+        ):
+            raise TypeError("verified proof snapshot sealed_results must be a tuple")
+        if tuple(sorted(self.sealed_results, key=lambda item: item.result_id)) != (
+            self.sealed_results
+        ):
+            raise ValidationProofLedgerError(
+                "verified proof snapshot sealed_results are not canonical"
+            )
+        snapshot_id = str(self.ledger_snapshot_id or "").strip().lower()
+        if not _SNAPSHOT_ID_RE.fullmatch(snapshot_id):
+            raise ValidationProofLedgerError("verified proof snapshot id is invalid")
+        authority_digest = _sha256(self.authority_sha256, "authority_sha256")
+        attempt_ids = self.unterminated_attempt_ids
+        if not isinstance(attempt_ids, tuple):
+            raise TypeError("verified proof snapshot unterminated_attempt_ids must be a tuple")
+        normalized_attempt_ids = tuple(_attempt_identifier(item) for item in attempt_ids)
+        if normalized_attempt_ids != tuple(sorted(set(normalized_attempt_ids))):
+            raise ValidationProofLedgerError(
+                "verified proof snapshot unterminated_attempt_ids are not canonical"
+            )
+        object.__setattr__(self, "ledger_snapshot_id", snapshot_id)
+        object.__setattr__(self, "authority_sha256", authority_digest)
+        object.__setattr__(self, "_ledger_origin", _SNAPSHOT_CONSTRUCTION_TOKEN)
 
+    def _authority_inputs(self) -> tuple[VerifiedProofIndex, ProofAuthorityContext]:
+        """Return trusted inputs only for a snapshot produced by this module."""
+
+        if getattr(self, "_ledger_origin", None) is not _SNAPSHOT_CONSTRUCTION_TOKEN:
+            raise TypeError("proof_snapshot is not a ledger-origin snapshot")
+        return self.proof_index, self.context
 @dataclass(frozen=True)
 class _PreparedEvidence:
     reference: ValidationEvidenceRef
@@ -800,6 +843,7 @@ class ValidationProofLedger:
             ledger_snapshot_id=snapshot_id,
             authority_sha256=authority_digest,
             unterminated_attempt_ids=unterminated_attempt_ids,
+            _construction_token=_SNAPSHOT_CONSTRUCTION_TOKEN,
         )
 
     def _prepare_terminal_material(

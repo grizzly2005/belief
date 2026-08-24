@@ -15,21 +15,18 @@ from belief.tool_results.mapper import (
 )
 from belief.tool_results.merger import merge_audit_cases
 from belief.tools.schemas import AccessObservation, ExternalFinding
-from belief.validation.ledger import VerifiedProofSnapshot
+from belief.validation.ledger import ValidationProofLedger, VerifiedProofSnapshot
 from belief.validation.proof import ProofAuthorityContext, VerifiedProofIndex
 
 
-def _proof_snapshot() -> VerifiedProofSnapshot:
-    return VerifiedProofSnapshot(
-        context=ProofAuthorityContext(
-            engagement_id="engagement-snapshot",
-            target_id="target-snapshot",
-        ),
-        proof_index=VerifiedProofIndex(),
-        sealed_results=(),
-        ledger_snapshot_id="vledger_snapshot_" + "a" * 24,
-        authority_sha256="b" * 64,
+def _proof_snapshot(tmp_path) -> VerifiedProofSnapshot:
+    context = ProofAuthorityContext(
+        engagement_id="engagement-snapshot",
+        target_id="target-snapshot",
     )
+    store = ValidationProofLedger(tmp_path)
+    store.register_scope(context, authority_sha256="b" * 64)
+    return store.load_scope(context, expected_authority_sha256="b" * 64)
 
 
 def _snapshot_case(case_id, *, metadata=None) -> AuditCase:
@@ -172,8 +169,8 @@ def test_reportability_can_read_existing_case_metadata():
     assert assess_audit_case_reportability(case).score >= 50
 
 
-def test_proof_snapshot_derives_index_and_context_as_one_input(monkeypatch):
-    snapshot = _proof_snapshot()
+def test_proof_snapshot_derives_index_and_context_as_one_input(monkeypatch, tmp_path):
+    snapshot = _proof_snapshot(tmp_path)
     case = _snapshot_case(
         "case_snapshot",
         metadata={
@@ -202,41 +199,41 @@ def test_proof_snapshot_derives_index_and_context_as_one_input(monkeypatch):
     assert calls[0]["target_id"] == snapshot.context.target_id
 
 
-def test_proof_snapshot_matches_legacy_pair_for_compatibility():
-    snapshot = _proof_snapshot()
+def test_proof_snapshot_is_required_instead_of_legacy_pair(tmp_path):
+    snapshot = _proof_snapshot(tmp_path)
     case = _snapshot_case(
         "case_snapshot_compat",
         metadata={"target_id": "different-target"},
     )
 
     atomic = assess_audit_case_reportability(case, proof_snapshot=snapshot)
-    legacy = assess_audit_case_reportability(
-        case,
-        proof_index=snapshot.proof_index,
-        proof_context=snapshot.context,
-    )
 
-    assert atomic.to_dict() == legacy.to_dict()
     assert "validation_proof_target_id_context_mismatch" in atomic.negative_factors
+    with pytest.raises(TypeError, match="legacy proof_index/proof_context"):
+        assess_audit_case_reportability(
+            case,
+            proof_index=snapshot.proof_index,
+            proof_context=snapshot.context,
+        )
 
 
-def test_snapshot_cannot_be_mixed_with_legacy_inputs_even_for_empty_batches():
-    snapshot = _proof_snapshot()
+def test_snapshot_cannot_be_mixed_with_legacy_inputs_even_for_empty_batches(tmp_path):
+    snapshot = _proof_snapshot(tmp_path)
     case = _snapshot_case("case_snapshot_mixed")
 
-    with pytest.raises(TypeError, match="cannot be combined"):
+    with pytest.raises(TypeError, match="legacy proof_index/proof_context"):
         assess_audit_case_reportability(
             case,
             proof_snapshot=snapshot,
             proof_index=snapshot.proof_index,
         )
-    with pytest.raises(TypeError, match="cannot be combined"):
+    with pytest.raises(TypeError, match="legacy proof_index/proof_context"):
         assess_many(
             (),
             proof_snapshot=snapshot,
             proof_context=snapshot.context,
         )
-    with pytest.raises(TypeError, match="cannot be combined"):
+    with pytest.raises(TypeError, match="legacy proof_index/proof_context"):
         attach_reportability_to_cases(
             (),
             proof_snapshot=snapshot,
@@ -254,3 +251,51 @@ def test_snapshot_cannot_be_mixed_with_legacy_inputs_even_for_empty_batches():
 def test_empty_batch_rejects_invalid_snapshot_type(call):
     with pytest.raises(TypeError, match="VerifiedProofSnapshot"):
         call(object())
+
+
+def test_reportability_rejects_snapshot_subclass_authority_override():
+    class ForgedSnapshot(VerifiedProofSnapshot):
+        def __init__(self):
+            pass
+
+        def _authority_inputs(self):
+            raise AssertionError("subclass authority method must not be called")
+
+    with pytest.raises(TypeError, match="VerifiedProofSnapshot"):
+        assess_audit_case_reportability(
+            _snapshot_case("case-subclass-forged"),
+            proof_snapshot=ForgedSnapshot(),
+        )
+
+
+def test_verified_snapshot_public_constructor_is_closed():
+    with pytest.raises(TypeError, match="ValidationProofLedger.load_scope"):
+        VerifiedProofSnapshot(
+            context=ProofAuthorityContext(
+                engagement_id="engagement-forged",
+                target_id="target-forged",
+            ),
+            proof_index=VerifiedProofIndex(),
+            sealed_results=(),
+            ledger_snapshot_id="vledger_snapshot_" + "a" * 24,
+            authority_sha256="b" * 64,
+        )
+
+
+def test_reportability_rejects_snapshot_without_ledger_origin():
+    forged = object.__new__(VerifiedProofSnapshot)
+    object.__setattr__(
+        forged,
+        "context",
+        ProofAuthorityContext(
+            engagement_id="engagement-forged",
+            target_id="target-forged",
+        ),
+    )
+    object.__setattr__(forged, "proof_index", VerifiedProofIndex())
+
+    with pytest.raises(TypeError, match="not a ledger-origin snapshot"):
+        assess_audit_case_reportability(
+            _snapshot_case("case-forged"),
+            proof_snapshot=forged,
+        )

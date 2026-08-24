@@ -526,8 +526,7 @@ def test_generic_completed_terminal_is_durable_but_cannot_cross_reportability(
 
     assessment = assess_audit_case_reportability(
         assessed_case,
-        proof_index=snapshot.proof_index,
-        proof_context=snapshot.context,
+        proof_snapshot=snapshot,
     )
 
     assert receipt.proof is None

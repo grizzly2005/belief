@@ -91,7 +91,7 @@ def _case(
         "metadata": {
             "reportability": {
                 "verdict": "needs_manual_validation",
-                "blocking_factors": ["runtime_validation_missing"],
+                "blockers": ["runtime_validation_missing"],
             }
         },
     }

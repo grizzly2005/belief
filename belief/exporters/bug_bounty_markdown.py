@@ -28,7 +28,7 @@ def render_bug_bounty_markdown(
     proof_index: VerifiedProofIndex | None = None,
     proof_context: ProofAuthorityContext | None = None,
 ) -> str:
-    proof_index, proof_context = _resolve_proof_inputs(
+    _resolve_proof_inputs(
         proof_snapshot=proof_snapshot,
         proof_index=proof_index,
         proof_context=proof_context,
@@ -39,8 +39,7 @@ def render_bug_bounty_markdown(
             case,
             _assessment(
                 case,
-                proof_index=proof_index,
-                proof_context=proof_context,
+                proof_snapshot=proof_snapshot,
             ),
         )
         for case in cases
@@ -94,7 +93,7 @@ def write_bug_bounty_markdown(
     proof_index: VerifiedProofIndex | None = None,
     proof_context: ProofAuthorityContext | None = None,
 ) -> None:
-    proof_index, proof_context = _resolve_proof_inputs(
+    _resolve_proof_inputs(
         proof_snapshot=proof_snapshot,
         proof_index=proof_index,
         proof_context=proof_context,
@@ -102,8 +101,7 @@ def write_bug_bounty_markdown(
     rendered = render_bug_bounty_markdown(
         audit_cases,
         target=target,
-        proof_index=proof_index,
-        proof_context=proof_context,
+        proof_snapshot=proof_snapshot,
     )
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -203,13 +201,11 @@ def _case_section(index: int, case: AuditCase, assessment: dict[str, Any]) -> li
 def _assessment(
     case: AuditCase,
     *,
-    proof_index: VerifiedProofIndex | None,
-    proof_context: ProofAuthorityContext | None,
+    proof_snapshot: VerifiedProofSnapshot | None,
 ) -> dict[str, Any]:
     return assess_audit_case_reportability(
         case,
-        proof_index=proof_index,
-        proof_context=proof_context,
+        proof_snapshot=proof_snapshot,
     ).to_dict()
 
 

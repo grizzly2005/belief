@@ -26,12 +26,14 @@ PDX F3 already neutralizes this path for legacy PDX verdicts, but the generic
    least one content-addressed evidence reference.
 4. A proof payload cannot verify itself. Reportability accepts promotion only
    when trusted ledger material resolves the canonical proof and every binding.
-   The preferred public input is one `VerifiedProofSnapshot`, which keeps its
+   The only public authority input is one ledger-origin
+   `VerifiedProofSnapshot`, which keeps its
    `VerifiedProofIndex`, `ProofAuthorityContext`, and ledger pin in one atomic
-   object. The legacy separate `proof_index`/`proof_context` pair remains for
-   compatibility but carries no generation pin; mixing it with `proof_snapshot`
-   is rejected. `case.metadata` can never establish engagement or target scope.
-5. Missing proof is `signal_only`.  Malformed, orphaned, unresolved, or
+   object. Direct snapshot construction and the legacy separate
+   `proof_index`/`proof_context` authority path are rejected.
+   `case.metadata` can never establish engagement or target scope.
+5. Missing proof is `signal_only`. A structurally valid proof with no trusted
+   snapshot is `unresolved`. Malformed, orphaned, mismatched, or
    cross-engagement/cross-target proof is `quarantined`.
 6. A `reportable_candidate` requires a verified `bypassed` proof.  Heuristic
    scores without that proof are capped at 79 and remain
@@ -77,8 +79,8 @@ is identical.
   cannot change reportability or suppress a candidate.
 - Current local execution results remain non-promotable until the durable
   attempt/result/evidence ledger supplies trusted `VerifiedProofMaterial`.
-- A valid-looking proof embedded in JSON without the external index is
-  quarantined, not accepted.
+- A valid-looking proof embedded in JSON without a ledger-origin snapshot is
+  unresolved, not accepted.
 - Serialized `metadata.reportability` is also a claim. Offline reasoning and
   bug-bounty/patch-review exports recompute it, while BELIEF-to-PDX export emits
   only `UNCERTAIN` with zero weight and preserves any source block as
@@ -86,10 +88,18 @@ is identical.
 - PDX attestations and external vulnerability databases remain contextual
   signals; neither can create a verified proof.
 
-Dataset, benchmark, and MCP projections that retain serialized reportability
-fields are not authority-bearing inputs. They must be migrated to accept a
-trusted assessment object before those fields are used for training, filtering,
-or automation.
+The SFT projection has migrated to `belief.sft.v2`: it strictly reconstructs
+each audit case, removes serialized reportability/reasoning/feedback claims,
+removes free-form human next steps from the label, redacts the complete
+message-visible case projection, and recomputes reportability from that exact
+projection. It rejects proof snapshots, verified labels, and reportable
+candidates; snapshot and authority fields remain null until a future dataset
+contract includes the complete proof evidence in the model input. Its quality
+validator independently recomputes every target and rejects legacy v1 labels,
+hidden scoring features, or inconsistent provenance.
+Benchmark and MCP projections that still retain serialized reportability fields
+remain non-authority-bearing inputs and must be migrated before those fields are
+used for filtering or automation.
 
 ## Rejected alternatives
 
@@ -132,6 +142,18 @@ SHA-256 content-addressed store:
   pending intent; a corrupt or conflicting intent also fails closed.
 - configurable per-object, total-evidence, reference-count, record-size, and
   per-scope attempt bounds keep publication and restart reconstruction finite.
+
+`VerifiedProofSnapshot` rejects direct public construction. The supported path
+is `load_scope()`, which applies a module-internal ledger-origin marker after
+validating canonical result order, snapshot identifier, authority digest, index
+type, and unterminated-attempt ordering. Public reportability and Markdown APIs
+accept an exact (non-subclassed) snapshot type only; their deprecated
+`proof_index` and `proof_context` keywords fail closed.
+
+This is an API integrity boundary, not a Python sandbox. Code with arbitrary
+execution inside the BELIEF process is part of the trusted computing base: it
+can inspect private module state or bypass Python object guards. Untrusted audit,
+PDX, tool, and dataset JSON must never execute in that process.
 
 `run_registered_fixture_validation_with_ledger()` is the only execution helper
 in this slice. It is intentionally restricted to

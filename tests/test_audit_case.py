@@ -411,3 +411,78 @@ def test_cli_audit_mode_help_json_and_interesting_filter(tmp_path):
     assert payload["dataflow"]["paths"]
     assert any(case["case_type"] == "idor_bola_possible" for case in payload["audit_cases"])
     assert payload["counts"]["audit_cases"]["protected"] >= 1
+
+
+def test_audit_case_from_dict_round_trips_strict_json_shape():
+    payload = {
+        "case_id": "case-strict-1",
+        "case_type": "idor_bola_possible",
+        "status": "needs_review",
+        "review_priority": "high",
+        "confidence": 0.75,
+        "severity": "high",
+        "file": "app.py",
+        "line": 12,
+        "rule_id": "AUTH",
+        "cwe": "CWE-862",
+        "dataflow_path": ["request:id", "Account.query.get"],
+        "route_context": {"route": "/accounts/{id}"},
+        "metadata": {"source_tools": ["semgrep"]},
+    }
+
+    case = AuditCase.from_dict(payload)
+
+    assert case.case_id == "case-strict-1"
+    assert case.dataflow_path == ("request:id", "Account.query.get")
+    assert case.route_context == {"route": "/accounts/{id}"}
+    assert case.z3_status == "not_applicable"
+    assert case.to_dict()["metadata"] == {"source_tools": ["semgrep"]}
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "message"),
+    [
+        ("confidence", True, "confidence"),
+        ("confidence", float("nan"), "confidence"),
+        ("line", True, "line"),
+        ("human_next_steps", "review", "list of strings"),
+        ("metadata", [], "JSON object"),
+        ("status", "verified", "status is invalid"),
+    ],
+)
+def test_audit_case_from_dict_rejects_coercive_values(field_name, value, message):
+    payload = {
+        "case_id": "case-strict-1",
+        "case_type": "idor_bola_possible",
+        "status": "needs_review",
+        "review_priority": "high",
+        "confidence": 0.75,
+        "severity": "high",
+        "file": "app.py",
+        "line": 12,
+        "rule_id": "AUTH",
+        "cwe": "CWE-862",
+    }
+    payload[field_name] = value
+
+    with pytest.raises(ValueError, match=message):
+        AuditCase.from_dict(payload)
+
+
+def test_audit_case_from_dict_rejects_unknown_fields():
+    payload = {
+        "case_id": "case-strict-1",
+        "case_type": "idor_bola_possible",
+        "status": "needs_review",
+        "review_priority": "high",
+        "confidence": 0.75,
+        "severity": "high",
+        "file": "app.py",
+        "line": 12,
+        "rule_id": "AUTH",
+        "cwe": "CWE-862",
+        "reportability": {"score": 100},
+    }
+
+    with pytest.raises(ValueError, match="unknown fields: reportability"):
+        AuditCase.from_dict(payload)

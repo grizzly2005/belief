@@ -1749,18 +1749,21 @@ def cmd_feedback(args):
 def cmd_dataset(args):
     """Export deterministic local datasets from BELIEF reports."""
     if args.dataset_command == "export":
-        from .datasets.sft import export_sft_dataset_from_audit_report
+        from .datasets.sft import (
+            SFT_SCHEMA_VERSION,
+            export_sft_dataset_from_audit_report,
+        )
 
         if args.format != "sft":
             safe_print("ERROR: Pass 1 only supports --format sft", file=sys.stderr)
             sys.exit(2)
         try:
             rows = export_sft_dataset_from_audit_report(args.from_audit, args.output)
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError) as exc:
             safe_print(f"ERROR: failed to export dataset: {exc}", file=sys.stderr)
             sys.exit(2)
         safe_print(json.dumps({
-            "schema_version": "belief.sft.v1",
+            "schema_version": SFT_SCHEMA_VERSION,
             "format": "sft",
             "output": str(args.output),
             "rows": len(rows),

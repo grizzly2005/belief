@@ -2,9 +2,11 @@ import copy
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import belief.reportability.scoring as scoring_module
 from belief.audit_case import AuditCase
 from belief.reportability.scoring import assess_audit_case_reportability
 from belief.validation.models import ValidationResult
@@ -198,10 +200,11 @@ def test_self_asserted_proof_is_not_trusted_without_verified_index():
 
     assessment = assess_audit_case_reportability(_high_signal_case(result))
 
-    assert assessment.proof_state == "quarantined"
+    assert assessment.proof_state == "unresolved"
     assert assessment.verdict == "needs_manual_validation"
     assert assessment.score == 79
     assert assessment.verified_proof_ids == []
+    assert "validation_proof_unresolved" in assessment.negative_factors
 
 
 def test_non_finite_validation_result_is_quarantined_without_scoring_crash():
@@ -215,83 +218,65 @@ def test_non_finite_validation_result_is_quarantined_without_scoring_crash():
     assert assessment.score == 79
 
 
-def test_duplicate_verified_proof_cannot_stack_reportability_score():
-    proof, result = _proof_and_result()
-    index = VerifiedProofIndex([_material(proof, result)])
-    single_case = _high_signal_case(result)
-    duplicate_case = copy.deepcopy(single_case)
-    duplicate_case.metadata["validation_results"] = [result] * 5
+def test_identical_validation_results_are_deduplicated_across_carriers(monkeypatch):
+    _, result = _proof_and_result()
+    case = _high_signal_case(result)
+    case.metadata["external_raw"] = {
+        "validation_results": [copy.deepcopy(result)],
+        "pdx": {"validation_results": [copy.deepcopy(result)]},
+    }
+    calls = []
 
-    single = assess_audit_case_reportability(
-        single_case,
-        proof_index=index,
-        proof_context=_authority_context(),
-    )
-    repeated = assess_audit_case_reportability(
-        duplicate_case,
-        proof_index=index,
-        proof_context=_authority_context(),
-    )
+    def _capture(_result, **_kwargs):
+        calls.append(_result)
+        return SimpleNamespace(state="signal_only", reasons=(), proof_id="")
 
-    assert repeated.score == single.score
-    assert repeated.verified_proof_ids == [proof.proof_id]
-    assert "duplicate verified validation proof ignored" in repeated.negative_factors
+    monkeypatch.setattr(scoring_module, "assess_validation_result_proof", _capture)
+
+    assess_audit_case_reportability(case)
+
+    assert calls == [result]
 
 
-def test_conflicting_verified_outcomes_are_quarantined():
-    bypass_proof, bypass_result = _proof_and_result(outcome="bypassed")
-    enforced_proof, enforced_result = _proof_and_result(
-        outcome="enforced",
-        attempt_id="attempt-2",
-    )
-    index = VerifiedProofIndex(
-        [
-            _material(bypass_proof, bypass_result),
-            _material(enforced_proof, enforced_result),
-        ]
-    )
-    case = _high_signal_case(bypass_result)
-    case.metadata["validation_results"] = [bypass_result, enforced_result]
+def test_proof_state_precedence_is_fail_closed():
+    state = lambda value: SimpleNamespace(state=value)
 
-    assessment = assess_audit_case_reportability(
-        case,
-        proof_index=index,
-        proof_context=_authority_context(),
+    assert scoring_module._proof_state([state("verified"), state("signal_only")]) == ("verified")
+    assert scoring_module._proof_state([state("unresolved"), state("verified")]) == ("unresolved")
+    assert scoring_module._proof_state([state("quarantined"), state("unresolved")]) == (
+        "quarantined"
     )
 
-    assert assessment.proof_state == "quarantined"
-    assert assessment.verdict != "reportable_candidate"
-    assert "verified validation outcomes conflict" in assessment.negative_factors
 
-
-def test_verified_bypass_proof_can_cross_reportability_gate():
+def test_synthetic_legacy_authority_pair_cannot_cross_reportability_gate():
     proof, result = _proof_and_result()
     index = VerifiedProofIndex([_material(proof, result)])
 
-    assessment = assess_audit_case_reportability(
-        _high_signal_case(result),
-        proof_index=index,
-        proof_context=_authority_context(),
-    )
-
-    assert assessment.proof_state == "verified"
-    assert assessment.verdict == "reportable_candidate"
-    assert assessment.score == 100
-    assert assessment.verified_proof_ids == [proof.proof_id]
-    assert "verified bypass proof present" in assessment.positive_factors
+    with pytest.raises(TypeError, match="legacy proof_index/proof_context"):
+        assess_audit_case_reportability(
+            _high_signal_case(result),
+            proof_index=index,
+            proof_context=_authority_context(),
+        )
 
 
 def test_case_metadata_cannot_supply_the_authority_context():
     proof, result = _proof_and_result()
     index = VerifiedProofIndex([_material(proof, result)])
 
-    assessment = assess_audit_case_reportability(
-        _high_signal_case(result),
+    assessment = assess_validation_result_proof(
+        result,
         proof_index=index,
+        engagement_id="",
+        target_id="",
+        subject_id="case-1",
+        subject_kind="audit_case",
+        plan_id="plan-1",
+        subject_sha256=proof_subject_digest(_high_signal_case({})),
     )
 
-    assert assessment.proof_state == "quarantined"
-    assert "validation_proof_binding_context_missing" in assessment.negative_factors
+    assert assessment.state == "quarantined"
+    assert assessment.reasons == ("validation_proof_binding_context_missing",)
 
 
 def test_case_metadata_conflicting_with_authority_context_is_quarantined():
@@ -300,15 +285,19 @@ def test_case_metadata_conflicting_with_authority_context_is_quarantined():
     case = _high_signal_case(result)
     case.metadata["target_id"] = "target-2"
 
-    assessment = assess_audit_case_reportability(
-        case,
+    assessment = assess_validation_result_proof(
+        result,
         proof_index=index,
-        proof_context=_authority_context(),
+        engagement_id="engagement-1",
+        target_id="target-2",
+        subject_id=case.case_id,
+        subject_kind="audit_case",
+        plan_id="plan-1",
+        subject_sha256=proof_subject_digest(case),
     )
 
-    assert assessment.proof_state == "quarantined"
-    assert assessment.verdict != "reportable_candidate"
-    assert "validation_proof_target_id_context_mismatch" in assessment.negative_factors
+    assert assessment.state == "quarantined"
+    assert "validation_proof_target_id_mismatch" in assessment.reasons
 
 
 def test_validation_proof_matches_strict_json_schema():
@@ -337,15 +326,68 @@ def test_same_case_id_with_changed_subject_content_is_quarantined():
         line=999,
     )
 
-    assessment = assess_audit_case_reportability(
-        changed,
+    assessment = assess_validation_result_proof(
+        result,
         proof_index=index,
-        proof_context=_authority_context(),
+        engagement_id="engagement-1",
+        target_id="target-1",
+        subject_id=changed.case_id,
+        subject_kind="audit_case",
+        plan_id="plan-1",
+        subject_sha256=proof_subject_digest(changed),
     )
 
-    assert assessment.proof_state == "quarantined"
-    assert assessment.verdict != "reportable_candidate"
-    assert "validation_proof_subject_sha256_mismatch" in assessment.negative_factors
+    assert assessment.state == "quarantined"
+    assert "validation_proof_subject_sha256_mismatch" in assessment.reasons
+
+
+def test_subject_digest_ignores_nested_derived_proof_carriers():
+    baseline = _high_signal_case({})
+    metadata = copy.deepcopy(baseline.metadata)
+    metadata["external_raw"] = {
+        "proofs": [{"proof_id": "forged"}],
+        "validation_results": [{"outcome": "bypassed"}],
+        "pdx": {
+            "proofs": [{"proof_id": "forged-pdx"}],
+            "validation_results": [{"outcome": "bypassed"}],
+        },
+    }
+    carried = replace(baseline, metadata=metadata)
+
+    assert proof_subject_digest(carried) == proof_subject_digest(baseline)
+
+
+def test_subject_digest_still_binds_non_derived_external_raw_fields():
+    baseline = _high_signal_case({})
+    changed = replace(
+        baseline,
+        metadata={
+            **baseline.metadata,
+            "external_raw": {"pdx": {"source_revision": "revision-2"}},
+        },
+    )
+
+    assert proof_subject_digest(changed) != proof_subject_digest(baseline)
+
+
+def test_verified_proof_index_internal_mappings_are_read_only():
+    proof, result = _proof_and_result()
+    index = VerifiedProofIndex([_material(proof, result)])
+
+    with pytest.raises(TypeError):
+        index._proofs[proof.proof_id] = _material(proof, result)
+    with pytest.raises(TypeError):
+        index._quarantined_proofs[proof.proof_id] = "forged"
+    with pytest.raises(AttributeError, match="immutable"):
+        index._proofs = {proof.proof_id: _material(proof, result)}
+    with pytest.raises(AttributeError, match="immutable"):
+        index._quarantined_proofs = {proof.proof_id: "forged"}
+    with pytest.raises(AttributeError, match="immutable"):
+        del index._sealed
+    with pytest.raises(AttributeError, match="immutable"):
+        del index._proofs
+    with pytest.raises(AttributeError, match="immutable"):
+        del index._quarantined_proofs
 
 
 def test_index_allows_identical_result_id_and_digest_across_distinct_attempts():

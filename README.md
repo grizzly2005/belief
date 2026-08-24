@@ -85,6 +85,17 @@ python -m belief benchmark reportability \
 
 This flow is local and deterministic. It does not call LLM APIs, model servers, browsers, network services, or external scanners. Static and imported evidence remains candidate evidence until manually validated in authorized scope.
 
+The dataset command emits only `belief.sft.v2`. It strictly reconstructs each
+`AuditCase`, ignores serialized reportability, reasoning, and feedback labels,
+redacts the complete case projection, and recomputes the assistant target from
+that exact message-visible input. Free-form human next steps are excluded from
+the target. SFT v2 is explicitly non-authoritative (`signal_only`,
+`unresolved`, or `quarantined`): CLI and programmatic exports reject proof
+snapshots, verified labels, and reportable candidates until a future dataset
+contract can make the complete proof evidence visible to the model. Validation
+recomputes each stored target; validation or quality failure leaves an existing
+output unchanged.
+
 ---
 
 ## Local MCP for Codex

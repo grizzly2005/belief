@@ -24,7 +24,7 @@ from .models import VALIDATION_OUTCOMES, ValidationResult
 
 
 VALIDATION_PROOF_SCHEMA_VERSION = "belief.validation_proof.v1"
-VALIDATION_PROOF_STATES = frozenset({"signal_only", "quarantined", "verified"})
+VALIDATION_PROOF_STATES = frozenset({"signal_only", "unresolved", "quarantined", "verified"})
 EVIDENCE_KINDS = frozenset(
     {
         "request",
@@ -61,7 +61,7 @@ class ValidationProofError(ValueError):
     """Raised when a proof link or trusted ledger binding is invalid."""
 
 
-ProofState = Literal["signal_only", "quarantined", "verified"]
+ProofState = Literal["signal_only", "unresolved", "quarantined", "verified"]
 
 
 @dataclass(frozen=True)
@@ -364,6 +364,18 @@ class VerifiedProofMaterial:
 class VerifiedProofIndex:
     """In-memory projection of proof records verified against trusted stores."""
 
+    __slots__ = ("_proofs", "_quarantined_proofs", "_sealed")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_sealed", False):
+            raise AttributeError("VerifiedProofIndex is immutable")
+        object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if getattr(self, "_sealed", False):
+            raise AttributeError("VerifiedProofIndex is immutable")
+        object.__delattr__(self, name)
+
     def __init__(self, materials: Iterable[VerifiedProofMaterial] = ()) -> None:
         material_list = tuple(materials)
         seen_proofs: dict[str, VerifiedProofMaterial] = {}
@@ -464,8 +476,9 @@ class VerifiedProofIndex:
                 quarantined_proofs[material.proof.proof_id] = "validation_proof_result_id_collision"
                 continue
             proofs[material.proof.proof_id] = material
-        self._proofs = proofs
-        self._quarantined_proofs = quarantined_proofs
+        self._proofs = MappingProxyType(proofs)
+        self._quarantined_proofs = MappingProxyType(quarantined_proofs)
+        self._sealed = True
 
     def resolve(
         self,
@@ -626,7 +639,7 @@ def assess_validation_result_proof(
         )
     if proof_index is None:
         return ProofAssessment(
-            "quarantined",
+            "unresolved",
             proof_id=proof.proof_id,
             reasons=("validation_proof_unresolved",),
         )
@@ -682,13 +695,7 @@ def proof_subject_digest(subject: Any) -> str:
     source_metadata = getattr(subject, "metadata", None)
     if callable(serializer) and isinstance(source_metadata, Mapping):
         bound_metadata = dict(source_metadata)
-        for field_name in (
-            "external_intelligence",
-            "reasoning",
-            "reportability",
-            "validation_results",
-        ):
-            bound_metadata.pop(field_name, None)
+        _remove_derived_proof_projections(bound_metadata)
         try:
             value = replace(subject, metadata=bound_metadata).to_dict()
         except TypeError:
@@ -701,18 +708,43 @@ def proof_subject_digest(subject: Any) -> str:
     metadata = payload.get("metadata")
     if isinstance(metadata, dict):
         bound_metadata = dict(metadata)
-        for field_name in (
-            "external_intelligence",
-            "reasoning",
-            "reportability",
-            "validation_results",
-        ):
-            bound_metadata.pop(field_name, None)
+        _remove_derived_proof_projections(bound_metadata)
         if bound_metadata:
             payload["metadata"] = bound_metadata
         else:
             payload.pop("metadata", None)
     return _canonical_sha256(payload)
+
+
+def _remove_derived_proof_projections(metadata: dict[str, Any]) -> None:
+    for field_name in (
+        "external_intelligence",
+        "proofs",
+        "reasoning",
+        "reportability",
+        "validation_results",
+    ):
+        metadata.pop(field_name, None)
+
+    external_raw = metadata.get("external_raw")
+    if not isinstance(external_raw, Mapping):
+        return
+    bound_external_raw = dict(external_raw)
+    bound_external_raw.pop("proofs", None)
+    bound_external_raw.pop("validation_results", None)
+    pdx = bound_external_raw.get("pdx")
+    if isinstance(pdx, Mapping):
+        bound_pdx = dict(pdx)
+        bound_pdx.pop("proofs", None)
+        bound_pdx.pop("validation_results", None)
+        if bound_pdx:
+            bound_external_raw["pdx"] = bound_pdx
+        else:
+            bound_external_raw.pop("pdx", None)
+    if bound_external_raw:
+        metadata["external_raw"] = bound_external_raw
+    else:
+        metadata.pop("external_raw", None)
 
 
 def validation_result_proof_digest(

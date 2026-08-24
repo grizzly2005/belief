@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import Any, Iterable
 
 from belief.audit_case import AuditCase, sort_audit_cases
+from belief.json_contracts import StrictJSONError, strict_json_dumps
 from belief.validation.ledger import VerifiedProofSnapshot
 from belief.validation.proof import (
     ProofAuthorityContext,
@@ -195,7 +196,7 @@ def assess_audit_case_reportability(
         score += 10
         positive.append("verified validation candidate present")
     for assessment in proof_assessments:
-        if assessment.state == "quarantined":
+        if assessment.state in {"quarantined", "unresolved"}:
             negative.extend(assessment.reasons)
     if validation_results and not verified_results:
         negative.append("unverified validation claims ignored")
@@ -317,7 +318,7 @@ def assess_many(
     proof_context: ProofAuthorityContext | None = None,
 ) -> list[tuple[AuditCase, ReportabilityAssessment]]:
     """Assess many cases in deterministic order."""
-    proof_index, proof_context = _resolve_proof_inputs(
+    _resolve_proof_inputs(
         proof_snapshot=proof_snapshot,
         proof_index=proof_index,
         proof_context=proof_context,
@@ -327,8 +328,7 @@ def assess_many(
             case,
             assess_audit_case_reportability(
                 case,
-                proof_index=proof_index,
-                proof_context=proof_context,
+                proof_snapshot=proof_snapshot,
             ),
         )
         for case in sort_audit_cases(cases)
@@ -343,7 +343,7 @@ def attach_reportability_to_cases(
     proof_context: ProofAuthorityContext | None = None,
 ) -> list[AuditCase]:
     """Return cases with reportability metadata attached."""
-    proof_index, proof_context = _resolve_proof_inputs(
+    _resolve_proof_inputs(
         proof_snapshot=proof_snapshot,
         proof_index=proof_index,
         proof_context=proof_context,
@@ -351,8 +351,7 @@ def attach_reportability_to_cases(
     enriched = []
     for case, assessment in assess_many(
         cases,
-        proof_index=proof_index,
-        proof_context=proof_context,
+        proof_snapshot=proof_snapshot,
     ):
         metadata = dict(case.metadata or {})
         metadata["reportability"] = assessment.to_dict()
@@ -366,13 +365,16 @@ def _resolve_proof_inputs(
     proof_index: VerifiedProofIndex | None,
     proof_context: ProofAuthorityContext | None,
 ) -> tuple[VerifiedProofIndex | None, ProofAuthorityContext | None]:
-    if proof_snapshot is None:
-        return proof_index, proof_context
-    if not isinstance(proof_snapshot, VerifiedProofSnapshot):
-        raise TypeError("proof_snapshot must be a VerifiedProofSnapshot")
     if proof_index is not None or proof_context is not None:
-        raise TypeError("proof_snapshot cannot be combined with proof_index or proof_context")
-    return proof_snapshot.proof_index, proof_snapshot.context
+        raise TypeError(
+            "legacy proof_index/proof_context authority inputs are not supported; "
+            "use proof_snapshot"
+        )
+    if proof_snapshot is None:
+        return None, None
+    if type(proof_snapshot) is not VerifiedProofSnapshot:
+        raise TypeError("proof_snapshot must be a VerifiedProofSnapshot")
+    return proof_snapshot._authority_inputs()
 
 
 def _confidence(
@@ -526,7 +528,30 @@ def _validation_results(metadata: dict[str, Any]) -> list[dict[str, Any]]:
         pdx = external_raw.get("pdx")
         if isinstance(pdx, dict) and isinstance(pdx.get("validation_results"), list):
             values.extend(pdx["validation_results"])
-    return [item for item in values if isinstance(item, dict)]
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    invalid_results: list[dict[str, Any]] = []
+    for item in values:
+        if not isinstance(item, dict):
+            continue
+        try:
+            identity = strict_json_dumps(
+                item,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        except StrictJSONError:
+            if any(item is prior or item == prior for prior in invalid_results):
+                continue
+            invalid_results.append(item)
+            results.append(item)
+            continue
+        if identity in seen:
+            continue
+        seen.add(identity)
+        results.append(item)
+    return results
 
 
 def _legacy_validation_delta(
@@ -557,6 +582,8 @@ def _proof_state(assessments: list[Any]) -> str:
     states = {assessment.state for assessment in assessments}
     if "quarantined" in states:
         return "quarantined"
+    if "unresolved" in states:
+        return "unresolved"
     if "verified" in states:
         return "verified"
     return "signal_only"

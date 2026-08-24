@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.test/belief/schemas/belief-sft-v2.schema.json",
+  "title": "BELIEF authority-safe SFT JSONL row v2",
+  "type": "object",
+  "required": ["messages", "metadata"],
+  "properties": {
+    "messages": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        {
+          "type": "object",
+          "required": ["role", "content"],
+          "properties": {
+            "role": {"const": "system"},
+            "content": {
+              "const": "Classify BELIEF audit evidence for conservative human review without adding exploit instructions."
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["role", "content"],
+          "properties": {
+            "role": {"const": "user"},
+            "content": {"type": "string", "minLength": 2, "maxLength": 10000}
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["role", "content"],
+          "properties": {
+            "role": {"const": "assistant"},
+            "content": {"type": "string", "minLength": 2, "maxLength": 10000}
+          },
+          "additionalProperties": false
+        }
+      ],
+      "items": false
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "source",
+        "case_id",
+        "case_type",
+        "assessment_source",
+        "subject_sha256",
+        "proof_state",
+        "verified_proof_ids",
+        "ledger_snapshot_id",
+        "authority_sha256"
+      ],
+      "properties": {
+        "schema_version": {"const": "belief.sft.v2"},
+        "source": {"const": "belief"},
+        "case_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+        },
+        "case_type": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+        },
+        "assessment_source": {
+          "const": "belief.reportability.recomputed_without_authority.v1"
+        },
+        "subject_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "proof_state": {
+          "enum": ["signal_only", "unresolved", "quarantined"]
+        },
+        "verified_proof_ids": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "ledger_snapshot_id": {
+          "type": "null"
+        },
+        "authority_sha256": {
+          "type": "null"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

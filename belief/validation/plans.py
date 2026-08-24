@@ -313,7 +313,7 @@ def _evidence_gaps(case: Mapping[str, Any]) -> tuple[str, ...]:
             gaps.extend(
                 f"reportability_blocker:{item}"
                 for item in unique_strings(
-                    reportability.get("blocking_factors")
+                    reportability.get("blockers")
                 )
             )
     return unique_strings(gaps)

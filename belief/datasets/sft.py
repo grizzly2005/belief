@@ -1,118 +1,166 @@
-"""Minimal deterministic SFT export for BELIEF audit reports."""
+"""Authority-safe, deterministic SFT export for BELIEF audit reports."""
 
 from __future__ import annotations
 
-import json
+import os
+import tempfile
+from collections.abc import Iterable, Mapping
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
-from belief.pdx.redaction import redact_pdx_value
+from belief.audit_case import AUDIT_SCHEMA_VERSION, AuditCase
+from belief.json_contracts import load_json_file, strict_json_dumps
+from belief.validation.ledger import VerifiedProofSnapshot
+
+from .quality import validate_sft_row
+from .sft_contract import (
+    SFT_ASSESSMENT_SOURCE,
+    SFT_SCHEMA_VERSION,
+    build_authority_safe_sft_row,
+)
+SFT_MAX_AUDIT_CASES = 10_000
+SFT_MAX_INPUT_BYTES = 64 * 1024 * 1024
+SFT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024
+SFT_MAX_ROW_BYTES = 20_000
+
+class SFTContractError(ValueError):
+    """Raised when an audit cannot be converted into safe non-authoritative labels."""
 
 
-SFT_SCHEMA_VERSION = "belief.sft.v1"
+def audit_cases_to_sft_rows(
+    cases: Iterable[AuditCase],
+    *,
+    proof_snapshot: VerifiedProofSnapshot | None = None,
+) -> list[dict[str, Any]]:
+    """Recompute non-authoritative SFT labels from typed audit cases."""
+    _validate_snapshot(proof_snapshot)
+    case_list = list(islice(iter(cases), SFT_MAX_AUDIT_CASES + 1))
+    if not case_list:
+        raise SFTContractError("SFT export requires at least one audit case")
+    if len(case_list) > SFT_MAX_AUDIT_CASES:
+        raise SFTContractError(f"SFT export exceeds the {SFT_MAX_AUDIT_CASES} audit case limit")
+    if any(not isinstance(case, AuditCase) for case in case_list):
+        raise SFTContractError("SFT export accepts only AuditCase instances")
 
+    case_ids = [case.case_id for case in case_list]
+    if len(case_ids) != len(set(case_ids)):
+        raise SFTContractError("SFT export contains duplicate case_id values")
 
-def audit_report_to_sft_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
-    audit_cases = report.get("audit_cases") if isinstance(report, dict) else []
-    if not isinstance(audit_cases, list):
-        return []
-    rows = []
-    for case in sorted(
-        (item for item in audit_cases if isinstance(item, dict)),
-        key=lambda item: str(item.get("case_id") or ""),
-    ):
-        rows.append(_case_to_sft_row(case))
+    rows: list[dict[str, Any]] = []
+    for case in sorted(case_list, key=lambda item: item.case_id):
+        try:
+            row = build_authority_safe_sft_row(case)
+        except (TypeError, ValueError) as exc:
+            raise SFTContractError(
+                f"cannot recompute reportability for case {case.case_id!r}: {exc}"
+            ) from exc
+        issues = validate_sft_row(row, row_index=len(rows) + 1)
+        if issues:
+            details = "; ".join(f"{issue.code}: {issue.message}" for issue in issues)
+            raise SFTContractError(
+                f"generated SFT row for case {case.case_id!r} failed quality checks: " + details
+            )
+        rows.append(row)
     return rows
+
+
+def audit_report_to_sft_rows(
+    report: Mapping[str, Any],
+    *,
+    proof_snapshot: VerifiedProofSnapshot | None = None,
+) -> list[dict[str, Any]]:
+    """Strictly reconstruct an audit report and recompute all SFT labels."""
+    if not isinstance(report, Mapping):
+        raise SFTContractError("audit report must be a JSON object")
+    if report.get("schema_version") != AUDIT_SCHEMA_VERSION:
+        raise SFTContractError(f"audit report schema_version must be {AUDIT_SCHEMA_VERSION!r}")
+    audit_cases = report.get("audit_cases")
+    if not isinstance(audit_cases, list) or not audit_cases:
+        raise SFTContractError("audit report audit_cases must be a non-empty list")
+    if len(audit_cases) > SFT_MAX_AUDIT_CASES:
+        raise SFTContractError(f"audit report exceeds the {SFT_MAX_AUDIT_CASES} audit case limit")
+
+    cases: list[AuditCase] = []
+    for index, raw_case in enumerate(audit_cases):
+        if not isinstance(raw_case, dict):
+            raise SFTContractError(f"audit_cases[{index}] must be a JSON object")
+        try:
+            cases.append(AuditCase.from_dict(raw_case))
+        except ValueError as exc:
+            raise SFTContractError(f"invalid audit_cases[{index}]: {exc}") from exc
+    return audit_cases_to_sft_rows(cases, proof_snapshot=proof_snapshot)
 
 
 def export_sft_dataset_from_audit_report(
     report_path: Path | str,
     output_path: Path | str,
+    *,
+    proof_snapshot: VerifiedProofSnapshot | None = None,
+    max_input_bytes: int = SFT_MAX_INPUT_BYTES,
 ) -> list[dict[str, Any]]:
-    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
-    rows = audit_report_to_sft_rows(report)
-    output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    lines = [json.dumps(redact_pdx_value(row), sort_keys=True) for row in rows]
-    output.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    """Validate completely, then atomically replace a deterministic SFT JSONL file."""
+    report = load_json_file(report_path, max_bytes=max_input_bytes)
+    rows = audit_report_to_sft_rows(report, proof_snapshot=proof_snapshot)
+    lines: list[str] = []
+    total_bytes = 0
+    for row in rows:
+        line = strict_json_dumps(
+            row,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        encoded_size = len(line.encode("utf-8"))
+        if encoded_size > SFT_MAX_ROW_BYTES:
+            raise SFTContractError(f"generated SFT row exceeds {SFT_MAX_ROW_BYTES} bytes")
+        total_bytes += encoded_size + 1
+        if total_bytes > SFT_MAX_OUTPUT_BYTES:
+            raise SFTContractError(f"generated SFT dataset exceeds {SFT_MAX_OUTPUT_BYTES} bytes")
+        lines.append(line)
+
+    content = ("\n".join(lines) + "\n").encode("utf-8")
+    _atomic_write(Path(output_path), content)
     return rows
 
 
-def _case_to_sft_row(case: dict[str, Any]) -> dict[str, Any]:
-    metadata = case.get("metadata") if isinstance(case.get("metadata"), dict) else {}
-    reportability = metadata.get("reportability") if isinstance(metadata.get("reportability"), dict) else {}
-    reasoning = metadata.get("reasoning") if isinstance(metadata.get("reasoning"), dict) else {}
-    feedback_adjustment = (
-        metadata.get("feedback_adjustment")
-        if isinstance(metadata.get("feedback_adjustment"), dict)
-        else {}
+def _validate_snapshot(proof_snapshot: VerifiedProofSnapshot | None) -> None:
+    if proof_snapshot is None:
+        return
+    raise SFTContractError(
+        "belief.sft.v2 does not accept proof_snapshot; verified proof evidence "
+        "requires a future message-visible dataset contract"
     )
-    user_content = "\n".join([
-        f"case_type: {case.get('case_type') or ''}",
-        f"severity: {case.get('severity') or ''}",
-        f"confidence: {case.get('confidence') or ''}",
-        f"cwe: {case.get('cwe') or ''}",
-        f"source: {case.get('source') or ''}",
-        f"sink: {case.get('sink') or ''}",
-        f"reason: {case.get('reason') or ''}",
-        "missing_evidence: " + ", ".join(str(item) for item in reportability.get("missing_evidence") or []),
-    ]).strip()
-    assistant_content = "\n".join([
-        f"verdict: {reportability.get('verdict') or case.get('status') or 'needs_review'}",
-        f"score: {reportability.get('score', '')}",
-        "positive_factors: " + ", ".join(str(item) for item in reportability.get("positive_factors") or []),
-        "negative_factors: " + ", ".join(str(item) for item in reportability.get("negative_factors") or []),
-        "next_step: " + _first(case.get("human_next_steps") or reportability.get("validation_steps") or []),
-        *_optional_reasoning_lines(reasoning),
-        *_optional_feedback_lines(feedback_adjustment),
-    ]).strip()
-    return {
-        "messages": [
-            {
-                "role": "system",
-                "content": "Classify BELIEF audit evidence for conservative human review without adding exploit instructions.",
-            },
-            {"role": "user", "content": user_content},
-            {"role": "assistant", "content": assistant_content},
-        ],
-        "metadata": {
-            "schema_version": SFT_SCHEMA_VERSION,
-            "source": "belief",
-            "case_id": str(case.get("case_id") or ""),
-            "case_type": str(case.get("case_type") or ""),
-        },
-    }
 
 
-def _first(values: Any) -> str:
-    if isinstance(values, list) and values:
-        return str(values[0])
-    if isinstance(values, tuple) and values:
-        return str(values[0])
-    return ""
-
-
-def _optional_reasoning_lines(reasoning: dict[str, Any]) -> list[str]:
-    lines = []
-    recommendation = str(reasoning.get("recommendation") or "").strip()
-    rationale_summary = str(reasoning.get("rationale_summary") or "").strip()
-    if recommendation:
-        lines.append(f"reasoning_recommendation: {recommendation}")
-    if rationale_summary:
-        lines.append(f"rationale_summary: {rationale_summary}")
-    return lines
-
-
-def _optional_feedback_lines(adjustment: dict[str, Any]) -> list[str]:
-    recommendation = str(adjustment.get("recommendation") or "").strip()
-    effect = str(adjustment.get("reportability_effect") or "").strip()
-    if not recommendation and not effect:
-        return []
-    return [f"feedback_adjustment_summary: recommendation={recommendation or 'none'} effect={effect or 'none'}"]
-
-
+def _atomic_write(destination: Path, content: bytes) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=str(destination.parent),
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            descriptor = -1
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, destination)
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 __all__ = [
+    "SFT_ASSESSMENT_SOURCE",
     "SFT_SCHEMA_VERSION",
+    "SFTContractError",
+    "audit_cases_to_sft_rows",
     "audit_report_to_sft_rows",
     "export_sft_dataset_from_audit_report",
 ]

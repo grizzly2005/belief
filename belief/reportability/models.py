@@ -18,7 +18,12 @@ ReportabilityVerdict = Literal[
 
 
 ReportabilityConfidence = Literal["low", "medium", "high"]
-ReportabilityProofState = Literal["signal_only", "quarantined", "verified"]
+ReportabilityProofState = Literal[
+    "signal_only",
+    "unresolved",
+    "quarantined",
+    "verified",
+]
 
 
 @dataclass(frozen=True)

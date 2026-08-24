@@ -118,8 +118,10 @@ def test_dataset_export_cli_writes_sft(tmp_path):
     )
 
     assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout)
     first = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
-    assert first["metadata"]["schema_version"] == "belief.sft.v1"
+    assert summary["schema_version"] == "belief.sft.v2"
+    assert first["metadata"]["schema_version"] == "belief.sft.v2"
 
 
 def test_pdx_help_mentions_import():
