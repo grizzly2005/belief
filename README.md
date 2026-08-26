@@ -1,17 +1,20 @@
 # BELIEF v4
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
-![CI](https://github.com/grizzly2005/belief/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/grizzly2005/belief/actions/workflows/ci.yml/badge.svg)](https://github.com/grizzly2005/belief/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Status](https://img.shields.io/badge/status-experimental-orange)
 ![Security](https://img.shields.io/badge/focus-white--box%20security-red)
-![Output](https://img.shields.io/badge/output-JSON%20%7C%20SARIF%20%7C%20Markdown-purple)
+![Output](https://img.shields.io/badge/output-JSON%20%7C%20SARIF%20%7C%20Markdown%20%7C%20SFT-purple)
 
 BELIEF v4 is an experimental local reportability layer for AppSec, code review, and bug bounty triage.
 
-It turns scanner, PDX, and static-analysis signals into evidence-backed audit cases, conservative reasoning summaries, exact-case feedback, reportability benchmarks, and dataset-ready examples.
+It turns scanner, PDX, and static-analysis signals into provenance-preserving audit cases, conservative reasoning summaries, exact-case feedback, reportability benchmarks, and dataset-ready examples.
 
-BELIEF does not replace Semgrep, CodeQL, Burp, or manual validation. It helps a human reviewer decide whether a signal is a reportable candidate, protected by guard, likely false positive, weak signal, or still needs manual validation.
+BELIEF does not replace Semgrep, CodeQL, Burp, or manual validation. It helps a
+human reviewer decide whether a signal is protected by a guard, likely false
+positive, weak, or worth validating. Promotion to `reportable_candidate` is
+fail-closed and requires a ledger-verified `bypassed` result.
 
 ---
 
@@ -24,6 +27,8 @@ BELIEF does not replace Semgrep, CodeQL, Burp, or manual validation. It helps a 
 - An audit case, reasoning, and exact-case feedback system.
 - A benchmarkable triage engine.
 - A safe offline dataset exporter.
+- A durable, content-addressed validation-proof authority boundary.
+- An opt-in, bounded public-advisory context layer.
 
 ### BELIEF Is Not
 
@@ -32,6 +37,8 @@ BELIEF does not replace Semgrep, CodeQL, Burp, or manual validation. It helps a 
 - Not a bug bounty auto-submitter.
 - Not a replacement for Semgrep, CodeQL, Burp, or manual testing.
 - Not proof of confirmed vulnerability from static-only evidence.
+- Not a way for imported results, public advisories, or serialized labels to
+  grant themselves proof authority.
 
 ---
 
@@ -41,7 +48,10 @@ Security tools produce signals. Pentesters and AppSec teams need reportable evid
 
 BELIEF sits between noisy scanner output and human review. It preserves provenance, maps signals into audit cases, scores reportability conservatively, attaches exact-case feedback, runs deterministic offline reasoning, and turns reviewed cases into safe dataset examples.
 
-The project is deliberately conservative: static and imported evidence remains candidate evidence until manually validated in an authorized scope.
+The project is deliberately conservative: static and imported evidence remains
+candidate evidence, and public advisories remain context only. Only a trusted
+ledger snapshot can authorize proof-based promotion; human validation in an
+authorized scope remains mandatory before any real-world claim.
 
 ---
 
@@ -85,16 +95,104 @@ python -m belief benchmark reportability \
 
 This flow is local and deterministic. It does not call LLM APIs, model servers, browsers, network services, or external scanners. Static and imported evidence remains candidate evidence until manually validated in authorized scope.
 
-The dataset command emits only `belief.sft.v2`. It strictly reconstructs each
-`AuditCase`, ignores serialized reportability, reasoning, and feedback labels,
-redacts the complete case projection, and recomputes the assistant target from
-that exact message-visible input. Free-form human next steps are excluded from
-the target. SFT v2 is explicitly non-authoritative (`signal_only`,
-`unresolved`, or `quarantined`): CLI and programmatic exports reject proof
-snapshots, verified labels, and reportable candidates until a future dataset
-contract can make the complete proof evidence visible to the model. Validation
-recomputes each stored target; validation or quality failure leaves an existing
-output unchanged.
+The dataset step emits only `belief.sft.v2`. It is deliberately
+non-authoritative, so no case produced by this quick flow can reach
+`reportable_candidate`. The trust model and migration details are documented
+below.
+
+---
+
+## Trust Boundaries: Proof Authority, External Intelligence, and SFT v2
+
+BELIEF separates signal, context, claims, and authority. A serialized audit,
+validation result, PDX payload, advisory record, or reportability block cannot
+grant its own authority.
+
+| Layer | Examples | Authority effect |
+| --- | --- | --- |
+| Signal | Scanner finding, PDX delta, imported tool result | Heuristic only; cannot cross the reportable gate |
+| Context | OSV, CISA KEV, NVD, or GitHub advisory record | Reviewer context only; never score or proof input |
+| Claim | Serialized `reportability`, `tested`, or `human_validated` | Never proof authority; some legacy display/filter paths still surface it |
+| Verified proof | Canonical proof resolved from a ledger-origin snapshot | May authorize promotion when every binding verifies |
+
+### Validation proof authority
+
+`belief.validation_proof.v1` binds an engagement, target, subject, validation
+plan, attempt, terminal result, oracle identity, and content-addressed evidence.
+The only public authority input is an exact ledger-origin
+`VerifiedProofSnapshot` returned by `ValidationProofLedger.load_scope()`.
+Direct construction, subclassed snapshots, and the legacy separate
+`proof_index` / `proof_context` path fail closed.
+
+Every assessment records a `proof_state`:
+
+- `signal_only`: no proof is attached;
+- `unresolved`: a structurally valid proof has no trusted snapshot resolution;
+- `quarantined`: a proof is malformed, orphaned, mismatched, or cross-scope;
+- `verified`: trusted ledger material resolves the proof and every binding.
+
+`quarantined` takes precedence over `unresolved`, then `verified`, then
+`signal_only`, so a bad proof cannot be hidden by a good sibling. A
+`reportable_candidate` requires a verified `bypassed` result. Without it, the
+score cannot cross 79 and the verdict cannot be `reportable_candidate`; normal
+thresholds and guard evidence may still produce `needs_manual_validation`,
+`weak_signal`, `likely_false_positive`, or `protected_by_guard`. The former
+heuristic number is retained only as `legacy_score`.
+
+The durable ledger uses immutable attempt and terminal records, an
+integrity-bound inventory, and a SHA-256 content-addressed evidence store.
+Attempts become durable before execution, terminal publication is
+single-assignment and idempotent, and restart reconstruction fails closed on
+missing or modified material.
+
+Current reachability is intentionally narrow. The ledger is a Python library
+API, not a CLI surface. Its proof-producing helper is restricted to first-party
+registered fixtures and `ValidationContractSeed` subjects; BELIEF does not yet
+provide a proof-authoritative executor for arbitrary or real project targets.
+The ledger is also an integrity boundary, not a Python sandbox or signed store:
+arbitrary in-process Python is in the trusted computing base, and rollback
+detection requires the authority digest and snapshot identifier to be pinned
+outside the store.
+
+See the [validation proof contract](docs/VALIDATION_PROOF_V1.md) and the
+[strict proof-link schema](schemas/belief-validation-proof-v1.schema.json).
+
+### External intelligence
+
+The opt-in Python API provides strict parsing for OSV, CISA KEV, NVD CVE API
+2.0, and GitHub Global Security Advisories, with bounded multi-page collection
+for NVD and GitHub. Requests use fixed HTTPS endpoint policies, reject redirects
+and final-URL changes, require explicit time and byte limits, and preserve query
+and response digests. Credentials are excluded from URLs, representations,
+equality, provenance digests, parsed records, and serialized envelopes.
+
+External advisory records are immutable `context_only` data with
+`proof_eligible=False`. They cannot become a `Finding`, `AuditCase`,
+`ValidationResult`, validation proof, or reportability input. Repeated CVE IDs
+across providers are not independent corroboration. Collection is bounded by
+caller limits under hard local ceilings, and a bounded stop raises an explicit
+incomplete error instead of returning a complete-looking result. Every
+collection records `snapshot_consistency="unverified"` because pagination does
+not prove the provider dataset stayed unchanged.
+
+This subsystem is library-only and has no production scoring consumer. The
+normal quick offline flow above does not call it and performs no network access.
+See the [external intelligence boundary](docs/EXTERNAL_INTELLIGENCE.md).
+
+### Authority-safe SFT v2
+
+Dataset export emits only `belief.sft.v2`. It strictly reconstructs each
+`AuditCase`, removes serialized reportability, reasoning, feedback, and
+free-form human-next-step labels, redacts the complete case projection, and
+recomputes the assistant target from exactly the input visible to the model.
+
+SFT v2 accepts only `signal_only`, `unresolved`, or `quarantined` rows. Proof
+snapshots, verified labels, verified proof IDs, and `reportable_candidate`
+targets are rejected until a future contract can expose complete proof evidence
+to the model. Export and validation are bounded and fail closed; validation
+recomputes every stored target, and contract or quality failure leaves an
+existing output unchanged. See the
+[SFT v2 schema](schemas/belief-sft-v2.schema.json).
 
 ---
 
@@ -382,11 +480,15 @@ Scanner / PDX / static signal
 -> Finding / Hypothesis
 -> Dataflow / Guarantees
 -> AuditCase
+-> Validation proof gate (ledger authority)
 -> ReportabilityAssessment
 -> Offline Reasoning
 -> Exact-case Feedback
 -> Dataset / Benchmark Output
 ```
+
+External advisory intelligence enters as reviewer context only. It never joins
+the authority path and never reaches the proof gate or score.
 
 The goal is to help a reviewer understand why a finding may be:
 
@@ -416,10 +518,13 @@ flowchart LR
     B --> C[Findings and Hypotheses]
     C --> D[Dataflow and Guarantees]
     D --> E[AuditCase]
-    E --> F[ReportabilityAssessment]
-    F --> G[Offline Reasoning]
-    G --> H[Exact-case Feedback]
-    H --> I[JSON / SARIF / Markdown / SFT / Benchmark]
+    E --> F{Validation proof gate}
+    P[VerifiedProofSnapshot] -. authority .-> F
+    X[External advisory intelligence] -. context only .-> E
+    F --> G[ReportabilityAssessment]
+    G --> H[Offline Reasoning]
+    H --> I[Exact-case Feedback]
+    I --> J[JSON / SARIF / Markdown / SFT v2 / Benchmark]
 ```
 
 ---
@@ -435,6 +540,10 @@ flowchart TB
         RULES[Bundled rule assets]
     end
 
+    subgraph Context
+        INTEL[External advisory intelligence]
+    end
+
     subgraph Normalization
         BRIDGE[Tool bridges]
         NTR[NormalizedToolResult]
@@ -447,13 +556,19 @@ flowchart TB
         FLOW[Lightweight dataflow]
         GUAR[Guarantee index]
         AUDIT[AuditCase]
+        GATE{Validation proof gate}
         REPORT[ReportabilityAssessment]
+    end
+
+    subgraph Authority
+        LEDGER[ValidationProofLedger]
+        SNAP[VerifiedProofSnapshot]
     end
 
     subgraph Review Loop
         REASON[Offline reasoning]
         FEEDBACK[Exact-case feedback]
-        DATASET[SFT export]
+        DATASET[SFT v2 export]
         QUALITY[Dataset validation]
         BENCH[Reportability benchmark]
     end
@@ -469,7 +584,9 @@ flowchart TB
     TOOL --> BRIDGE --> NTR --> FIND
     PDX --> NTR
     RULES --> FIND
-    FIND --> HYP --> FLOW --> GUAR --> AUDIT --> REPORT
+    FIND --> HYP --> FLOW --> GUAR --> AUDIT --> GATE --> REPORT
+    LEDGER --> SNAP -. authority .-> GATE
+    INTEL -. context only .-> AUDIT
     REPORT --> REASON --> FEEDBACK --> AUDIT
     REPORT --> JSON
     REPORT --> SARIF
@@ -507,6 +624,14 @@ When available, optional Z3 checks can model simple boolean contradictions. This
 
 An `AuditCase` is the review-facing unit. It groups findings, hypotheses, evidence, missing evidence, reportability assessment, validation guidance, reasoning summaries, feedback, and export metadata.
 
+### Proof, Authority, and Context
+
+A `belief.validation_proof.v1` link cannot verify itself, every
+`ReportabilityAssessment` carries a `proof_state`, and public advisory records
+are `context_only` data that never reach a score. These boundaries are specified
+in full under
+[Trust Boundaries](#trust-boundaries-proof-authority-external-intelligence-and-sft-v2).
+
 ---
 
 ## Features
@@ -516,9 +641,11 @@ An `AuditCase` is the review-facing unit. It groups findings, hypotheses, eviden
 - JSON-only PDX adapter;
 - stable `Finding` / `Hypothesis` / `AuditCase` model;
 - conservative reportability assessment;
+- proof-gated reportability with explicit `proof_state`;
+- durable validation-proof ledger with content-addressed evidence;
 - offline deterministic reasoning;
 - exact-case feedback application;
-- safe SFT dataset export;
+- authority-safe `belief.sft.v2` dataset export;
 - dataset quality validation;
 - reportability benchmark MVP;
 - lightweight source-to-sink dataflow;
@@ -530,6 +657,7 @@ An `AuditCase` is the review-facing unit. It groups findings, hypotheses, eviden
 - bug bounty candidate Markdown export;
 - audit deduplication and clustering;
 - centralized security taxonomy;
+- opt-in, context-only external advisory intelligence;
 - bridge-oriented architecture for external tools.
 
 ---
@@ -572,7 +700,12 @@ python -m belief scan ./app \
   --json-output out/audit.json
 ```
 
-A result can become a `reportable_candidate`, `needs_manual_validation`, `weak_signal`, `likely_false_positive`, or `protected_by_guard`. BELIEF does not treat static-only evidence as confirmation.
+A result can become a `reportable_candidate`, `needs_manual_validation`,
+`weak_signal`, `likely_false_positive`, or `protected_by_guard`, and carries a
+`proof_state` alongside that verdict. BELIEF does not treat static-only evidence
+as confirmation: without a verified bypass proof the score cannot exceed 79 and
+the case cannot become `reportable_candidate`. See
+[validation proof authority](#validation-proof-authority).
 
 ---
 
@@ -632,7 +765,7 @@ matching wheels in the ignored `.wheelhouse/` directory, then create an isolated
 environment without contacting a package index:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap_offline.ps1 \
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap_offline.ps1 `
   -VenvDir .venv-repro-fresh
 ```
 
@@ -726,10 +859,9 @@ python scripts/benchmark_local_validation.py \
   --output out/local-validation-benchmark.json
 ```
 
-Run the test suite:
+Run the local CI-equivalent suites:
 
 ```bash
-python -m pytest -q
 python -m pytest -q -m security
 python -m pytest -q -m "not slow and not external and not llm"
 ```
@@ -746,9 +878,10 @@ The local mega-solidification review boundary, validation record, and explicit
 non-claims are frozen in
 [`docs/MEGA_SOLIDIFICATION_CHECKPOINT.md`](docs/MEGA_SOLIDIFICATION_CHECKPOINT.md).
 
-`ruff check belief tests` covers first-party code and test fixtures. Bundled
-compatibility assets, third-party rule data, and real-world snippets are kept
-outside that lint target so upstream syntax and provenance remain intact.
+`python -m ruff check belief tests tests_bridges` covers first-party code, test
+fixtures, and bridge tests, matching CI. Bundled compatibility assets,
+third-party rule data, and real-world snippets are kept outside that lint target
+so upstream syntax and provenance remain intact.
 The separate `python -m belief.source_classification --root .` gate compiles
 every non-classified Python source under the declared `belief/` package root
 while allowing only the exact, digest-pinned historical Z3 Python 2 inventory
@@ -779,6 +912,36 @@ See [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md) for the current asset inventory and
 
 ---
 
+## Compatibility and Upgrade Notes
+
+The current development line contains breaking contract changes after the
+published `v0.2.0` tag. A future package release must use a new version; the
+current target is `0.3.0`. Consumers should review these changes before tracking
+`main`:
+
+| Surface | Change | Consumer action |
+| --- | --- | --- |
+| Reportability JSON | Adds `legacy_score`, `proof_state`, and `verified_proof_ids`; `score` is proof-gated | Filter on `verdict` and `proof_state`, not score alone |
+| Candidate verdict | Requires a verified bypass proof; ordinary scans stop below the gate | `reportable_candidate` is impossible without proof; lower and guard verdicts remain valid |
+| Dataset JSONL | Export and validation move from `belief.sft.v1` to strict `belief.sft.v2` | Regenerate v1 datasets; the v1 schema is historical only |
+| BELIEF-to-PDX | Exports signal-only `UNCERTAIN` with weight `0.0` without proof | Do not interpret exported deltas as confirmed validation |
+| Python API | `AuditCase.from_dict()` rejects unknown fields and authority APIs accept one exact snapshot | Validate producers and migrate legacy proof-index/context callers |
+| Installation | External intelligence uses only the standard library and adds no extra | No intelligence dependency change; `pip install -e ".[dev,z3,web-validation]"` matches CI |
+
+Bug-bounty Markdown and patch review recompute reportability instead of trusting
+a serialized block. Six legacy consumers still surface parts of serialized
+reportability without recomputing it: the reasoning router, CLI summary/filter,
+MCP explanation projection, static-analysis pipeline filters, and two benchmark
+adapters. Treat those values as unverified claims, not proof authority, and do
+not use them for filtering or automation until they are migrated.
+
+Local `belief_validation_ledger/` state is git-ignored authority material. Back
+it up and pin its authority digest and `ledger_snapshot_id` outside the store if
+rollback detection is required. The on-disk ledger record formats remain an
+internal compatibility surface until public schemas are published for them.
+
+---
+
 ## Limitations
 
 - BELIEF is experimental.
@@ -790,6 +953,18 @@ See [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md) for the current asset inventory and
 - The reasoning engine is deterministic and local; it is not an LLM agent.
 - Local validation is opt-in and limited to explicit, trusted path traversal
   and IDOR/BOLA fixtures; arbitrary applications are never auto-executed.
+- `reportable_candidate` requires a verified `bypassed` proof. No CLI path and
+  no arbitrary-project executor currently produces such authority. The only
+  built-in durable proof publisher accepts `validation_contract_seed` subjects,
+  while reportability resolves `audit_case` subjects, so no built-in proof path
+  can currently promote an audit case.
+- The proof ledger is an integrity boundary, not a Python sandbox or signed
+  store; its digest and snapshot identifier require an external anti-rollback
+  pin.
+- External advisory intelligence is context only, has no production scoring
+  consumer, and records snapshot consistency as unverified.
+- `belief.sft.v2` deliberately excludes verified proof evidence and cannot be
+  used to train verified/reportable labels.
 - External tools are not vendored as full runtimes.
 - Manual validation in authorized scope remains required before any real-world claim.
 
@@ -807,7 +982,11 @@ Planned directions include:
 - deeper SARIF and external-tool import coverage;
 - richer public demo flows;
 - clearer benchmark reports and comparison baselines;
-- improved examples and tutorials.
+- improved examples and tutorials;
+- a separately audited proof-authoritative executor for real audit cases;
+- cryptographic signing and externally anchored anti-rollback policy for the
+  proof ledger;
+- a future message-visible SFT contract for verified proof evidence.
 
 ---
 
@@ -816,13 +995,18 @@ Planned directions include:
 The main regression commands are:
 
 ```bash
-python -m pytest -q
 python -m pytest -q -m security
 python -m pytest -q -m "not slow and not external and not llm"
+python -m ruff check belief tests tests_bridges
+python -m pip check
 python -m belief.source_classification --root .
+git diff --check
 ```
 
-The project also includes bridge tests, access-model tests, dataset tests, reasoning tests, feedback tests, and benchmark tests.
+CI runs the marker-filtered suites rather than a bare `python -m pytest -q`,
+which would also collect opt-in `slow`, `external`, and `llm` tests. The project
+includes bridge tests, access-model tests, dataset tests, reasoning tests,
+feedback tests, and benchmark tests.
 
 ---
 
@@ -845,7 +1029,12 @@ belief/pdx/
   JSON-only PDX adapter, redaction, import/export helpers, and mapping logic.
 
 belief/validation/
-  Generic validation result models and PDX verdict adaptation.
+  Validation result models, plans, executors, the isolated worker, strict proof
+  links, and the durable validation-proof ledger.
+
+belief/intelligence/
+  Strict parsers, fixed endpoint policies, bounded transport, and multi-page
+  collection for context-only public advisory sources.
 
 belief/mcp/
   Experimental local stdio MCP facade, trusted fixture bindings, bounded
@@ -859,7 +1048,8 @@ belief/feedback/
   Append-only feedback store and exact-case feedback application.
 
 belief/datasets/
-  SFT export and dataset quality validation.
+  Authority-safe SFT v2 projection, atomic export, schema checks, and
+  independently recomputed dataset quality validation.
 
 belief/benchmark/
   Offline benchmark loading, metrics, and reportability benchmark runner.
@@ -892,7 +1082,8 @@ benchmark_cyberseceval_results/
   Immutable, digest-bound CyberSecEval static preflight result artifacts.
 
 schemas/
-  Documentation-only JSON schemas for BELIEF data formats.
+  Strict public JSON schemas plus documentation-only schemas for selected
+  BELIEF data formats.
 
 external_packs/
   Documentation-only external pack placeholders and passive mapping notes.
@@ -930,8 +1121,19 @@ pyproject.toml
 - [`docs/DUCK_PATH_OBJECTIVE_PILOT.md`](docs/DUCK_PATH_OBJECTIVE_PILOT.md)
 - [`docs/AUTHORIZED_PROJECT_PILOT.md`](docs/AUTHORIZED_PROJECT_PILOT.md)
 - [`docs/LOCAL_VALIDATION_EXECUTION.md`](docs/LOCAL_VALIDATION_EXECUTION.md)
+- [`docs/VALIDATION_PROOF_V1.md`](docs/VALIDATION_PROOF_V1.md)
+- [`docs/EXTERNAL_INTELLIGENCE.md`](docs/EXTERNAL_INTELLIGENCE.md)
+- [`docs/GENERALIZATION_RESULTS.md`](docs/GENERALIZATION_RESULTS.md)
+- [`docs/PATCHEVAL_VERIFIED_PROTOCOL.md`](docs/PATCHEVAL_VERIFIED_PROTOCOL.md)
+- [`docs/PATCHEVAL_VERIFIED_RESULT.md`](docs/PATCHEVAL_VERIFIED_RESULT.md)
+- [`docs/WEB_VALIDATION_GENERALIZATION_PROTOCOL.md`](docs/WEB_VALIDATION_GENERALIZATION_PROTOCOL.md)
+- [`docs/WEB_VALIDATION_GENERALIZATION_RESULT.md`](docs/WEB_VALIDATION_GENERALIZATION_RESULT.md)
+- [`docs/WEB_VALIDATION_GENERALIZATION_RESULT_V2.md`](docs/WEB_VALIDATION_GENERALIZATION_RESULT_V2.md)
+- [`docs/PDX_HYDRA_RECOVERY_PLAN.md`](docs/PDX_HYDRA_RECOVERY_PLAN.md)
+- [`docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md`](docs/ISOLATED_WEB_VALIDATION_SECURITY_REVIEW.md)
 - [`docs/PYTHON_SOURCE_CLASSIFICATION.md`](docs/PYTHON_SOURCE_CLASSIFICATION.md)
 - [`docs/MEGA_SOLIDIFICATION_CHECKPOINT.md`](docs/MEGA_SOLIDIFICATION_CHECKPOINT.md)
+- [`docs/PROOF_STATE_AUDIT_2026_08_24.md`](docs/PROOF_STATE_AUDIT_2026_08_24.md)
 - [`docs/ISOLATED_WEB_VALIDATION_WORKER.md`](docs/ISOLATED_WEB_VALIDATION_WORKER.md)
 - [`docs/OFFLINE_REPRODUCIBILITY.md`](docs/OFFLINE_REPRODUCIBILITY.md)
 - [`benchmark_reportability/README.md`](benchmark_reportability/README.md)

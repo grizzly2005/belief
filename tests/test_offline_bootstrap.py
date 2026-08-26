@@ -25,6 +25,23 @@ def test_offline_lock_has_exact_versions_and_sha256_hashes():
     assert all(LOCK_ENTRY.fullmatch(entry) for entry in entries)
 
 
+def test_offline_lock_contains_jsonschema_validation_closure():
+    distribution_names = {
+        entry.split("==", maxsplit=1)[0].lower().replace("_", "-").replace(".", "-")
+        for entry in LOCK_FILE.read_text(encoding="utf-8").splitlines()
+        if entry and not entry.startswith("#")
+    }
+
+    assert {
+        "attrs",
+        "jsonschema",
+        "jsonschema-specifications",
+        "referencing",
+        "rpds-py",
+        "typing-extensions",
+    } <= distribution_names
+
+
 def test_bootstrap_remains_fresh_and_hermetic():
     script = BOOTSTRAP.read_text(encoding="utf-8")
 

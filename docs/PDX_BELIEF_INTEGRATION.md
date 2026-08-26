@@ -263,4 +263,6 @@ or hidden reasoning traces.
 Minimal JSON Schema files live under `schemas/`. The PDX observation
 attestation and engagement contracts are also enforced at runtime by exact,
 dependency-free trust-boundary parsers. Other historical schemas remain
-documentation contracts and do not add a `jsonschema` dependency.
+documentation contracts and do not add a production-runtime `jsonschema`
+dependency. The offline test toolchain includes `jsonschema` for schema and
+dataset validation tests.

@@ -5,6 +5,7 @@ from pathlib import Path
 SCHEMAS = [
     "belief-pdx-v1.schema.json",
     "belief-validation-result-v1.schema.json",
+    "belief-validation-proof-v1.schema.json",
     "belief-feedback-v1.schema.json",
     "belief-sft-v1.schema.json",
     "belief-sft-v2.schema.json",
