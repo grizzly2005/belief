@@ -1,0 +1,103 @@
+{
+  "cases": [
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-5rjg-fvgr-3xxf",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "pypa__setuptools",
+      "cve_id": "CVE-2025-47273",
+      "cwe": "CWE-22",
+      "fixed_revision": "250a6d17978f9f6ac3ac887091f2d32886fbbb0b",
+      "id": "setuptools-cve-2025-47273",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "MIT"
+      },
+      "project": "pypa/setuptools",
+      "repository_url": "https://github.com/pypa/setuptools.git",
+      "targets": [
+        {
+          "fixed_sha256": "870ffc77a62224af26252657edcdc035002dbf31f6557be807516d0fc34f842e",
+          "path": "setuptools/package_index.py",
+          "relevant_line_range": [
+            800,
+            850
+          ],
+          "vulnerable_sha256": "f8118465ef4d061e3e4fe832997bbb1fbe9bfce9c0ff4667fa84f8d97c665556"
+        }
+      ],
+      "vulnerable_revision": "d8390feaa99091d1ba9626bec0e4ba7072fc507a"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-xxh2-68g9-8jqr",
+      "case_type": "sql_injection_possible",
+      "checkout_dir": "ormar-orm__ormar",
+      "cve_id": "CVE-2026-26198",
+      "cwe": "CWE-89",
+      "fixed_revision": "a03bae14fe01358d3eaf7e319fcd5db2e4956b16",
+      "id": "ormar-cve-2026-26198",
+      "license": {
+        "path": "LICENSE.md",
+        "spdx": "MIT"
+      },
+      "project": "ormar-orm/ormar",
+      "repository_url": "https://github.com/ormar-orm/ormar.git",
+      "targets": [
+        {
+          "fixed_sha256": "52c792eb271e703348b6db94f7500c9d4022770f1cd290b9c4ce0e55310d1dcb",
+          "path": "ormar/queryset/queryset.py",
+          "relevant_line_range": [
+            690,
+            730
+          ],
+          "vulnerable_sha256": "dc5f824e96212c0fb3a9fcdb3a3807943636e4a54b8384f8043d703687cbf929"
+        }
+      ],
+      "vulnerable_revision": "ef95d3214daf9ccfd5591ae51d8b2fbe4b66c633"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-6h2f-wjhf-4wjx",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "Mayuri-Chan__pyrofork",
+      "cve_id": "CVE-2025-67720",
+      "cwe": "CWE-22",
+      "fixed_revision": "2f2d515575cc9c360bd74340a61a1d2b1e1f1f95",
+      "id": "pyrofork-cve-2025-67720",
+      "license": {
+        "path": "COPYING.lesser",
+        "spdx": "LGPL-3.0-only"
+      },
+      "project": "Mayuri-Chan/pyrofork",
+      "repository_url": "https://github.com/Mayuri-Chan/pyrofork.git",
+      "targets": [
+        {
+          "fixed_sha256": "1e524944b48598df4b1c5f5f83df276cd29b548e203b2a2214f89272937b46ca",
+          "path": "pyrogram/methods/messages/download_media.py",
+          "relevant_line_range": [
+            140,
+            190
+          ],
+          "vulnerable_sha256": "017d3504b5ad85be5cd68bc56fe663bc990f40024bf383b3720a204243affec7"
+        }
+      ],
+      "vulnerable_revision": "e9c40679d2d1202ef284fa0dd0695316352ba742"
+    }
+  ],
+  "classification": {
+    "claim_boundary": "Public first-exposure, advisory-localized changed-file sensitivity with fixed-revision controls; not a repository-blind scan, vulnerability confirmation, precision estimate, SecPass result, or leaderboard comparison.",
+    "dynamic_execution": false,
+    "evaluation_mode": "oracle_localized_changed_file_pair",
+    "negative_controls_present": true,
+    "project_disjoint_from_susvibes_v1": true,
+    "role": "public_first_exposure_baseline",
+    "secpass_comparable": false
+  },
+  "corpus_id": "belief-open-source-pairs-public-v1",
+  "schema_version": "belief.open_source_pairs_corpus.v1",
+  "thresholds": {
+    "maximum_analysis_error_count": 0,
+    "maximum_fixed_warning_false_positive_rate": 0.2,
+    "minimum_deterministic_repetition_rate": 1.0,
+    "minimum_paired_discrimination_rate": 0.4,
+    "minimum_vulnerable_warning_recall": 0.5
+  }
+}
