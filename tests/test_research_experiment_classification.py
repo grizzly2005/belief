@@ -50,6 +50,7 @@ def test_manifest_is_classification_only_and_has_expected_experiments() -> None:
         "web-synthetic-development-v2",
         "cyberseceval-v1-first-exposure",
         "cyberseceval-v2-public-tuned",
+        "open-source-pairs-v1-first-exposure",
         "seccodebench-python-safety-preflight",
     }
 
@@ -85,6 +86,18 @@ def test_claim_eligibility_is_conservative() -> None:
     assert tuned["evaluation_modes_reported_separately"] is False
     assert tuned["aggregate_recall_claim_allowed"] is False
     assert set(tuned["observed_evaluation_modes"]) == {"mode_c", "mode_d"}
+
+    open_source_pairs = experiments["open-source-pairs-v1-first-exposure"]
+    assert open_source_pairs["interpretation_class"] == (
+        "advisory_localized_vulnerable_fixed_pair_sensitivity"
+    )
+    assert open_source_pairs["tuning_occurred_before_result"] is False
+    assert open_source_pairs["negative_controls_present"] is True
+    assert open_source_pairs["precision_eligible"] is False
+    assert open_source_pairs["external_blind"] is False
+    assert open_source_pairs["vulnerable_warning_recall"] == 0.0
+    assert open_source_pairs["paired_discrimination_rate"] == 0.0
+    assert open_source_pairs["deterministic_repetition_rate"] == 1.0
 
 
 def test_artifact_boundaries_record_missing_or_contradictory_evidence() -> None:

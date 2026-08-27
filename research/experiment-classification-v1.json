@@ -137,6 +137,44 @@
       }
     },
     {
+      "experiment_id": "open-source-pairs-v1-first-exposure",
+      "role": "public_development",
+      "interpretation_class": "advisory_localized_vulnerable_fixed_pair_sensitivity",
+      "tuning_allowed": true,
+      "tuning_occurred_before_result": false,
+      "negative_controls_present": true,
+      "precision_eligible": false,
+      "precision_eligibility_scope": "none_three_selected_advisory_pairs",
+      "external_blind": false,
+      "dynamic_execution": false,
+      "secpass_comparable": false,
+      "external_validation_claim_allowed": false,
+      "source_ref": "grizzly/open-source-paired-benchmark-v1",
+      "source_ref_head": "0c836252fca91ad1eb6ce912cab5036a1b0af4de",
+      "artifact_commit": "0c836252fca91ad1eb6ce912cab5036a1b0af4de",
+      "artifact_path": "benchmark_open_source_pairs_results/public-pairs-v1.json",
+      "artifact_schema_version": "belief.open_source_pairs_result.v1",
+      "artifact_digest": "2b9e59b71bc3017d53136e62b0bc1d8fd933974b48a0dfd15c1edb1673d13915",
+      "artifact_file_sha256": "6b752064ff9e2c131bd0bfe998b720726147bfef801d18918518dc1053f2e673",
+      "artifact_status": "verified_negative_baseline",
+      "verified_artifact_case_count": 3,
+      "project_disjoint_from_susvibes_v1": true,
+      "susvibes_project_count": 101,
+      "susvibes_projects_sha256": "abcbba77c38dad45e812e7ebfd8398308f63c5857097f164364c513824ba38cc",
+      "evaluation_mode": "oracle_localized_changed_file_pair",
+      "vulnerable_warning_recall": 0.0,
+      "fixed_warning_false_positive_rate": 0.0,
+      "paired_discrimination_rate": 0.0,
+      "deterministic_repetition_rate": 1.0,
+      "claim_boundary": "This three-project public first-exposure result measures advisory-localized vulnerable/fixed sensitivity only. It is not repository-blind discovery, general precision, ecosystem recall, exploit confirmation, or a leaderboard result.",
+      "parser_recovery_provenance": [
+        "parsed_as_provided"
+      ],
+      "parser_recovery_mapping": {
+        "exact_git_blob_python_source": "parsed_as_provided"
+      }
+    },
+    {
       "experiment_id": "seccodebench-python-safety-preflight",
       "role": "public_development",
       "interpretation_class": "safety_preflight_only",
