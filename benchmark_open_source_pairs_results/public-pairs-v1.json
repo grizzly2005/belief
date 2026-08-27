@@ -1,0 +1,839 @@
+{
+  "belief": {
+    "analysis_options": {
+      "audit_mode": true,
+      "dataflow_cycle_detection": true,
+      "dedup_audit_cases": false,
+      "denied_source_sha256_count": 0,
+      "denied_source_sha256_set_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "hide_structural": false,
+      "import_tool_results": [],
+      "include_audit_cases": true,
+      "include_cycles": false,
+      "include_dataflow": true,
+      "include_guarantees": true,
+      "include_hypotheses": true,
+      "include_routes": false,
+      "interesting_only": false,
+      "legacy_single_file_path_projection": false,
+      "max_ast_nodes_per_file": 250000,
+      "max_cycles": 100,
+      "max_dataflow_depth": 32,
+      "max_dataflow_nodes": 10000,
+      "max_file_bytes": 2097152,
+      "max_files": 8,
+      "max_total_source_bytes": 8388608,
+      "min_confidence": 0.0,
+      "min_reportability_score": 0,
+      "only_hypotheses": "all",
+      "only_reportable": false,
+      "reportability": true,
+      "security_analysis_profile": "default",
+      "selected_categories": [
+        "cycles",
+        "security",
+        "structural",
+        "taint",
+        "temporal"
+      ],
+      "show_dataflow": false,
+      "show_proofs": false
+    },
+    "revision": "bb630a91e3c32fddd0f1e40a5fa2846d4c7fd2d2"
+  },
+  "boundaries": {
+    "git_worktree_read": false,
+    "network_used_by_runner": false,
+    "only_manifest_listed_git_blobs_read": true,
+    "oracle_localized_target_files": true,
+    "third_party_code_executed": false,
+    "third_party_code_imported": false,
+    "third_party_dependencies_installed": false
+  },
+  "case_count": 3,
+  "cases": [
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-5rjg-fvgr-3xxf",
+      "case_type": "path_traversal_possible",
+      "cve_id": "CVE-2025-47273",
+      "cwe": "CWE-22",
+      "fixed_revision": "250a6d17978f9f6ac3ac887091f2d32886fbbb0b",
+      "fixed_warning_false_positive": false,
+      "id": "setuptools-cve-2025-47273",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "MIT"
+      },
+      "paired_vulnerable_only_discrimination": false,
+      "project": "pypa/setuptools",
+      "variants": {
+        "fixed": {
+          "analysis": {
+            "analysis_succeeded": true,
+            "audit_case_count": 5,
+            "audit_cases": [
+              {
+                "case_id": "case_31a756aa3ec19a7e",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "setuptools/package_index.py",
+                "guarantees": [],
+                "line": 682,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_4a79fc2f698407fc",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "setuptools/package_index.py",
+                "guarantees": [],
+                "line": 566,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_8b8402cd52511e8d",
+                "case_type": "xss_possible",
+                "cwe": "",
+                "file": "setuptools/package_index.py",
+                "guarantees": [],
+                "line": 908,
+                "reason": "Missing proof for xss_possible: HTML escaping proof at the sink.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 0,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_a64145babe937180",
+                "case_type": "xss_possible",
+                "cwe": "",
+                "file": "setuptools/package_index.py",
+                "guarantees": [],
+                "line": 966,
+                "reason": "Missing proof for xss_possible: HTML escaping proof at the sink.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 0,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_d96e463adcb339be",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "setuptools/package_index.py",
+                "guarantees": [],
+                "line": 1138,
+                "reason": "Missing proof for ssrf_possible: url.is_allowlisted.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 45,
+                  "verdict": "weak_signal"
+                },
+                "sanitizers": [],
+                "sink": "urllib.request.urlopen(url)",
+                "source": "url",
+                "status": "needs_review"
+              }
+            ],
+            "diagnostics": [],
+            "finding_count": 445,
+            "localized_target_warning_count": 0,
+            "target_signal_count": 0,
+            "target_warning_count": 0,
+            "unrelated_warning_count": 5,
+            "warning_count": 5
+          },
+          "analysis_succeeded": true,
+          "deterministic": true,
+          "duration_seconds": [
+            0.64178,
+            0.748373
+          ],
+          "localized_target_warning_observed_any": false,
+          "localized_target_warning_present": false,
+          "repetition_digests": [
+            "9b61ed1a5a390270f4e204282d55107bda629ac99d4b22e98ef5572edf615100",
+            "9b61ed1a5a390270f4e204282d55107bda629ac99d4b22e98ef5572edf615100"
+          ],
+          "revision": "250a6d17978f9f6ac3ac887091f2d32886fbbb0b",
+          "source_files": [
+            {
+              "bytes": 40021,
+              "path": "setuptools/package_index.py",
+              "sha256": "870ffc77a62224af26252657edcdc035002dbf31f6557be807516d0fc34f842e"
+            }
+          ],
+          "source_set_sha256": "5acae7628ed903796d0446136a801c1c658be62f4bcb8731913707d7f6136620"
+        },
+        "vulnerable": {
+          "analysis": {
+            "analysis_succeeded": true,
+            "audit_case_count": 5,
+            "audit_cases": [
+              {
+                "case_id": "case_1857074f1a446b1a",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "setuptools/package_index.py",
+                "guarantees": [],
+                "line": 1124,
+                "reason": "Missing proof for ssrf_possible: url.is_allowlisted.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 45,
+                  "verdict": "weak_signal"
+                },
+                "sanitizers": [],
+                "sink": "urllib.request.urlopen(url)",
+                "source": "url",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_1a26d18e9504be21",
+                "case_type": "xss_possible",
+                "cwe": "",
+                "file": "setuptools/package_index.py",
+                "guarantees": [],
+                "line": 952,
+                "reason": "Missing proof for xss_possible: HTML escaping proof at the sink.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 0,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_24593958ba0d2f67",
+                "case_type": "xss_possible",
+                "cwe": "",
+                "file": "setuptools/package_index.py",
+                "guarantees": [],
+                "line": 894,
+                "reason": "Missing proof for xss_possible: HTML escaping proof at the sink.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 0,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_31a756aa3ec19a7e",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "setuptools/package_index.py",
+                "guarantees": [],
+                "line": 682,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_4a79fc2f698407fc",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "setuptools/package_index.py",
+                "guarantees": [],
+                "line": 566,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              }
+            ],
+            "diagnostics": [],
+            "finding_count": 441,
+            "localized_target_warning_count": 0,
+            "target_signal_count": 0,
+            "target_warning_count": 0,
+            "unrelated_warning_count": 5,
+            "warning_count": 5
+          },
+          "analysis_succeeded": true,
+          "deterministic": true,
+          "duration_seconds": [
+            0.644871,
+            0.631054
+          ],
+          "localized_target_warning_observed_any": false,
+          "localized_target_warning_present": false,
+          "repetition_digests": [
+            "a334cb73df2c10b0c04edf15b3c8e8859a64a0f58538d42aa2dca637478d8965",
+            "a334cb73df2c10b0c04edf15b3c8e8859a64a0f58538d42aa2dca637478d8965"
+          ],
+          "revision": "d8390feaa99091d1ba9626bec0e4ba7072fc507a",
+          "source_files": [
+            {
+              "bytes": 39585,
+              "path": "setuptools/package_index.py",
+              "sha256": "f8118465ef4d061e3e4fe832997bbb1fbe9bfce9c0ff4667fa84f8d97c665556"
+            }
+          ],
+          "source_set_sha256": "1496dbca30789c52e2f9416dd6f354fb4573c35aab50b2aed21b27f7367399b0"
+        }
+      },
+      "vulnerable_revision": "d8390feaa99091d1ba9626bec0e4ba7072fc507a",
+      "vulnerable_warning_detected": false
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-xxh2-68g9-8jqr",
+      "case_type": "sql_injection_possible",
+      "cve_id": "CVE-2026-26198",
+      "cwe": "CWE-89",
+      "fixed_revision": "a03bae14fe01358d3eaf7e319fcd5db2e4956b16",
+      "fixed_warning_false_positive": false,
+      "id": "ormar-cve-2026-26198",
+      "license": {
+        "path": "LICENSE.md",
+        "spdx": "MIT"
+      },
+      "paired_vulnerable_only_discrimination": false,
+      "project": "ormar-orm/ormar",
+      "variants": {
+        "fixed": {
+          "analysis": {
+            "analysis_succeeded": true,
+            "audit_case_count": 7,
+            "audit_cases": [
+              {
+                "case_id": "case_3a8224a34d720609",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 659,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_7d8743284d3881ae",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 968,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_879a0a311c63583d",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 893,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_bff5974f18cf5b0b",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 573,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_e423a0ad0ecf97d8",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 1059,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_e586afb21ca13060",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 699,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_f5e7b3d9489bc51f",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 673,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              }
+            ],
+            "diagnostics": [],
+            "finding_count": 372,
+            "localized_target_warning_count": 0,
+            "target_signal_count": 0,
+            "target_warning_count": 0,
+            "unrelated_warning_count": 7,
+            "warning_count": 7
+          },
+          "analysis_succeeded": true,
+          "deterministic": true,
+          "duration_seconds": [
+            1.065422,
+            1.055925
+          ],
+          "localized_target_warning_observed_any": false,
+          "localized_target_warning_present": false,
+          "repetition_digests": [
+            "38b40e0b304c4e14d6f9a147b8213e6d6997ac16e0e71b9fbe0cf22c2df7b038",
+            "38b40e0b304c4e14d6f9a147b8213e6d6997ac16e0e71b9fbe0cf22c2df7b038"
+          ],
+          "revision": "a03bae14fe01358d3eaf7e319fcd5db2e4956b16",
+          "source_files": [
+            {
+              "bytes": 48854,
+              "path": "ormar/queryset/queryset.py",
+              "sha256": "52c792eb271e703348b6db94f7500c9d4022770f1cd290b9c4ce0e55310d1dcb"
+            }
+          ],
+          "source_set_sha256": "7c15b8fd3e9f1776c0b226b299569da944ae15264a91eefd40812d7a038e0989"
+        },
+        "vulnerable": {
+          "analysis": {
+            "analysis_succeeded": true,
+            "audit_case_count": 7,
+            "audit_cases": [
+              {
+                "case_id": "case_268472a926d95bdf",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 963,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_3a8224a34d720609",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 659,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_7af1f9928fc9b110",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 888,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_89697125524c4d51",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 699,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_bff5974f18cf5b0b",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 573,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_e8174a2a24cbfe1a",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 1054,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              },
+              {
+                "case_id": "case_f5e7b3d9489bc51f",
+                "case_type": "ssrf_possible",
+                "cwe": "CWE-918",
+                "file": "ormar/queryset/queryset.py",
+                "guarantees": [],
+                "line": 673,
+                "reason": "ssrf_possible has high-priority evidence and no sufficient local guarantee.",
+                "reportability": {
+                  "proof_state": "signal_only",
+                  "score": 5,
+                  "verdict": "likely_false_positive"
+                },
+                "sanitizers": [],
+                "sink": "",
+                "source": "",
+                "status": "needs_review"
+              }
+            ],
+            "diagnostics": [],
+            "finding_count": 370,
+            "localized_target_warning_count": 0,
+            "target_signal_count": 0,
+            "target_warning_count": 0,
+            "unrelated_warning_count": 7,
+            "warning_count": 7
+          },
+          "analysis_succeeded": true,
+          "deterministic": true,
+          "duration_seconds": [
+            1.006026,
+            1.058325
+          ],
+          "localized_target_warning_observed_any": false,
+          "localized_target_warning_present": false,
+          "repetition_digests": [
+            "1dc60e92704d52d9a890ab2ec11b0115c0e4d34959594d6acd7c855f1388e8dd",
+            "1dc60e92704d52d9a890ab2ec11b0115c0e4d34959594d6acd7c855f1388e8dd"
+          ],
+          "revision": "ef95d3214daf9ccfd5591ae51d8b2fbe4b66c633",
+          "source_files": [
+            {
+              "bytes": 48599,
+              "path": "ormar/queryset/queryset.py",
+              "sha256": "dc5f824e96212c0fb3a9fcdb3a3807943636e4a54b8384f8043d703687cbf929"
+            }
+          ],
+          "source_set_sha256": "350dd6dae637c8d6015090a5f43fb515412a30d5d56610b111942c0a125a8caf"
+        }
+      },
+      "vulnerable_revision": "ef95d3214daf9ccfd5591ae51d8b2fbe4b66c633",
+      "vulnerable_warning_detected": false
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-6h2f-wjhf-4wjx",
+      "case_type": "path_traversal_possible",
+      "cve_id": "CVE-2025-67720",
+      "cwe": "CWE-22",
+      "fixed_revision": "2f2d515575cc9c360bd74340a61a1d2b1e1f1f95",
+      "fixed_warning_false_positive": false,
+      "id": "pyrofork-cve-2025-67720",
+      "license": {
+        "path": "COPYING.lesser",
+        "spdx": "LGPL-3.0-only"
+      },
+      "paired_vulnerable_only_discrimination": false,
+      "project": "Mayuri-Chan/pyrofork",
+      "variants": {
+        "fixed": {
+          "analysis": {
+            "analysis_succeeded": true,
+            "audit_case_count": 0,
+            "audit_cases": [],
+            "diagnostics": [],
+            "finding_count": 28,
+            "localized_target_warning_count": 0,
+            "target_signal_count": 0,
+            "target_warning_count": 0,
+            "unrelated_warning_count": 0,
+            "warning_count": 0
+          },
+          "analysis_succeeded": true,
+          "deterministic": true,
+          "duration_seconds": [
+            0.114189,
+            0.12153
+          ],
+          "localized_target_warning_observed_any": false,
+          "localized_target_warning_present": false,
+          "repetition_digests": [
+            "533cc30165b1c9209883545b13c05c970eed40d174cc5b4b1c34911fee12311f",
+            "533cc30165b1c9209883545b13c05c970eed40d174cc5b4b1c34911fee12311f"
+          ],
+          "revision": "2f2d515575cc9c360bd74340a61a1d2b1e1f1f95",
+          "source_files": [
+            {
+              "bytes": 8130,
+              "path": "pyrogram/methods/messages/download_media.py",
+              "sha256": "1e524944b48598df4b1c5f5f83df276cd29b548e203b2a2214f89272937b46ca"
+            }
+          ],
+          "source_set_sha256": "19457ac754e8b2c0b22a2eca6b0df351d4d79571707fbfed17466e2aba3ce0e4"
+        },
+        "vulnerable": {
+          "analysis": {
+            "analysis_succeeded": true,
+            "audit_case_count": 0,
+            "audit_cases": [],
+            "diagnostics": [],
+            "finding_count": 27,
+            "localized_target_warning_count": 0,
+            "target_signal_count": 0,
+            "target_warning_count": 0,
+            "unrelated_warning_count": 0,
+            "warning_count": 0
+          },
+          "analysis_succeeded": true,
+          "deterministic": true,
+          "duration_seconds": [
+            0.096625,
+            0.099275
+          ],
+          "localized_target_warning_observed_any": false,
+          "localized_target_warning_present": false,
+          "repetition_digests": [
+            "ed901493bc55e1bba5926528d954549266670970f5f6e0a88240d4aef60acb4f",
+            "ed901493bc55e1bba5926528d954549266670970f5f6e0a88240d4aef60acb4f"
+          ],
+          "revision": "e9c40679d2d1202ef284fa0dd0695316352ba742",
+          "source_files": [
+            {
+              "bytes": 7693,
+              "path": "pyrogram/methods/messages/download_media.py",
+              "sha256": "017d3504b5ad85be5cd68bc56fe663bc990f40024bf383b3720a204243affec7"
+            }
+          ],
+          "source_set_sha256": "797f83119889c157cb6eebfd81c562aee2b3a99d8eb5e448a5414e007c911bb5"
+        }
+      },
+      "vulnerable_revision": "e9c40679d2d1202ef284fa0dd0695316352ba742",
+      "vulnerable_warning_detected": false
+    }
+  ],
+  "corpus": {
+    "classification": {
+      "claim_boundary": "Public first-exposure, advisory-localized changed-file sensitivity with fixed-revision controls; not a repository-blind scan, vulnerability confirmation, precision estimate, SecPass result, or leaderboard comparison.",
+      "dynamic_execution": false,
+      "evaluation_mode": "oracle_localized_changed_file_pair",
+      "negative_controls_present": true,
+      "project_disjoint_from_susvibes_v1": true,
+      "role": "public_first_exposure_baseline",
+      "secpass_comparable": false
+    },
+    "corpus_id": "belief-open-source-pairs-public-v1",
+    "manifest_name": "cases.json",
+    "manifest_sha256": "33481a554e1d228fca0d6bd907878c01620da0100d0283349592601b9a9510a5"
+  },
+  "deterministic_digest": "2b9e59b71bc3017d53136e62b0bc1d8fd933974b48a0dfd15c1edb1673d13915",
+  "duration_seconds": 8.095658,
+  "exit_code": 1,
+  "metrics": {
+    "analysis_error_count": 0,
+    "case_count": 3,
+    "deterministic_repetition_rate": 1.0,
+    "deterministic_variant_count": 6,
+    "fixed_warning_false_positive_count": 0,
+    "fixed_warning_false_positive_rate": 0.0,
+    "paired_discrimination_count": 0,
+    "paired_discrimination_rate": 0.0,
+    "unrelated_warning_count_fixed": 12,
+    "unrelated_warning_count_vulnerable": 12,
+    "variant_count": 6,
+    "vulnerable_warning_count": 0,
+    "vulnerable_warning_recall": 0.0
+  },
+  "repetitions_per_variant": 2,
+  "runner_version": "open_source_pairs_static_v1",
+  "schema_version": "belief.open_source_pairs_result.v1",
+  "status": "failed",
+  "threshold_evaluation": {
+    "maximum_analysis_error_count": {
+      "actual": 0,
+      "comparator": "<=",
+      "metric": "analysis_error_count",
+      "passed": true,
+      "threshold": 0
+    },
+    "maximum_fixed_warning_false_positive_rate": {
+      "actual": 0.0,
+      "comparator": "<=",
+      "metric": "fixed_warning_false_positive_rate",
+      "passed": true,
+      "threshold": 0.2
+    },
+    "minimum_deterministic_repetition_rate": {
+      "actual": 1.0,
+      "comparator": ">=",
+      "metric": "deterministic_repetition_rate",
+      "passed": true,
+      "threshold": 1.0
+    },
+    "minimum_paired_discrimination_rate": {
+      "actual": 0.0,
+      "comparator": ">=",
+      "metric": "paired_discrimination_rate",
+      "passed": false,
+      "threshold": 0.4
+    },
+    "minimum_vulnerable_warning_recall": {
+      "actual": 0.0,
+      "comparator": ">=",
+      "metric": "vulnerable_warning_recall",
+      "passed": false,
+      "threshold": 0.5
+    }
+  },
+  "thresholds": {
+    "maximum_analysis_error_count": 0,
+    "maximum_fixed_warning_false_positive_rate": 0.2,
+    "minimum_deterministic_repetition_rate": 1.0,
+    "minimum_paired_discrimination_rate": 0.4,
+    "minimum_vulnerable_warning_recall": 0.5
+  }
+}

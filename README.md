@@ -435,6 +435,28 @@ outperforms Fable 5 or Kimi. The preserved
 the negative baseline, recovery bounds, independent controls, and remaining
 CWE-338/CWE-798 blind spots.
 
+The new
+[`public open-source pair benchmark`](benchmark_open_source_pairs/README.md)
+adds fixed-revision controls for three Python projects absent from the pinned
+SusVibes v1 project set: setuptools (CWE-22), ormar (CWE-89), and Pyrofork
+(CWE-22). It reads only SHA-256-bound Git blobs, runs two static repetitions
+per revision, and never imports, installs, or executes the projects:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_open_source_pairs_benchmark.py `
+  --repos-root F:\belief-rd\open-source-pairs-v1\repos `
+  --output benchmark_open_source_pairs_results\public-pairs-v1.json
+```
+
+The frozen
+[`v1 baseline`](docs/OPEN_SOURCE_PAIRS_RESULT_V1.md) is negative: targeted
+vulnerable recall and paired discrimination are both `0.0`, while all six
+variants are deterministic and error-free. Twelve unrelated warnings occur on
+each side of the pairs. The result identifies missing library-argument,
+interprocedural return-to-write, and dynamic ORM identifier models; it is not
+repository-blind discovery, general precision, `SecPass`, or a leaderboard
+claim.
+
 ---
 
 ## Toolchain Manager / Orchestrator v1
@@ -1081,6 +1103,12 @@ benchmark_cyberseceval/
 benchmark_cyberseceval_results/
   Immutable, digest-bound CyberSecEval static preflight result artifacts.
 
+benchmark_open_source_pairs/
+  SHA-256-bound public vulnerable/fixed source-pair corpus and protocol.
+
+benchmark_open_source_pairs_results/
+  Immutable paired-source baseline result artifacts.
+
 schemas/
   Strict public JSON schemas plus documentation-only schemas for selected
   BELIEF data formats.
@@ -1143,6 +1171,8 @@ pyproject.toml
 - [`docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V1.md`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V1.md)
 - [`docs/CYBERSECEVAL_STATIC_PREFLIGHT_V2_PROTOCOL.md`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_V2_PROTOCOL.md)
 - [`docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V2.md`](docs/CYBERSECEVAL_STATIC_PREFLIGHT_RESULT_V2.md)
+- [`docs/OPEN_SOURCE_PAIRS_RESULT_V1.md`](docs/OPEN_SOURCE_PAIRS_RESULT_V1.md)
+- [`benchmark_open_source_pairs/README.md`](benchmark_open_source_pairs/README.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`BUNDLED_ASSETS.md`](BUNDLED_ASSETS.md)
 

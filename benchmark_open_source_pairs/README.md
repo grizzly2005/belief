@@ -56,3 +56,17 @@ Exit code `0` means every frozen threshold passed, `1` means a measured gate
 failed, and `2` means the corpus, checkout, source binding, or execution
 precondition was invalid. A failed benchmark result is still retained as
 evidence and must not be overwritten.
+
+## Frozen v1 result
+
+The first result at BELIEF revision
+`bb630a91e3c32fddd0f1e40a5fa2846d4c7fd2d2` is intentionally retained as a
+negative baseline. All six vulnerable/fixed variants were deterministic and
+completed without analysis errors, but target warning recall and paired
+discrimination were both `0.0`. Target-specific fixed false positives were
+also `0.0`; separately, 12 unrelated warnings appeared on each side of the
+pairs.
+
+See [`docs/OPEN_SOURCE_PAIRS_RESULT_V1.md`](../docs/OPEN_SOURCE_PAIRS_RESULT_V1.md)
+for the exact binding, failed gates, operational attempt log, limitations, and
+next development gate.

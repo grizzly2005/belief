@@ -4,3 +4,5 @@
 # digest stops matching, and the fail-closed integrity gate refuses the corpus
 # on a tree nobody actually modified.
 benchmark_web_validation/development/sources/** -text
+benchmark_open_source_pairs/cases.json -text
+benchmark_open_source_pairs_results/*.json -text
