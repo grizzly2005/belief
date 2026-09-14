@@ -92,6 +92,47 @@ def _cases(
     return build_audit_cases(findings, dataflow_summaries=summaries)
 
 
+def test_distinct_rules_at_same_endpoint_remain_distinct_cases() -> None:
+    metadata = {
+        "dataflow": {
+            "source": "request.filename",
+            "sink": "open",
+            "source_line": 2,
+            "sink_line": 4,
+        }
+    }
+    findings = [
+        Finding(
+            source="detector-a",
+            rule_id="RULE-A",
+            title="first",
+            description="first",
+            file="app.py",
+            line=4,
+            cwe="CWE-22",
+            severity="high",
+            confidence=0.9,
+            metadata=dict(metadata),
+        ),
+        Finding(
+            source="detector-b",
+            rule_id="RULE-B",
+            title="second",
+            description="second",
+            file="app.py",
+            line=4,
+            cwe="CWE-22",
+            severity="high",
+            confidence=0.9,
+            metadata=dict(metadata),
+        ),
+    ]
+
+    cases = build_audit_cases(findings)
+
+    assert [case.rule_id for case in cases] == ["RULE-A", "RULE-B"]
+
+
 def _route_case(file_path: str, line: int) -> AuditCase:
     return build_audit_cases([
         Finding(

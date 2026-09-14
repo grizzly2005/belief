@@ -732,6 +732,7 @@ def _dedupe_cases(cases: Iterable[AuditCase]) -> list[AuditCase]:
             case.case_type,
             _norm_path(case.file),
             case.line or 0,
+            case.rule_id,
             case.source,
             case.sink,
         )
