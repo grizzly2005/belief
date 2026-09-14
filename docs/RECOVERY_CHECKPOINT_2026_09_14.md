@@ -71,6 +71,44 @@ Both high-confidence signals came from the download detector; path analysis
 emitted 47 lower-confidence findings and zero high-confidence findings.
 This presumed-safe corpus is a regression check, not a security certification.
 
+### Frozen paired benchmark: remaining gate failure
+
+Two independent CLI invocations on clean commit
+`a8c99519ba0e2eea6428db3a17dfd77b6adef622` returned exit 1, with identical
+metrics and deterministic digest
+`691b874eed3a02047eb9b7cac2efa19c44aa0473b3510f3e5bfc0193e914fa45`.
+Each invocation also repeats both variants of every pair internally.
+The manifest, source blobs, line ranges and thresholds were not changed.
+
+| Metric | Observed |
+|---|---|
+| Vulnerable warning recall | 3/3 |
+| Fixed-revision warnings | 1/3 |
+| Paired discrimination | 2/3 |
+| Deterministic repetition | 100% |
+| Analysis errors | 0 |
+| Frozen gate | FAIL |
+
+The remaining fixed-revision warning is the path helper in Setuptools at
+`setuptools/package_index.py:844`, revision
+`250a6d17978f9f6ac3ac887091f2d32886fbbb0b`. That helper uses
+`filename.startswith(str(tmpdir))` as its rejection guard. The revised
+detector deliberately does not treat a string-prefix check as containment.
+A pure local path probe confirms that `/synthetic/download-sibling/file.bin`
+starts with `/synthetic/download` while lying outside that directory by path
+components. This is evidence about the guard's semantics, not a demonstration
+of an exploitable upstream vulnerability or knowledge of its runtime root.
+
+Do not suppress the warning, weaken the threshold or relabel the frozen case
+to obtain a passing result. The next evaluation step is to adjudicate the
+negative-control assumption with a bounded local fixture and explicit root
+semantics, then record any corpus correction in a separately versioned corpus.
+The current gate remains failed and this checkpoint is not a release approval.
+
+Full results:
+[run 1](../benchmark_open_source_pairs_results/recovery-v2-run1.json) and
+[run 2](../benchmark_open_source_pairs_results/recovery-v2-run2.json).
+
 ## Remaining work
 
 1. Freeze a new independent corpus of 20–30 projects before detector tuning;
