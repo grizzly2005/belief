@@ -100,10 +100,12 @@ components. This is evidence about the guard's semantics, not a demonstration
 of an exploitable upstream vulnerability or knowledge of its runtime root.
 
 Do not suppress the warning, weaken the threshold or relabel the frozen case
-to obtain a passing result. The next evaluation step is to adjudicate the
-negative-control assumption with a bounded local fixture and explicit root
-semantics, then record any corpus correction in a separately versioned corpus.
-The current gate remains failed and this checkpoint is not a release approval.
+to obtain a passing result. The
+[September 15 adjudication](SETUPTOOLS_PAIR_ADJUDICATION_2026_09_15.md) now
+executes the two pinned pure helpers and reproduces the sibling selection
+under explicit synthetic-root assumptions. It preserves the frozen gate
+failure; any corpus correction requires a separately versioned corpus.
+This checkpoint is not a release approval.
 
 Full results:
 [run 1](../benchmark_open_source_pairs_results/recovery-v2-run1.json) and
@@ -117,8 +119,39 @@ Full results:
    that target/executor/oracle identities come from an external trust boundary.
 3. Add signing and verification outside the serializer, then check two
    independent producers/consumers and SARIF interoperability.
-4. Add a read-only accepted-observation PDX consumer. Accepted receipt metadata
-   remains a signal until BELIEF attempt/result/evidence requirements are met.
+The accepted-observation consumer was completed on September 15. The
+[PDX integration documentation](PDX_BELIEF_INTEGRATION.md#read-accepted-observations)
+describes `PDXEvidenceStore.iter_accepted_observations()`, the read-only
+`pdx list-observations` CLI, and its informational `ValidationResult` adapter.
+Accepted receipt metadata remains a signal until BELIEF
+attempt/result/evidence requirements are met.
+
+## September 15 continuation verification
+
+The focused PDX run passed **50 tests, 2 skipped**, exit 0 in 5.79 seconds.
+It exercised the real adjacent PDX checkout through fixture persistence,
+attestation export, import/replay, accepted-observation listing and the
+informational adapter. Two symlink-creation tests were skipped because this
+Windows host does not permit creating those links.
+
+The complete selected offline regression then passed **1868 tests, 37
+skipped, 6 warnings**, exit 0 in 191.18 seconds, with `PDX_REPO` set to the
+adjacent checkout. The same `not llm and not external and not slow` selection
+was used. The six existing AST deprecation warnings remain. The skipped and
+excluded paths, other operating systems and hostile filesystem replacement
+outside the cooperative store lock are not claimed as verified.
+
+Ruff over `belief tests tests_bridges` and the adjudication script returned
+exit 0. `git diff --check` passed. The two pure-helper adjudication invocations
+returned exit 0 with identical output bytes; the frozen paired benchmark was
+not rerun or modified in this continuation.
+
+Tests ran in BelowNormal priority on two logical processors. Before the full
+run, Overwatch was running, free RAM was approximately 34.3 GiB and the CPU
+snapshot was 12%. The PDX checkout's HEAD, status fingerprint and tracked-diff
+fingerprint matched before and after the run; its 29 pre-existing status
+entries were retained. Only temporary fixture stores were written by the
+cross-repository test.
 
 ## Primary specifications
 
