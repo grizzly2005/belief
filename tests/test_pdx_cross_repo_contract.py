@@ -251,6 +251,36 @@ def test_real_pdx_cli_attestation_imports_and_replays_through_belief_cli(tmp_pat
     )
     assert second["replayed"] is True
     assert second["receipt"]["receipt_id"] == first["receipt"]["receipt_id"]
+    listed = subprocess.run(
+        [sys.executable, "-m", "belief", "pdx", "list-observations", "--store-dir", str(journal)],
+        cwd=belief_repo,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=_SUBPROCESS_TIMEOUT_SECONDS,
+    )
+    assert listed.returncode == 0, listed.stderr
+    listing = json.loads(listed.stdout)
+    assert listing["count"] == 1
+    projection = listing["observations"][0]
+    assert projection["capture_id"] == metadata["capture_id"]
+    assert projection["target_id"] == metadata["target_id"]
+    assert projection["receipt_id"] == first["receipt"]["receipt_id"]
+    assert projection["proof_state"] == "signal_only_no_belief_attempt_result_evidence"
+    assert "request_bytes" not in projection and "response_bytes" not in projection
+
+    from belief.pdx.attestation_store import PDXEvidenceStore
+    from belief.validation.pdx_observation import pdx_observation_to_validation_result
+
+    observation = next(PDXEvidenceStore(journal, read_only=True).iter_accepted_observations())
+    assert observation.to_dict() == projection
+    signal = pdx_observation_to_validation_result(observation)
+    assert signal.outcome == "informational"
+    assert signal.tested is False
+    assert signal.human_validated is False
+    assert signal.metadata["positive_evidence"] is False
+    assert "validation_proof" not in signal.metadata
     pdx_schema = (
         pdx_repo / "schemas" / "pdx-observation-attestation-v1.schema.json"
     ).read_bytes().replace(b"\r\n", b"\n")

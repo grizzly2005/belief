@@ -1609,6 +1609,28 @@ def _import_passive_tool_result(tool_id: str, path: str | Path, registry=None):
 
 def cmd_pdx(args):
     """Import/export BELIEF's JSON-only PDX adapter format."""
+    if args.pdx_command == "list-observations":
+        from .pdx.attestation_store import (
+            ACCEPTED_OBSERVATIONS_SCHEMA_VERSION,
+            PDXEvidenceStore,
+        )
+
+        try:
+            store = PDXEvidenceStore(args.store_dir, read_only=True)
+            observations = [item.to_dict() for item in store.iter_accepted_observations(
+                engagement_id=args.engagement_id,
+                target_id=args.target_id,
+            )]
+        except (OSError, ValueError) as exc:
+            safe_print(f"ERROR: failed to list PDX observations: {exc}", file=sys.stderr)
+            sys.exit(2)
+        safe_print(json.dumps({
+            "schema_version": ACCEPTED_OBSERVATIONS_SCHEMA_VERSION,
+            "count": len(observations),
+            "observations": observations,
+        }, indent=2, sort_keys=True))
+        return
+
     if args.pdx_command == "register-engagement":
         from .json_contracts import StrictJSONError, load_json_file
         from .pdx.attestation import PDXAttestationError
@@ -2345,6 +2367,15 @@ def main():
         default="belief_pdx_evidence",
         help="Persistent PDX evidence journal directory",
     )
+
+    p_pdx_observations = pdx_sub.add_parser(
+        "list-observations", help="Read accepted observation metadata without proof promotion",
+    )
+    p_pdx_observations.add_argument(
+        "--store-dir", default="belief_pdx_evidence", help="Existing PDX evidence journal directory",
+    )
+    p_pdx_observations.add_argument("--engagement-id", default=None, help="Filter by exact engagement id")
+    p_pdx_observations.add_argument("--target-id", default=None, help="Filter by exact PDX target id")
 
     # feedback
     p_feedback = sub.add_parser("feedback", help="Manage append-only BELIEF feedback JSONL")

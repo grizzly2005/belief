@@ -402,3 +402,314 @@ def test_cli_registers_and_imports_with_structured_replay_output(tmp_path):
     assert json.loads(imported.stdout)["receipt"]["status"] == "ACCEPT"
     assert replayed.returncode == 0, replayed.stderr
     assert json.loads(replayed.stdout)["replayed"] is True
+
+
+def _store_snapshot(root):
+    """Content and modification times, including directories and the lock."""
+    if not root.exists():
+        return {}
+    return {
+        str(path.relative_to(root)): (
+            path.stat().st_mtime_ns,
+            hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None,
+        )
+        for path in [root, *root.rglob("*")]
+    }
+
+
+def _accepted_store(root):
+    store = PDXEvidenceStore(root)
+    store.register_engagement(_engagement())
+    receipt = store.import_attestation_bytes(
+        _raw(_attestation()), received_at="2026-08-23T10:02:00Z",
+    ).receipt
+    return store, receipt
+
+
+def _rewrite_receipt(root, receipt):
+    """Rehash test corruption so structural checks, not just hashes, are exercised."""
+    receipt = copy.deepcopy(receipt)
+    receipt["receipt_id"] = None
+    receipt["integrity"]["receipt_sha256"] = None
+    digest = hashlib.sha256(_raw(receipt).removesuffix(b"\n")).hexdigest()
+    receipt["receipt_id"] = f"belief:pdx-receipt:sha256:{digest}"
+    receipt["integrity"]["receipt_sha256"] = digest
+    raw_hash = receipt["raw_sha256"]
+    path = root / "receipts" / "sha256" / raw_hash[:2] / f"{raw_hash}.json"
+    path.write_bytes(_raw(receipt))
+
+
+def test_accepted_reader_is_read_only_deterministic_and_preserves_receipt_lineage(tmp_path):
+    store, first = _accepted_store(tmp_path)
+    second = store.import_attestation_bytes(_raw(_attestation(
+        created_at="2026-08-23T10:03:00Z", partial=True,
+        observation__truncated_any=True,
+    )), received_at="2026-08-23T10:04:00Z").receipt
+    rejected = store.import_attestation_bytes(b"not JSON").receipt
+    quarantined = store.import_attestation_bytes(_raw(_attestation(
+        engagement__scope_sha256="9" * 64,
+    ))).receipt
+    assert (rejected["status"], quarantined["status"]) == ("REJECT", "QUARANTINE")
+    temporary = store.receipts_dir / ".receipt.json.tmp-interrupted"
+    temporary.write_bytes(b"keep an interrupted writer's temporary file")
+    before = _store_snapshot(tmp_path)
+
+    reader = PDXEvidenceStore(tmp_path, read_only=True)
+    rows = list(reader.iter_accepted_observations())
+    assert _store_snapshot(tmp_path) == before
+    assert len(rows) == 2
+    assert [item.receipt_id for item in rows] == sorted([first["receipt_id"], second["receipt_id"]])
+    assert {item.capture_id for item in rows} == {CAPTURE_ID}
+    assert rows == list(reader.iter_accepted_observations(engagement_id="engagement-alpha", target_id=TARGET_ID))
+    assert list(reader.iter_accepted_observations(target_id=OTHER_TARGET_ID)) == []
+    assert list(reader.iter_accepted_observations(engagement_id="another-engagement")) == []
+    partial = next(item for item in rows if item.receipt_id == second["receipt_id"])
+    assert "identity_non_joinable_signal_only" in partial.caveats
+    assert "source_observation_truncated" in partial.caveats
+    assert "observation_already_imported" in partial.caveats
+    assert partial.proof_state == "signal_only_no_belief_attempt_result_evidence"
+    exported = partial.to_dict()
+    exported["caveats"].clear()
+    assert partial.caveats
+    serialized = json.dumps([item.to_dict() for item in rows])
+    for absent in ("request_bytes", "response_bytes", "request_sha256", "response_sha256", "pdx_cas_references"):
+        assert absent not in serialized
+    assert _store_snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("missing", ["store", "lock", "receipts"])
+def test_read_only_open_refuses_incomplete_stores_without_creating_files(tmp_path, missing):
+    root = tmp_path / "journal"
+    if missing != "store":
+        store = PDXEvidenceStore(root)
+        if missing == "lock":
+            store.lock_path.unlink()
+        else:
+            store.receipts_dir.rmdir()
+    before = _store_snapshot(root)
+    with pytest.raises(PDXEvidenceStoreError):
+        PDXEvidenceStore(root, read_only=True)
+    assert _store_snapshot(root) == before
+
+
+@pytest.mark.parametrize("operation", ["register", "import_bytes", "import_file"])
+def test_read_only_instance_rejects_mutating_operations(tmp_path, operation):
+    _accepted_store(tmp_path)
+    reader = PDXEvidenceStore(tmp_path, read_only=True)
+    before = _store_snapshot(tmp_path)
+    with pytest.raises(PDXEvidenceStoreError, match="read-only"):
+        if operation == "register":
+            reader.register_engagement(_engagement())
+        elif operation == "import_bytes":
+            reader.import_attestation_bytes(_raw(_attestation()))
+        else:
+            reader.import_attestation_file(tmp_path / "never-read.json")
+    assert _store_snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("corruption", [
+    "status_type", "accept_with_reason", "duplicate_capture", "proof_promotion",
+    "raw_bytes", "nonaccept_refs", "unsupported_schema",
+])
+def test_reader_rejects_rehashed_invalid_receipts(tmp_path, corruption):
+    _, receipt = _accepted_store(tmp_path)
+    if corruption == "status_type":
+        receipt["status"] = []
+    elif corruption == "accept_with_reason":
+        receipt["reason_codes"] = ["target_not_authorized"]
+    elif corruption == "duplicate_capture":
+        receipt["observation_refs"] *= 2
+    elif corruption == "proof_promotion":
+        receipt["observation_refs"][0]["proof_state"] = "verified"
+    elif corruption == "raw_bytes":
+        receipt["observation_refs"][0]["request_bytes"] = "secret"
+    elif corruption == "nonaccept_refs":
+        receipt["status"] = "QUARANTINE"
+        receipt["reason_codes"] = ["target_not_authorized"]
+    else:
+        receipt["schema_version"] = "belief.pdx_attestation_receipt.v999"
+    _rewrite_receipt(tmp_path, receipt)
+    reader = PDXEvidenceStore(tmp_path, read_only=True)
+    with pytest.raises(PDXEvidenceStoreError, match="corrupt"):
+        reader.iter_accepted_observations()
+
+
+@pytest.mark.parametrize("raw", [b'{"status":"ACCEPT","status":"REJECT"}', b"[" * 2000 + b"]" * 2000])
+@pytest.mark.parametrize("filtered", [False, True])
+def test_reader_validates_entire_snapshot_before_exposing_any_rows(tmp_path, raw, filtered):
+    store, _ = _accepted_store(tmp_path)
+    # This malformed receipt sorts after the accepted one. An eager validation
+    # failure must occur at the call, even when no accepted row matches a filter.
+    path = store.receipts_dir / "ff" / ("f" * 64 + ".json")
+    path.parent.mkdir(exist_ok=True)
+    path.write_bytes(raw)
+    reader = PDXEvidenceStore(tmp_path, read_only=True)
+    with pytest.raises(PDXEvidenceStoreError, match="corrupt"):
+        reader.iter_accepted_observations(target_id=OTHER_TARGET_ID if filtered else None)
+
+
+def test_reader_detects_hash_tampering_and_noncanonical_shards(tmp_path):
+    store, receipt = _accepted_store(tmp_path)
+    path = next(store.receipts_dir.rglob("*.json"))
+    original = path.read_bytes()
+    path.write_bytes(original.replace(b"engagement-alpha", b"engagement-other"))
+    reader = PDXEvidenceStore(tmp_path, read_only=True)
+    with pytest.raises(PDXEvidenceStoreError, match="corrupt"):
+        reader.iter_accepted_observations()
+    path.write_bytes(original)
+    wrong = store.receipts_dir / "wrong" / f'{receipt["raw_sha256"]}.json'
+    wrong.parent.mkdir()
+    wrong.write_bytes(original)
+    with pytest.raises(PDXEvidenceStoreError, match="noncanonical"):
+        reader.iter_accepted_observations()
+
+
+def test_reader_rejects_conflicting_accepted_hashes_even_if_rehashed(tmp_path):
+    store, _ = _accepted_store(tmp_path)
+    receipt = store.import_attestation_bytes(_raw(_attestation(
+        created_at="2026-08-23T10:03:00Z",
+    ))).receipt
+    receipt["observation_refs"][0]["observation_hash"] = "3" * 64
+    _rewrite_receipt(tmp_path, receipt)
+    with pytest.raises(PDXEvidenceStoreError, match="capture hash conflict"):
+        PDXEvidenceStore(tmp_path, read_only=True).iter_accepted_observations()
+
+
+def test_reader_enforces_limits_and_does_not_silently_truncate(tmp_path):
+    store, _ = _accepted_store(tmp_path)
+    store.import_attestation_bytes(b"invalid")
+    reader = PDXEvidenceStore(tmp_path, read_only=True)
+    total_bytes = sum(path.stat().st_size for path in store.receipts_dir.rglob("*.json"))
+    assert len(list(reader.iter_accepted_observations(max_total_bytes=total_bytes))) == 1
+    with pytest.raises(PDXEvidenceStoreError, match="max_receipts"):
+        reader.iter_accepted_observations(max_receipts=1)
+    with pytest.raises(PDXEvidenceStoreError, match="byte limit"):
+        reader.iter_accepted_observations(max_total_bytes=total_bytes - 1)
+    assert len(list(PDXEvidenceStore(tmp_path, read_only=True, max_input_bytes=16)
+                    .iter_accepted_observations())) == 1
+    for invalid in (0, -1, True, 1.5):
+        with pytest.raises(ValueError):
+            reader.iter_accepted_observations(max_receipts=invalid)
+    with pytest.raises(ValueError, match="filter"):
+        reader.iter_accepted_observations(target_id="*")
+
+
+def test_reader_returns_a_complete_snapshot_without_retaining_the_process_lock(tmp_path):
+    store, _ = _accepted_store(tmp_path)
+    reader = PDXEvidenceStore(tmp_path, read_only=True)
+    snapshot = reader.iter_accepted_observations()
+    store.import_attestation_bytes(_raw(_attestation(created_at="2026-08-23T10:03:00Z")))
+    assert len(list(snapshot)) == 1
+    assert len(list(reader.iter_accepted_observations())) == 2
+
+
+def test_cli_lists_signal_only_metadata_without_writes_and_fails_without_partial_output(tmp_path):
+    store, _ = _accepted_store(tmp_path)
+    store.import_attestation_bytes(b"invalid")
+    store.import_attestation_bytes(_raw(_attestation(engagement__scope_sha256="9" * 64)))
+    command = [sys.executable, "-m", "belief", "pdx", "list-observations", "--store-dir", str(tmp_path)]
+    before = _store_snapshot(tmp_path)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == "belief.pdx_accepted_observations.v1"
+    assert payload["count"] == 1
+    assert payload["observations"][0]["proof_state"] == "signal_only_no_belief_attempt_result_evidence"
+    assert _store_snapshot(tmp_path) == before
+    filtered = subprocess.run(command + ["--target-id", OTHER_TARGET_ID], capture_output=True, text=True, timeout=30)
+    assert filtered.returncode == 0, filtered.stderr
+    assert json.loads(filtered.stdout)["count"] == 0
+    damaged = next(store.receipts_dir.rglob("*.json"))
+    damaged.write_bytes(b"invalid")
+    before_error = _store_snapshot(tmp_path)
+    error = subprocess.run(command, capture_output=True, text=True, timeout=30)
+    assert error.returncode == 2
+    assert error.stdout == ""
+    assert "corrupt" in error.stderr
+    assert _store_snapshot(tmp_path) == before_error
+    missing = tmp_path / "missing-journal"
+    error = subprocess.run(command[:-1] + [str(missing)], capture_output=True, text=True, timeout=30)
+    assert error.returncode == 2
+    assert error.stdout == ""
+    assert not missing.exists()
+
+
+def test_accepted_observation_adapter_and_round_trip_cannot_promote_reportability(tmp_path):
+    from dataclasses import replace
+
+    from belief.audit_case import AuditCase
+    from belief.reportability.scoring import assess_audit_case_reportability
+    from belief.validation.models import ValidationResult
+    from belief.validation.pdx_observation import pdx_observation_to_validation_result
+    from belief.validation.proof import assess_validation_result_proof
+
+    _accepted_store(tmp_path)
+    observation = next(PDXEvidenceStore(tmp_path, read_only=True).iter_accepted_observations())
+    result = pdx_observation_to_validation_result(observation)
+    assert result.outcome == "informational"
+    assert result.confidence <= 0.5
+    assert result.tested is False
+    assert result.human_validated is False
+    assert result.metadata["positive_evidence"] is False
+    assert result.metadata["pdx_observation"] == observation.to_dict()
+    assert observation.receipt_id in result.evidence
+    replay = ValidationResult.from_dict(result.to_dict())
+    assert replay.to_dict() == result.to_dict()
+    proof = assess_validation_result_proof(
+        replay, proof_index=None, engagement_id=observation.engagement_id,
+        target_id=observation.target_id, subject_id=observation.capture_id,
+        subject_kind="pdx_observation", plan_id="", subject_sha256="f" * 64,
+    )
+    assert proof.state == "signal_only"
+    baseline = AuditCase(
+        case_id="case-pdx", case_type="external_tool_signal", status="needs_review",
+        review_priority="medium", confidence=0.5, severity="medium", file="app.py",
+        line=1, rule_id="PDX_OBSERVATION", cwe="CWE-862",
+    )
+    enriched = replace(baseline, metadata={"validation_results": [replay.to_dict()]})
+    before = assess_audit_case_reportability(baseline)
+    after = assess_audit_case_reportability(enriched)
+    assert after.score == before.score
+    assert after.verdict == before.verdict
+    assert after.proof_state == "signal_only"
+    assert after.verdict != "reportable_candidate"
+    assert "unverified validation claims ignored" in after.negative_factors
+
+
+def test_small_input_limit_does_not_break_replay_of_a_larger_rejection_receipt(tmp_path):
+    store = PDXEvidenceStore(tmp_path, max_input_bytes=16)
+    first = store.import_attestation_bytes(b"invalid")
+    replay = store.import_attestation_bytes(b"invalid")
+    assert replay.replayed is True
+    assert replay.receipt == first.receipt
+    assert list(PDXEvidenceStore(tmp_path, read_only=True).iter_accepted_observations()) == []
+
+
+def test_reader_rejects_a_receipt_above_the_per_file_byte_limit(tmp_path):
+    store, _ = _accepted_store(tmp_path)
+    path = next(store.receipts_dir.rglob("*.json"))
+    with path.open("ab") as handle:
+        handle.write(b" " * (2 * 1024 * 1024))
+    with pytest.raises(PDXEvidenceStoreError, match="byte limit"):
+        PDXEvidenceStore(tmp_path, read_only=True).iter_accepted_observations()
+
+
+@pytest.mark.parametrize("redirect", ["receipt", "shard"])
+def test_reader_rejects_redirected_files_and_directories(tmp_path, redirect):
+    store, _ = _accepted_store(tmp_path / "journal")
+    external = tmp_path / "elsewhere"
+    external.mkdir()
+    if redirect == "receipt":
+        link = next(store.receipts_dir.rglob("*.json"))
+        target = external / "receipt.json"
+        target.write_bytes(link.read_bytes())
+        link.unlink()
+    else:
+        link = store.receipts_dir / "unused-shard"
+        target = external
+    try:
+        link.symlink_to(target, target_is_directory=redirect == "shard")
+    except OSError:
+        pytest.skip("this host does not permit creating test symlinks")
+    with pytest.raises(PDXEvidenceStoreError, match="redirected"):
+        PDXEvidenceStore(store.root, read_only=True).iter_accepted_observations()

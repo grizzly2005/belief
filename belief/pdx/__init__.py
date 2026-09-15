@@ -1,7 +1,12 @@
 """JSON-only PDX adapter for BELIEF."""
 
 from .attestation import PDXAttestationError, parse_attestation, parse_engagement
-from .attestation_store import AttestationImportResult, PDXEvidenceStore, PDXEvidenceStoreError
+from .attestation_store import (
+    AcceptedPDXObservation,
+    AttestationImportResult,
+    PDXEvidenceStore,
+    PDXEvidenceStoreError,
+)
 from .models import (
     PDXBundle,
     PDXChain,
@@ -13,6 +18,7 @@ from .models import (
 )
 
 __all__ = [
+    "AcceptedPDXObservation",
     "AttestationImportResult",
     "PDXAttestationError",
     "PDXBundle",
