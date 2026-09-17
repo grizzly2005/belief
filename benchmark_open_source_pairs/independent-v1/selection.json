@@ -1,0 +1,4442 @@
+{
+  "advisory_count": 300,
+  "ordered_project_candidates": [
+    {
+      "commits": [
+        [
+          "https://github.com/mar10/wsgidav/commit/6f35776c9188f130ab044ce557015d51aaa83500",
+          "6f35776c9188f130ab044ce557015d51aaa83500"
+        ]
+      ],
+      "cve": "CVE-2026-55509",
+      "ghsa": "GHSA-p6gw-4frg-j7jw",
+      "project": "mar10/wsgidav",
+      "published": "2026-08-28T18:12:17Z",
+      "summary": "WsgiDAV MySQL provider has a blind SQL injection"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/ronf/asyncssh/commit/d730803b8e4e94c20c7580d90f94d1e05f9f58de",
+          "d730803b8e4e94c20c7580d90f94d1e05f9f58de"
+        ]
+      ],
+      "cve": "CVE-2026-54591",
+      "ghsa": "GHSA-2wxc-x7rj-hg8f",
+      "project": "ronf/asyncssh",
+      "published": "2026-08-26T15:34:22Z",
+      "summary": "asyncssh has SCP Path Traversal to Arbitrary File Write"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/MervinPraison/PraisonAI/commit/2f9677abb2ea68eab864ee8b6a828fd0141612e1",
+          "2f9677abb2ea68eab864ee8b6a828fd0141612e1"
+        ]
+      ],
+      "cve": "CVE-2026-55527",
+      "ghsa": "GHSA-gxmw-5f7x-6g22",
+      "project": "mervinpraison/praisonai",
+      "published": "2026-08-25T15:09:54Z",
+      "summary": "praisonaiagents vulnerable to arbitrary file write via unsanitized `user_id` in `FileMemory.__init__()` — path traversal to any writable location"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/nltk/nltk/commit/10d34b3f4fe3fec74b76527a409eb0acbac2e8ab",
+          "10d34b3f4fe3fec74b76527a409eb0acbac2e8ab"
+        ]
+      ],
+      "cve": "CVE-2026-71514",
+      "ghsa": "GHSA-cv22-g7mw-8v73",
+      "project": "nltk/nltk",
+      "published": "2026-08-22T15:31:03Z",
+      "summary": "NLTK CrubadanCorpusReader path traversal allows arbitrary file disclosure"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/MobSF/Mobile-Security-Framework-MobSF/commit/62563ca429a75b3e5d47a13b958e1d2e7d5e2bbf",
+          "62563ca429a75b3e5d47a13b958e1d2e7d5e2bbf"
+        ]
+      ],
+      "cve": "CVE-2026-68922",
+      "ghsa": "GHSA-8j49-mmcx-4mp5",
+      "project": "mobsf/mobile-security-framework-mobsf",
+      "published": "2026-08-18T18:01:26Z",
+      "summary": "MobSF Vulnerable to Arbitrary File Read via Path Traversal in ZIP Uploads"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/huggingface/transformers/commit/eaaaf8494dd5386634ae37d1d122212fdc315be5",
+          "eaaaf8494dd5386634ae37d1d122212fdc315be5"
+        ]
+      ],
+      "cve": "CVE-2026-9856",
+      "ghsa": "GHSA-xrqw-3rrv-vx5w",
+      "project": "huggingface/transformers",
+      "published": "2026-08-02T18:30:20Z",
+      "summary": "Transformers save_pretrained path traversal allows arbitrary file writes through chat template names"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/keras-team/keras/commit/23370f16b0ab9a200f7550a34e54a3ceab74ba0e",
+          "23370f16b0ab9a200f7550a34e54a3ceab74ba0e"
+        ],
+        [
+          "https://github.com/keras-team/keras/commit/d338a45204bdc787c8b3c4a9b82c1911cd52dedf",
+          "d338a45204bdc787c8b3c4a9b82c1911cd52dedf"
+        ]
+      ],
+      "cve": "CVE-2026-9335",
+      "ghsa": "GHSA-m8wh-29wm-52mv",
+      "project": "keras-team/keras",
+      "published": "2026-08-02T06:30:20Z",
+      "summary": "Keras: HDF5 links can disclose local file contents"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/eLyiN/gemini-bridge/commit/8f3b85afd02b692c4bc974b5176e12fb277ea801",
+          "8f3b85afd02b692c4bc974b5176e12fb277ea801"
+        ]
+      ],
+      "cve": "CVE-2026-54785",
+      "ghsa": "GHSA-c5px-58j2-7fqp",
+      "project": "elyin/gemini-bridge",
+      "published": "2026-07-31T22:31:20Z",
+      "summary": "gemini-bridge vulnerable to arbitrary local file read via consult_gemini_with_files inline mode"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/thumbor/thumbor/commit/3b986d13677b30fe6651c8c72ebb25957ac0a40d",
+          "3b986d13677b30fe6651c8c72ebb25957ac0a40d"
+        ]
+      ],
+      "cve": "CVE-2026-53502",
+      "ghsa": "GHSA-cj54-hpcc-gj6h",
+      "project": "thumbor/thumbor",
+      "published": "2026-07-31T19:03:54Z",
+      "summary": "Thumbor has path traversal via post-validation URL decoding bypass in file_loader"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/flytohub/flyto-core/commit/d5f89d71303e3c1e6418d347c5c55fcd173cc8cc",
+          "d5f89d71303e3c1e6418d347c5c55fcd173cc8cc"
+        ]
+      ],
+      "cve": "CVE-2026-67429",
+      "ghsa": "GHSA-2956-977x-2w3r",
+      "project": "flytohub/flyto-core",
+      "published": "2026-07-30T14:46:43Z",
+      "summary": "Flyto2 Core: Arbitrary file write via image.download (and other file-writing modules)"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/pypa/pip/commit/10dfb6b9005484578b386f64b9f36982e3dc6679",
+          "10dfb6b9005484578b386f64b9f36982e3dc6679"
+        ]
+      ],
+      "cve": "CVE-2026-13346",
+      "ghsa": "GHSA-qwm4-qh6w-59xr",
+      "project": "pypa/pip",
+      "published": "2026-07-29T21:30:59Z",
+      "summary": "pip would incorrectly handle doubly-encoded package URLs from indexes"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/brightio/penelope/commit/a040afb5db32c7e80b5e8a2f9b2164cf911cfa62",
+          "a040afb5db32c7e80b5e8a2f9b2164cf911cfa62"
+        ]
+      ],
+      "cve": "CVE-2026-50558",
+      "ghsa": "GHSA-f42x-p2mx-hm8r",
+      "project": "brightio/penelope",
+      "published": "2026-07-29T15:34:16Z",
+      "summary": "Penelope unsafe tar extraction allows arbitrary local file write via crafted session archive"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/koxudaxi/datamodel-code-generator/commit/2ff4a72b4550a2b2069754c5b075b1655067e5fb",
+          "2ff4a72b4550a2b2069754c5b075b1655067e5fb"
+        ]
+      ],
+      "cve": "CVE-2026-55389",
+      "ghsa": "GHSA-8359-h9fx-j6v9",
+      "project": "datamodel-code-generator/datamodel-code-generator",
+      "published": "2026-07-28T21:49:34Z",
+      "summary": "datamodel-code-generator vulnerable to arbitrary local file read via JSON-Schema `$ref` (`file://` and `../` traversal), bypassing `--no-allow-remote-refs`"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/open-webui/open-webui/commit/05098d25a58d03738e01c4e85e8852c3b4ad849c",
+          "05098d25a58d03738e01c4e85e8852c3b4ad849c"
+        ]
+      ],
+      "cve": "CVE-2026-59221",
+      "ghsa": "GHSA-frvj-c5qp-xj4w",
+      "project": "open-webui/open-webui",
+      "published": "2026-07-24T21:05:51Z",
+      "summary": "open-webui terminal proxy path traversal guard bypass via 9x encoded traversal"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/facelessuser/pymdown-extensions/commit/edce35586d11a1ef78bb187bc60497fe6dbf3b64",
+          "edce35586d11a1ef78bb187bc60497fe6dbf3b64"
+        ]
+      ],
+      "cve": "CVE-2026-61632",
+      "ghsa": "GHSA-9xwg-3r6f-jcx2",
+      "project": "facelessuser/pymdown-extensions",
+      "published": "2026-07-24T16:18:33Z",
+      "summary": "PyMdown Extensions: Path traversal in the b64 extension lets <img src> read files outside base_path"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/BerriAI/litellm/commit/6a15adcd64137d37f73dee76dfe7481f8c2d9196",
+          "6a15adcd64137d37f73dee76dfe7481f8c2d9196"
+        ]
+      ],
+      "cve": "CVE-2026-59820",
+      "ghsa": "GHSA-5jmr-gcrj-2c9q",
+      "project": "berriai/litellm",
+      "published": "2026-07-22T22:37:15Z",
+      "summary": "LiteLLM: Arbitrary file write via path traversal in Skills archive extraction"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/lepture/mistune/commit/1bef343ade163fc3bb95572b15be720084cdb993",
+          "1bef343ade163fc3bb95572b15be720084cdb993"
+        ]
+      ],
+      "cve": "CVE-2026-59924",
+      "ghsa": "GHSA-r4rv-85jg-w4mf",
+      "project": "lepture/mistune",
+      "published": "2026-07-20T21:34:53Z",
+      "summary": "Mistune: Arbitrary File Read via Include directive path traversal"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/dgtlmoon/changedetection.io/commit/9d38b4517364831889b5b0d7b3465fd060403fd4",
+          "9d38b4517364831889b5b0d7b3465fd060403fd4"
+        ]
+      ],
+      "cve": "CVE-2026-25527",
+      "ghsa": "GHSA-9jj8-v89v-xjvw",
+      "project": "dgtlmoon/changedetection.io",
+      "published": "2026-07-20T19:06:55Z",
+      "summary": "changedetection.io is vulnerable to unauthenticated static path traversal"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/microsoft/prompty/commit/88ac9948d7d37995edbb2f6d36913436626c39e1",
+          "88ac9948d7d37995edbb2f6d36913436626c39e1"
+        ]
+      ],
+      "cve": "CVE-2026-53598",
+      "ghsa": "GHSA-wxhm-2mq7-7697",
+      "project": "microsoft/prompty",
+      "published": "2026-07-17T19:46:05Z",
+      "summary": "Prompty: Arbitrary file read via file reference expansion"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/snowflakedb/snowflake-sqlalchemy/commit/2c33792c91449e746a2c7ef24c25f0ede0a4a875",
+          "2c33792c91449e746a2c7ef24c25f0ede0a4a875"
+        ],
+        [
+          "https://github.com/snowflakedb/snowflake-sqlalchemy/commit/35edf4dc5e76b9a9fdfa74c8e4f6fd14642110f1",
+          "35edf4dc5e76b9a9fdfa74c8e4f6fd14642110f1"
+        ],
+        [
+          "https://github.com/snowflakedb/snowflake-sqlalchemy/commit/a198ed2197bb3e0be57268032ed6e8b7fdeb8129",
+          "a198ed2197bb3e0be57268032ed6e8b7fdeb8129"
+        ]
+      ],
+      "cve": "CVE-2026-15736",
+      "ghsa": "GHSA-8g6f-qw9x-4q6q",
+      "project": "snowflakedb/snowflake-sqlalchemy",
+      "published": "2026-07-14T15:32:17Z",
+      "summary": "Snowflake SQLAlchemy affected by SQL injection and local file disclosure vulnerabilities"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/sooperset/mcp-atlassian/commit/b041733473f95119dd539542a43c280737a8e460",
+          "b041733473f95119dd539542a43c280737a8e460"
+        ]
+      ],
+      "cve": "CVE-2026-73498",
+      "ghsa": "GHSA-g5r6-gv6m-f5jv",
+      "project": "sooperset/mcp-atlassian",
+      "published": "2026-07-10T19:34:37Z",
+      "summary": "mcp-atlassian: Arbitrary file read via missing path validation in confluence_upload_attachment"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/langroid/langroid/commit/00b7dd7b79c5d03c94be284cf3459d98195ebfba",
+          "00b7dd7b79c5d03c94be284cf3459d98195ebfba"
+        ]
+      ],
+      "cve": "CVE-2026-50180",
+      "ghsa": "GHSA-pmch-g965-grmr",
+      "project": "langroid/langroid",
+      "published": "2026-07-02T17:42:09Z",
+      "summary": "Langroid: SQLChatAgent _validate_query blocklist misses pg_read_file family enabling arbitrary file read"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/ankitects/anki/commit/858e5689d0e4fd24f74856c7e8f245412694a219",
+          "858e5689d0e4fd24f74856c7e8f245412694a219"
+        ]
+      ],
+      "cve": "CVE-2026-59153",
+      "ghsa": "GHSA-869j-r97x-hx2g",
+      "project": "ankitects/anki",
+      "published": "2026-06-19T22:10:57Z",
+      "summary": "Anki's local HTTP server does not sufficiently validate requests"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/blacklanternsecurity/bbot/commit/16d9c42b6",
+          "16d9c42b6"
+        ]
+      ],
+      "cve": "CVE-2026-12567",
+      "ghsa": "GHSA-rvp7-w75q-9fv2",
+      "project": "blacklanternsecurity/bbot",
+      "published": "2026-06-18T15:04:00Z",
+      "summary": "BBOT: Symlink-Following Arbitrary Write via github_workflows Module"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/jelmer/dulwich/commit/c2446e51b",
+          "c2446e51b"
+        ]
+      ],
+      "cve": "CVE-2026-47712",
+      "ghsa": "GHSA-555p-6grf-mh7f",
+      "project": "jelmer/dulwich",
+      "published": "2026-06-08T23:04:48Z",
+      "summary": "Dulwich doesn't sanitize commit subjects in `porcelain.format_patch`"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/hanxi/xiaomusic/commit/88404da7a283f2c0a796a4cd16bbb6e6aa1f4722",
+          "88404da7a283f2c0a796a4cd16bbb6e6aa1f4722"
+        ]
+      ],
+      "cve": "CVE-2026-10108",
+      "ghsa": "GHSA-5j8p-5rrj-8wjg",
+      "project": "hanxi/xiaomusic",
+      "published": "2026-05-29T18:31:35Z",
+      "summary": "xiaomusic contains an unauthenticated path traversal vulnerability"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/BKDDFS/shamefile/commit/77b0aeea318503582818c708518c601fedc43557",
+          "77b0aeea318503582818c708518c601fedc43557"
+        ]
+      ],
+      "cve": "CVE-2026-47144",
+      "ghsa": "GHSA-x6p3-76f2-xxvh",
+      "project": "bkddfs/shamefile",
+      "published": "2026-05-28T20:02:14Z",
+      "summary": "Shamefile has an arbitrary file read via shamefile.yaml in shame next"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/oscal-compass/compliance-trestle/commit/247fcce289f60103f3d8e28d8ec51a6986b94fb6",
+          "247fcce289f60103f3d8e28d8ec51a6986b94fb6"
+        ],
+        [
+          "https://github.com/oscal-compass/compliance-trestle/commit/7d107b3ac53caca7bde97a6278b23cd739d94525",
+          "7d107b3ac53caca7bde97a6278b23cd739d94525"
+        ]
+      ],
+      "cve": "CVE-2026-46345",
+      "ghsa": "GHSA-4q5v-7g7x-j79w",
+      "project": "oscal-compass/compliance-trestle",
+      "published": "2026-05-28T17:44:03Z",
+      "summary": "compliance-trestle - jinja has an Arbitrary File Write via Path Traversal"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/Avaiga/taipy/commit/129fd407ffca49ee4ab853772c88d0c873e038dd",
+          "129fd407ffca49ee4ab853772c88d0c873e038dd"
+        ]
+      ],
+      "cve": "CVE-2026-48544",
+      "ghsa": "GHSA-28gh-q3gw-pvx8",
+      "project": "avaiga/taipy",
+      "published": "2026-05-27T15:33:26Z",
+      "summary": "Taipy contains a path traversal vulnerability"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/AstrBotDevs/AstrBot/commit/aaec41e5054569ceaa1113593a34da7568e2d211",
+          "aaec41e5054569ceaa1113593a34da7568e2d211"
+        ]
+      ],
+      "cve": "CVE-2026-8754",
+      "ghsa": "GHSA-f63h-wc26-pmvc",
+      "project": "astrbotdevs/astrbot",
+      "published": "2026-05-17T15:31:42Z",
+      "summary": "AstrBot: File upload vulnerability in the function post_file of the file astrbot/dashboard/routes/chat.py"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/microsoft/apm/commit/77d1dda8303c8d7ccb6148788a6274fdece98499",
+          "77d1dda8303c8d7ccb6148788a6274fdece98499"
+        ]
+      ],
+      "cve": "CVE-2026-46383",
+      "ghsa": "GHSA-mq5j-pw29-jcv3",
+      "project": "microsoft/apm",
+      "published": "2026-05-15T18:25:34Z",
+      "summary": "Microsoft APM: Windows absolute-path tar member overwrite during legacy-bundle probing in `apm install`"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/pipecat-ai/pipecat/commit/7519c26ac5508573c35fa3a9c4717b013993d129",
+          "7519c26ac5508573c35fa3a9c4717b013993d129"
+        ]
+      ],
+      "cve": "CVE-2026-44716",
+      "ghsa": "GHSA-3363-2ph6-35wh",
+      "project": "pipecat-ai/pipecat",
+      "published": "2026-05-15T16:55:04Z",
+      "summary": "Pipecat: Path Traversal in Pipecat Runner `/files` Endpoint — Arbitrary File Read via `%2F`-Encoded Separator"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/pgadmin-org/pgadmin4/commit/cf53953d9",
+          "cf53953d9"
+        ]
+      ],
+      "cve": "CVE-2026-7815",
+      "ghsa": "GHSA-hp84-p2gq-6fvr",
+      "project": "pgadmin-org/pgadmin4",
+      "published": "2026-05-11T18:31:44Z",
+      "summary": "SQL injection vulnerability in pgAdmin 4 Maintenance Tool"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/icip-cas/PPTAgent/commit/418491a9a1c02d9d93194b5973bb58df35cf9d00",
+          "418491a9a1c02d9d93194b5973bb58df35cf9d00"
+        ]
+      ],
+      "cve": "CVE-2026-42080",
+      "ghsa": "GHSA-pxhg-7xr2-w7xg",
+      "project": "icip-cas/pptagent",
+      "published": "2026-05-05T18:57:31Z",
+      "summary": "PPTAgent: Arbitrary File Write via `save_generated_slides`"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/geopython/pygeoapi/commit/bf25b8695edbdd5476eeffc102b633d1d3e45f52",
+          "bf25b8695edbdd5476eeffc102b633d1d3e45f52"
+        ]
+      ],
+      "cve": "CVE-2026-42351",
+      "ghsa": "GHSA-f6pr-83pg-ghh6",
+      "project": "geopython/pygeoapi",
+      "published": "2026-04-29T22:18:02Z",
+      "summary": "pygeoapi 0.23.x: Path Traversal in STAC FileSystemProvider"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/nicolargo/glances/commit/d339181f03a14bb15506307e9d58f876e23d8160",
+          "d339181f03a14bb15506307e9d58f876e23d8160"
+        ],
+        [
+          "https://github.com/nicolargo/glances/commit/e41b665576f9fd5374e3152078726cc59a01e48c",
+          "e41b665576f9fd5374e3152078726cc59a01e48c"
+        ]
+      ],
+      "cve": "CVE-2026-35588",
+      "ghsa": "GHSA-grp3-h8m8-45p7",
+      "project": "nicolargo/glances",
+      "published": "2026-04-21T15:18:58Z",
+      "summary": "Glances has CQL Injection in its Cassandra Export Module via Unsanitized Config Values"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/WeblateOrg/weblate/commit/e30dbcb33ae78e754ecef192d54f996b89cb4e15",
+          "e30dbcb33ae78e754ecef192d54f996b89cb4e15"
+        ]
+      ],
+      "cve": "CVE-2026-40256",
+      "ghsa": "GHSA-ffgh-3jrf-8wvh",
+      "project": "weblateorg/weblate",
+      "published": "2026-04-16T21:08:47Z",
+      "summary": "Weblate: Prefix-Based Repository Boundary Check Bypass via Symlink/Junction Path Prefix Collision"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/wkentaro/gdown/commit/af569fc6ed300b7974dee66dc51e9f01b57b4dff",
+          "af569fc6ed300b7974dee66dc51e9f01b57b4dff"
+        ]
+      ],
+      "cve": "CVE-2026-40491",
+      "ghsa": "GHSA-76hw-p97h-883f",
+      "project": "wkentaro/gdown",
+      "published": "2026-04-14T01:11:30Z",
+      "summary": "gdown Affected by Arbitrary File Write via Path Traversal in gdown.extractall"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/haris-musa/excel-mcp-server/commit/f51340ecd5778952405044b203d3a2d4c8a46833",
+          "f51340ecd5778952405044b203d3a2d4c8a46833"
+        ]
+      ],
+      "cve": "CVE-2026-40576",
+      "ghsa": "GHSA-j98m-w3xp-9f56",
+      "project": "haris-musa/excel-mcp-server",
+      "published": "2026-04-14T00:03:17Z",
+      "summary": "excel-mcp-server has a Path Traversal issue"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/gramps-project/gramps-web-api/commit/3ed4342711e3ec849552df09b1fe2fbf2ca5c29a",
+          "3ed4342711e3ec849552df09b1fe2fbf2ca5c29a"
+        ]
+      ],
+      "cve": "CVE-2026-40258",
+      "ghsa": "GHSA-m5gr-86j6-99jp",
+      "project": "gramps-project/gramps-web-api",
+      "published": "2026-04-10T21:00:09Z",
+      "summary": "gramps-webapi: Zip Slip Path Traversal in Media Archive Import"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/danielgatis/rembg/commit/7c76d3cdc5757ffbda6a76664b24cfbecdb80273",
+          "7c76d3cdc5757ffbda6a76664b24cfbecdb80273"
+        ]
+      ],
+      "cve": "CVE-2026-40086",
+      "ghsa": "GHSA-3wqj-33cg-xc48",
+      "project": "danielgatis/rembg",
+      "published": "2026-04-10T20:00:12Z",
+      "summary": "Rembg has a Path Traversal via Custom Model Loading"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/Josh-XT/AGiXT/commit/2079ea5a88fa671a921bf0b5eba887a5a1b73d5f",
+          "2079ea5a88fa671a921bf0b5eba887a5a1b73d5f"
+        ]
+      ],
+      "cve": "CVE-2026-39981",
+      "ghsa": "GHSA-5gfj-64gh-mgmw",
+      "project": "josh-xt/agixt",
+      "published": "2026-04-08T20:02:01Z",
+      "summary": "AGiXT Vulnerable to Path Traversal in safe_join()"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/zauberzeug/nicegui/commit/d38a702e3af2da5b0708f689be8d71413fc77056",
+          "d38a702e3af2da5b0708f689be8d71413fc77056"
+        ]
+      ],
+      "cve": "CVE-2026-39844",
+      "ghsa": "GHSA-w8wv-vfpc-hw2w",
+      "project": "zauberzeug/nicegui",
+      "published": "2026-04-08T15:04:13Z",
+      "summary": "NiceGUI: Upload filename sanitization bypass via backslashes allows path traversal on Windows"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/kedro-org/kedro-plugins/commit/65115f76b872217317734b6bde8927170c98fc4b",
+          "65115f76b872217317734b6bde8927170c98fc4b"
+        ]
+      ],
+      "cve": "CVE-2026-35492",
+      "ghsa": "GHSA-cjg8-h5qc-hrjv",
+      "project": "kedro-org/kedro-plugins",
+      "published": "2026-04-06T17:55:14Z",
+      "summary": "kedro-datasets has a path traversal vulnerability in PartitionedDataset that allows arbitrary file write"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/copier-org/copier/commit/5413062eb17b73dc885f5e645cdc161e69ef641b",
+          "5413062eb17b73dc885f5e645cdc161e69ef641b"
+        ]
+      ],
+      "cve": "CVE-2026-34730",
+      "ghsa": "GHSA-hgjq-p8cr-gg4h",
+      "project": "copier-org/copier",
+      "published": "2026-04-01T22:38:39Z",
+      "summary": "Copier `_external_data` allows path traversal and absolute-path local file read without unsafe mode"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/onnx/onnx/commit/4755f8053928dce18a61db8fec71b69c74f786cb",
+          "4755f8053928dce18a61db8fec71b69c74f786cb"
+        ]
+      ],
+      "cve": "CVE-2026-34446",
+      "ghsa": "GHSA-cmw6-hcpp-c6jp",
+      "project": "onnx/onnx",
+      "published": "2026-04-01T21:13:37Z",
+      "summary": "ONNX: Arbitrary File Read via ExternalData Hardlink Bypass in ONNX load"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/alerta/alerta/commit/aeba85a37a09e5769a7a2da56481aa979ff99a00",
+          "aeba85a37a09e5769a7a2da56481aa979ff99a00"
+        ],
+        [
+          "https://github.com/alerta/alerta/commit/fdd52cd1abad8d02d1dfb8ecdcdbb43b6af3b883",
+          "fdd52cd1abad8d02d1dfb8ecdcdbb43b6af3b883"
+        ]
+      ],
+      "cve": "CVE-2026-34400",
+      "ghsa": "GHSA-8prr-286p-4w7j",
+      "project": "alerta/alerta",
+      "published": "2026-03-31T23:23:21Z",
+      "summary": "alerta-server has potential SQL Injection vulnerability in Query String Syntax (q=) API"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/scitokens/scitokens/commit/2d1cc9e42bc944fe0bbc429b85d166e7156d53f9",
+          "2d1cc9e42bc944fe0bbc429b85d166e7156d53f9"
+        ]
+      ],
+      "cve": "CVE-2026-32727",
+      "ghsa": "GHSA-3x2w-63fp-3qvw",
+      "project": "scitokens/scitokens",
+      "published": "2026-03-31T22:51:36Z",
+      "summary": "SciTokens has an Authorization Bypass via Path Traversal in Scope Validation"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/indico/indico/commit/0adb70f0ed66e129361d447868f5f3eb90dc5e96",
+          "0adb70f0ed66e129361d447868f5f3eb90dc5e96"
+        ],
+        [
+          "https://github.com/indico/indico/commit/1dbb12525b3de14229bf4d1ae192988068f975f6",
+          "1dbb12525b3de14229bf4d1ae192988068f975f6"
+        ],
+        [
+          "https://github.com/indico/indico/commit/5f24d23ce9c4b0e4b68b3d0b58987a948fc57c8a",
+          "5f24d23ce9c4b0e4b68b3d0b58987a948fc57c8a"
+        ],
+        [
+          "https://github.com/indico/indico/commit/fb169ced710c30cf792ce4b9f48688db0633cfd8",
+          "fb169ced710c30cf792ce4b9f48688db0633cfd8"
+        ]
+      ],
+      "cve": "CVE-2026-33046",
+      "ghsa": "GHSA-rm2q-f7jv-3cfp",
+      "project": "indico/indico",
+      "published": "2026-03-23T20:43:43Z",
+      "summary": "Indico discloses local files resulting in Remote Code Execution through LaTeX injection "
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/pydicom/pydicom/commit/6414f01a053dff925578799f5a7208d2ae585e82",
+          "6414f01a053dff925578799f5a7208d2ae585e82"
+        ]
+      ],
+      "cve": "CVE-2026-32711",
+      "ghsa": "GHSA-v856-2rf8-9f28",
+      "project": "pydicom/pydicom",
+      "published": "2026-03-20T15:57:01Z",
+      "summary": "pydicom has a path traversal in FileSet/DICOMDIR ReferencedFileID allows file access outside the File-set root"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/mesop-dev/mesop/commit/c6b382f363b73ac32c402a2db3aadc7784f66a5b",
+          "c6b382f363b73ac32c402a2db3aadc7784f66a5b"
+        ]
+      ],
+      "cve": "CVE-2026-33054",
+      "ghsa": "GHSA-8qvf-mr4w-9x2c",
+      "project": "mesop-dev/mesop",
+      "published": "2026-03-18T20:01:21Z",
+      "summary": "Mesop has a Path Traversal utilizing `FileStateSessionBackend` leads to Application Denial of Service and File Write/Deletion"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/vibrantlabsai/ragas/commit/b28433709cbedbb531db79dadcfbdbd3aa6adcb0",
+          "b28433709cbedbb531db79dadcfbdbd3aa6adcb0"
+        ]
+      ],
+      "cve": "CVE-2025-45691",
+      "ghsa": "GHSA-v2xr-wvrv-p969",
+      "project": "vibrantlabsai/ragas",
+      "published": "2026-03-05T21:30:46Z",
+      "summary": "RAGAS has an Arbitrary File Read vulnerability"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/dbt-labs/dbt-common/commit/e547954a48bac9394ef6eb98432e429dce9a7709",
+          "e547954a48bac9394ef6eb98432e429dce9a7709"
+        ]
+      ],
+      "cve": "CVE-2026-29790",
+      "ghsa": "GHSA-w75w-9qv4-j5xj",
+      "project": "dbt-labs/dbt-common",
+      "published": "2026-03-05T00:59:10Z",
+      "summary": "dbt-common's commonprefix() doesn't protect against path traversal"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/GOVCERT-LU/eml_parser/commit/99af03a09a90aaaaadd0ed2ffb5eea46d1ea2cc9",
+          "99af03a09a90aaaaadd0ed2ffb5eea46d1ea2cc9"
+        ]
+      ],
+      "cve": "CVE-2026-29780",
+      "ghsa": "GHSA-389r-rccm-h3h5",
+      "project": "govcert-lu/eml_parser",
+      "published": "2026-03-05T00:16:57Z",
+      "summary": "eml_parser: Path Traversal in Official Example Script Leads to Arbitrary File Write"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/bentoml/BentoML/commit/4e0eb007765ac04c7924220d643f264715cc9670",
+          "4e0eb007765ac04c7924220d643f264715cc9670"
+        ]
+      ],
+      "cve": "CVE-2026-27905",
+      "ghsa": "GHSA-m6w7-qv66-g3mf",
+      "project": "bentoml/bentoml",
+      "published": "2026-03-03T17:46:47Z",
+      "summary": "BentoML Vulnerable to Arbitrary File Write via Symlink Path Traversal in Tar Extraction"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/volcengine/OpenViking/commit/46b3e76e28b9b3eee73693720c9ec48820228b72",
+          "46b3e76e28b9b3eee73693720c9ec48820228b72"
+        ]
+      ],
+      "cve": "CVE-2026-28518",
+      "ghsa": "GHSA-rpqr-j937-6qr9",
+      "project": "volcengine/openviking",
+      "published": "2026-03-03T15:31:41Z",
+      "summary": "OpenViking contains a Path Traversal vulnerability"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/zhongyu09/openchatbi/commit/372a7e861da5159c3106d64d6f6edf8284db8c75",
+          "372a7e861da5159c3106d64d6f6edf8284db8c75"
+        ]
+      ],
+      "cve": "CVE-2026-28795",
+      "ghsa": "GHSA-vmwq-8g8c-jm79",
+      "project": "zhongyu09/openchatbi",
+      "published": "2026-03-02T21:47:32Z",
+      "summary": "OpenChatBI has a Path Traversal Vulnerability in save_report Tool"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/cocoindex-io/cocoindex/commit/ba2fc4a89e22d35572c64bd2990737c7913b0729",
+          "ba2fc4a89e22d35572c64bd2990737c7913b0729"
+        ]
+      ],
+      "cve": "CVE-2026-28438",
+      "ghsa": "GHSA-59g6-v3vg-f7wc",
+      "project": "cocoindex-io/cocoindex",
+      "published": "2026-03-02T20:27:48Z",
+      "summary": "CocoIndex Doris target connector didn't verify table name when constructing ALTER TABLE statements"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/modelcontextprotocol/servers/commit/862e717ff714987bd5577318df09858e14883863",
+          "862e717ff714987bd5577318df09858e14883863"
+        ]
+      ],
+      "cve": "CVE-2026-27735",
+      "ghsa": "GHSA-vjqx-cfc4-9h6v",
+      "project": "modelcontextprotocol/servers",
+      "published": "2026-02-26T15:16:57Z",
+      "summary": "mcp-server-git : Path traversal in git_add allows staging files outside repository boundaries"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/jugmac00/flask-reuploaded/commit/d64c6b2f71cb73734fc38baa0e3e156926361288",
+          "d64c6b2f71cb73734fc38baa0e3e156926361288"
+        ]
+      ],
+      "cve": "CVE-2026-27641",
+      "ghsa": "GHSA-65mp-fq8v-56jr",
+      "project": "jugmac00/flask-reuploaded",
+      "published": "2026-02-25T19:06:50Z",
+      "summary": "Flask-Reuploaded vulnerable to Remote Code Execution via Server-Side Template Injection"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/mindsdb/mindsdb/commit/87a44bdb2b97f963e18f10a068e1a1e2690505ef",
+          "87a44bdb2b97f963e18f10a068e1a1e2690505ef"
+        ]
+      ],
+      "cve": "CVE-2026-27483",
+      "ghsa": "GHSA-4894-xqv6-vrfq",
+      "project": "mindsdb/mindshub",
+      "published": "2026-02-24T20:07:58Z",
+      "summary": "MindsDB: Path Traversal in /api/files Leading to Remote Code Execution"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/Unstructured-IO/unstructured/commit/b01d35b2373fd087d2e15162b9c021663c97155d",
+          "b01d35b2373fd087d2e15162b9c021663c97155d"
+        ]
+      ],
+      "cve": "CVE-2025-64712",
+      "ghsa": "GHSA-gm8q-m8mv-jj5m",
+      "project": "unstructured-io/unstructured",
+      "published": "2026-02-03T17:43:56Z",
+      "summary": "Unstructured has Path Traversal via Malicious MSG Attachment that Allows Arbitrary File Write"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/geopandas/geopandas/commit/6aa8ef14ffdee4ba1044349ab948e1a1fbfaf419",
+          "6aa8ef14ffdee4ba1044349ab948e1a1fbfaf419"
+        ]
+      ],
+      "cve": "CVE-2025-69662",
+      "ghsa": "GHSA-6497-prx7-gpmq",
+      "project": "geopandas/geopandas",
+      "published": "2026-01-30T21:30:22Z",
+      "summary": "geopandas SQL Injection Vulnerability in to_postgis() Allows Information Disclosure"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/Kludex/python-multipart/commit/9433f4bbc9652bdde82bbe380984e32f8cfc89c4",
+          "9433f4bbc9652bdde82bbe380984e32f8cfc89c4"
+        ]
+      ],
+      "cve": "CVE-2026-24486",
+      "ghsa": "GHSA-wp53-j4wj-2cfg",
+      "project": "kludex/python-multipart",
+      "published": "2026-01-26T23:28:05Z",
+      "summary": "Python-Multipart has Arbitrary File Write via Non-Default Configuration"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/pypa/wheel/commit/7a7d2de96b22a9adf9208afcc9547e1001569fef",
+          "7a7d2de96b22a9adf9208afcc9547e1001569fef"
+        ],
+        [
+          "https://github.com/pypa/wheel/commit/934fe177ff912c8e03d5ae951d3805e1fd90ba5e",
+          "934fe177ff912c8e03d5ae951d3805e1fd90ba5e"
+        ]
+      ],
+      "cve": "CVE-2026-24049",
+      "ghsa": "GHSA-8rrh-rw8j-w5fx",
+      "project": "pypa/wheel",
+      "published": "2026-01-22T18:02:56Z",
+      "summary": "Wheel Affected by Arbitrary File Permission Modification via Path Traversal in wheel unpack"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/WeblateOrg/wlc/commit/216e691c6e50abae97fe2e4e4f21501bf49a585f",
+          "216e691c6e50abae97fe2e4e4f21501bf49a585f"
+        ]
+      ],
+      "cve": "CVE-2026-23535",
+      "ghsa": "GHSA-mmwx-79f6-67jg",
+      "project": "weblateorg/wlc",
+      "published": "2026-01-16T16:58:26Z",
+      "summary": "Weblate wlc path traversal vulnerability: Unsanitized API slugs in download command "
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/DataDog/guarddog/commit/9aa6a725b2c71d537d3c18d1c15621395ebb879c",
+          "9aa6a725b2c71d537d3c18d1c15621395ebb879c"
+        ]
+      ],
+      "cve": "CVE-2026-22871",
+      "ghsa": "GHSA-xg9w-vg3g-6m68",
+      "project": "datadog/guarddog",
+      "published": "2026-01-13T21:54:49Z",
+      "summary": "GuardDog Path Traversal Vulnerability Leads to Arbitrary File Overwrite and RCE"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/jaraco/jaraco.context/commit/7b26a42b525735e4085d2e994e13802ea339d5f9",
+          "7b26a42b525735e4085d2e994e13802ea339d5f9"
+        ]
+      ],
+      "cve": "CVE-2026-23949",
+      "ghsa": "GHSA-58pv-8j8x-9vj2",
+      "project": "jaraco/jaraco.context",
+      "published": "2026-01-13T21:48:17Z",
+      "summary": "jaraco.context Has a Path Traversal Vulnerability"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/mmaitre314/picklescan/commit/a01c58d5dd7960db557b849817c0ab83ab111ef1",
+          "a01c58d5dd7960db557b849817c0ab83ab111ef1"
+        ]
+      ],
+      "cve": "CVE-2026-53872",
+      "ghsa": "GHSA-9726-w42j-3qjr",
+      "project": "mmaitre314/picklescan",
+      "published": "2026-01-08T17:25:35Z",
+      "summary": "picklescan has Arbitrary file read using `io.FileIO` "
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/Parsl/parsl/commit/013a928461e70f38a33258bd525a351ed828e974",
+          "013a928461e70f38a33258bd525a351ed828e974"
+        ]
+      ],
+      "cve": "CVE-2026-21892",
+      "ghsa": "GHSA-f2mf-q878-gh58",
+      "project": "parsl/parsl",
+      "published": "2026-01-06T18:04:21Z",
+      "summary": "Parsl Monitoring Visualization Vulnerable to SQL Injection"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/Project-MONAI/MONAI/commit/4014c8475626f20f158921ae0cf98ed259ae4d59",
+          "4014c8475626f20f158921ae0cf98ed259ae4d59"
+        ]
+      ],
+      "cve": "CVE-2026-21851",
+      "ghsa": "GHSA-9rg3-9pvr-6p27",
+      "project": "project-monai/monai",
+      "published": "2026-01-06T17:32:52Z",
+      "summary": "MONAI has Path Traversal (Zip Slip) in NGC Private Bundle Download"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/langchain-ai/langgraph/commit/297242913f8ad2143ee3e2f72e67db0911d48e2a",
+          "297242913f8ad2143ee3e2f72e67db0911d48e2a"
+        ]
+      ],
+      "cve": "CVE-2025-67644",
+      "ghsa": "GHSA-9rwj-6rc7-p77c",
+      "project": "langchain-ai/langgraph",
+      "published": "2025-12-10T00:02:21Z",
+      "summary": "LangGraph's SQLite is vulnerable to SQL injection via metadata filter key in SQLite checkpointer list method"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/webcomics/dosage/commit/336a9684191604bc49eed7296b74bd582151181e",
+          "336a9684191604bc49eed7296b74bd582151181e"
+        ]
+      ],
+      "cve": "CVE-2025-64184",
+      "ghsa": "GHSA-4vcx-3pj3-44m7",
+      "project": "webcomics/dosage",
+      "published": "2025-11-04T15:31:48Z",
+      "summary": "Dosage vulnerable to a Directory Traversal through crafted HTTP responses"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/aio-libs/aiomysql/commit/32c4520dae3711367ded74a4726dcb8bb8919538",
+          "32c4520dae3711367ded74a4726dcb8bb8919538"
+        ]
+      ],
+      "cve": "CVE-2025-62611",
+      "ghsa": "GHSA-r397-ff8c-wv2g",
+      "project": "aio-libs/aiomysql",
+      "published": "2025-10-22T16:47:10Z",
+      "summary": "aiomysql allows arbitrary access to client files through vulnerability of a malicious MySQL server"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/hiyouga/LLaMAFactory/commit/95b7188090a1018935c9dc072bfc97f24f1c96e9",
+          "95b7188090a1018935c9dc072bfc97f24f1c96e9"
+        ]
+      ],
+      "cve": "CVE-2025-61784",
+      "ghsa": "GHSA-527m-2xhr-j27g",
+      "project": "hiyouga/llamafactory",
+      "published": "2025-10-07T22:08:53Z",
+      "summary": "LLaMA Factory's Chat API Contains Critical SSRF and LFI Vulnerabilities"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/clearml/clearml/commit/64fb2bcbdbb87a74af90dd723d5ef4a99fceeb73",
+          "64fb2bcbdbb87a74af90dd723d5ef4a99fceeb73"
+        ]
+      ],
+      "cve": "CVE-2025-8917",
+      "ghsa": "GHSA-579p-qf78-fqm2",
+      "project": "clearml/clearml",
+      "published": "2025-10-05T12:30:24Z",
+      "summary": "clearml is vulnerable to Path Traversal through its `safe_extract` function"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/zenml-io/zenml/commit/5d22a48d7bf6c7f10b748577c2be79cc7969d398",
+          "5d22a48d7bf6c7f10b748577c2be79cc7969d398"
+        ]
+      ],
+      "cve": "CVE-2025-8406",
+      "ghsa": "GHSA-q92x-2x5g-h365",
+      "project": "zenml-io/zenml",
+      "published": "2025-10-05T09:30:19Z",
+      "summary": "ZenML is vulnerable to Path Traversal through its `PathMaterializer` class"
+    },
+    {
+      "commits": [
+        [
+          "https://github.com/ietf-tools/xml2rfc/commit/73fb1c91fc62ac540bb6bd24f982f2becf84c1b0",
+          "73fb1c91fc62ac540bb6bd24f982f2becf84c1b0"
+        ]
+      ],
+      "cve": "CVE-2025-11059",
+      "ghsa": "GHSA-9mv7-3c64-mmqw",
+      "project": "ietf-tools/xml2rfc",
+      "published": "2025-09-10T20:44:58Z",
+      "summary": "xml2rfc is vulnerable to arbitrary file reads through prepped files"
+    }
+  ],
+  "pages": [
+    {
+      "advisory_count": 100,
+      "bytes": 672030,
+      "cache_file": "advisories-page-1.json",
+      "headers": {
+        "ETag": "W/\"03eee6e04f00beecd41d2fa5a31291f6790fe2e118c24893463f023eea42361f\"",
+        "Last-Modified": "Fri, 11 Sep 2026 22:06:29 GMT",
+        "Link": "<https://api.github.com/advisories?ecosystem=pip&cwes=22%2C23%2C36%2C73%2C89&type=reviewed&is_withdrawn=false&published=2018-01-01..2026-08-31&sort=published&direction=desc&per_page=100&after=Y3Vyc29yOnYyOpK0MjAyNi0wNi0wM1QyMToxNDozNVrOAAWAOA%3D%3D>; rel=\"next\"",
+        "X-RateLimit-Remaining": "59"
+      },
+      "http_status": 200,
+      "request_url": "https://api.github.com/advisories?ecosystem=pip&cwes=22%2C23%2C36%2C73%2C89&type=reviewed&is_withdrawn=false&published=2018-01-01..2026-08-31&sort=published&direction=desc&per_page=100&page=1",
+      "retrieved_at": "2026-09-16T16:35:23.322128+00:00",
+      "sha256": "ab8d02830b6e52fedcf00cab043b28c44b9865a2fccabba2730f449b0f49c919"
+    },
+    {
+      "advisory_count": 100,
+      "bytes": 643482,
+      "cache_file": "advisories-cursor-page-2.json",
+      "headers": {
+        "ETag": "W/\"4e8ff3367911f5c5f42c1b6c7e547dc5b2d9aa61a7d3c5068740a87aa4a82f62\"",
+        "Last-Modified": "Tue, 08 Sep 2026 20:57:40 GMT",
+        "Link": "<https://api.github.com/advisories?ecosystem=pip&cwes=22%2C23%2C36%2C73%2C89&type=reviewed&is_withdrawn=false&published=2018-01-01..2026-08-31&sort=published&direction=desc&per_page=100&after=Y3Vyc29yOnYyOpK0MjAyNi0wNC0wMVQyMToxNDowMFrOAAVJPQ%3D%3D>; rel=\"next\", <https://api.github.com/advisories?ecosystem=pip&cwes=22%2C23%2C36%2C73%2C89&type=reviewed&is_withdrawn=false&published=2018-01-01..2026-08-31&sort=published&direction=desc&per_page=100&before=Y3Vyc29yOnYyOpK0MjAyNi0wNi0wM1QyMDowMjo0MlrOAAWAKg%3D%3D>; rel=\"prev\"",
+        "X-RateLimit-Remaining": "56"
+      },
+      "http_status": 200,
+      "request_url": "https://api.github.com/advisories?ecosystem=pip&cwes=22%2C23%2C36%2C73%2C89&type=reviewed&is_withdrawn=false&published=2018-01-01..2026-08-31&sort=published&direction=desc&per_page=100&after=Y3Vyc29yOnYyOpK0MjAyNi0wNi0wM1QyMToxNDozNVrOAAWAOA%3D%3D",
+      "retrieved_at": "2026-09-16T16:37:52.148575+00:00",
+      "sha256": "6657cf9c1c9478750dff85510d4a50b4394ddf7f4cd9855014f18d02e26a8588"
+    },
+    {
+      "advisory_count": 100,
+      "bytes": 543141,
+      "cache_file": "advisories-cursor-page-3.json",
+      "headers": {
+        "ETag": "W/\"518512d1bd0e6f12b3d276ecb4c6aeda6dd0d9c7f895947432fd7a4b8714f9c5\"",
+        "Last-Modified": "Mon, 03 Aug 2026 20:35:17 GMT",
+        "Link": "<https://api.github.com/advisories?ecosystem=pip&cwes=22%2C23%2C36%2C73%2C89&type=reviewed&is_withdrawn=false&published=2018-01-01..2026-08-31&sort=published&direction=desc&per_page=100&after=Y3Vyc29yOnYyOpK0MjAyNS0wOS0wOVQyMToxOToyMlrOAAS-UA%3D%3D>; rel=\"next\", <https://api.github.com/advisories?ecosystem=pip&cwes=22%2C23%2C36%2C73%2C89&type=reviewed&is_withdrawn=false&published=2018-01-01..2026-08-31&sort=published&direction=desc&per_page=100&before=Y3Vyc29yOnYyOpK0MjAyNi0wNC0wMVQyMToxMzozN1rOAAVJPA%3D%3D>; rel=\"prev\"",
+        "X-RateLimit-Remaining": "55"
+      },
+      "http_status": 200,
+      "request_url": "https://api.github.com/advisories?ecosystem=pip&cwes=22%2C23%2C36%2C73%2C89&type=reviewed&is_withdrawn=false&published=2018-01-01..2026-08-31&sort=published&direction=desc&per_page=100&after=Y3Vyc29yOnYyOpK0MjAyNi0wNC0wMVQyMToxNDowMFrOAAVJPQ%3D%3D",
+      "retrieved_at": "2026-09-16T16:37:53.542440+00:00",
+      "sha256": "0aa3e624eff49bc9f52cc2b338c4d692b9cab0263b383c9d1fd78c30476bc9cf"
+    }
+  ],
+  "pagination_note": "Initial page=2/page=3 requests repeated page 1; identical hashes were detected and those attempts were excluded. Exactly three distinct pages were obtained using the API Link rel=next cursor. Duplicate-attempt raw responses remain in the external acquisition cache.",
+  "schema_version": "belief.pair_selection.v1",
+  "screening": [
+    {
+      "cve_id": "CVE-2026-55509",
+      "ghsa_id": "GHSA-p6gw-4frg-j7jw",
+      "matching_commit_references": [
+        "https://github.com/mar10/wsgidav/commit/6f35776c9188f130ab044ce557015d51aaa83500"
+      ],
+      "project": "mar10/wsgidav",
+      "published_at": "2026-08-28T18:12:17Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "mar10/wsgidav",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-54591",
+      "ghsa_id": "GHSA-2wxc-x7rj-hg8f",
+      "matching_commit_references": [
+        "https://github.com/ronf/asyncssh/commit/d730803b8e4e94c20c7580d90f94d1e05f9f58de"
+      ],
+      "project": "ronf/asyncssh",
+      "published_at": "2026-08-26T15:34:22Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "ronf/asyncssh",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-54590",
+      "ghsa_id": "GHSA-qr67-gv47-xwwh",
+      "matching_commit_references": [
+        "https://github.com/ronf/asyncssh/commit/3d515ba9ba0cd9990d248bdf62bcf05d51261a88"
+      ],
+      "project": "ronf/asyncssh",
+      "published_at": "2026-08-26T15:32:00Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "ronf/asyncssh",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-55527",
+      "ghsa_id": "GHSA-gxmw-5f7x-6g22",
+      "matching_commit_references": [
+        "https://github.com/MervinPraison/PraisonAI/commit/2f9677abb2ea68eab864ee8b6a828fd0141612e1"
+      ],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-08-25T15:09:54Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-55540",
+      "ghsa_id": "GHSA-ch89-h4r2-c8f8",
+      "matching_commit_references": [
+        "https://github.com/MervinPraison/PraisonAI/commit/2f9677abb2ea68eab864ee8b6a828fd0141612e1"
+      ],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-08-25T14:54:56Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-71514",
+      "ghsa_id": "GHSA-cv22-g7mw-8v73",
+      "matching_commit_references": [
+        "https://github.com/nltk/nltk/commit/10d34b3f4fe3fec74b76527a409eb0acbac2e8ab"
+      ],
+      "project": "nltk/nltk",
+      "published_at": "2026-08-22T15:31:03Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "nltk/nltk",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-53951",
+      "ghsa_id": "GHSA-9gmc-jqmh-3rvm",
+      "matching_commit_references": [],
+      "project": "copier-org/copier",
+      "published_at": "2026-08-19T19:16:54Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "copier-org/copier",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-73974",
+      "ghsa_id": "GHSA-rh9c-rqvg-f7pr",
+      "matching_commit_references": [],
+      "project": "linuxfabrik/monitoring-plugins",
+      "published_at": "2026-08-18T21:18:59Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "linuxfabrik/monitoring-plugins",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-68922",
+      "ghsa_id": "GHSA-8j49-mmcx-4mp5",
+      "matching_commit_references": [
+        "https://github.com/MobSF/Mobile-Security-Framework-MobSF/commit/62563ca429a75b3e5d47a13b958e1d2e7d5e2bbf"
+      ],
+      "project": "mobsf/mobile-security-framework-mobsf",
+      "published_at": "2026-08-18T18:01:26Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "mobsf/mobile-security-framework-mobsf",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-12243",
+      "ghsa_id": "GHSA-m42h-3232-vpv3",
+      "matching_commit_references": [
+        "https://github.com/nltk/nltk/commit/aec4fce1b84ad725b8975f7365b23a4f626572a9"
+      ],
+      "project": "nltk/nltk",
+      "published_at": "2026-08-13T20:45:05Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "nltk/nltk",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-rm43-82j9-r4mj",
+      "matching_commit_references": [
+        "https://github.com/dep0we/atomic-agents-stack/commit/ec474f458122c5c0ca718d0df3078c8080338b2c"
+      ],
+      "project": "dep0we/atomic-agents-stack",
+      "published_at": "2026-08-13T14:17:13Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "dep0we/atomic-agents-stack",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": "CVE-2026-69112",
+      "ghsa_id": "GHSA-4j2p-28q2-5m79",
+      "matching_commit_references": [],
+      "project": "huggingface/accelerate",
+      "published_at": "2026-08-10T21:32:04Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "huggingface/accelerate",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-76222",
+      "ghsa_id": "GHSA-hmq2-w58f-27jc",
+      "matching_commit_references": [
+        "https://github.com/gitpython-developers/GitPython/commit/4299c990e1ca21896f9485277caf7bb0ae5b404c",
+        "https://github.com/gitpython-developers/GitPython/commit/e4b8e7d026ca6abb4cf604f8e77093432ce23c06"
+      ],
+      "project": "gitpython-developers/gitpython",
+      "published_at": "2026-08-07T15:45:39Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "gitpython-developers/gitpython",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-76217",
+      "ghsa_id": "GHSA-hh9p-6wh2-4mfc",
+      "matching_commit_references": [
+        "https://github.com/gitpython-developers/GitPython/commit/f2550b65bf60ca087190981e2c7b6865e201f40c"
+      ],
+      "project": "gitpython-developers/gitpython",
+      "published_at": "2026-08-07T15:43:56Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "gitpython-developers/gitpython",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-539m-9xh6-q6rr",
+      "matching_commit_references": [
+        "https://github.com/gitpython-developers/GitPython/commit/7a4f5dcb7bf3cbcbf6e438017efcdfe0bc0d36ca"
+      ],
+      "project": "gitpython-developers/gitpython",
+      "published_at": "2026-08-03T20:14:28Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "gitpython-developers/gitpython",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-3f7w-8rr8-f37f",
+      "matching_commit_references": [
+        "https://github.com/gitpython-developers/GitPython/commit/3af0c2516c5e18c829da30338614688f6b69b49c"
+      ],
+      "project": "gitpython-developers/gitpython",
+      "published_at": "2026-08-03T20:09:56Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "gitpython-developers/gitpython",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-9856",
+      "ghsa_id": "GHSA-xrqw-3rrv-vx5w",
+      "matching_commit_references": [
+        "https://github.com/huggingface/transformers/commit/eaaaf8494dd5386634ae37d1d122212fdc315be5"
+      ],
+      "project": "huggingface/transformers",
+      "published_at": "2026-08-02T18:30:20Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "huggingface/transformers",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-9335",
+      "ghsa_id": "GHSA-m8wh-29wm-52mv",
+      "matching_commit_references": [
+        "https://github.com/keras-team/keras/commit/23370f16b0ab9a200f7550a34e54a3ceab74ba0e",
+        "https://github.com/keras-team/keras/commit/d338a45204bdc787c8b3c4a9b82c1911cd52dedf"
+      ],
+      "project": "keras-team/keras",
+      "published_at": "2026-08-02T06:30:20Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "keras-team/keras",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-54785",
+      "ghsa_id": "GHSA-c5px-58j2-7fqp",
+      "matching_commit_references": [
+        "https://github.com/eLyiN/gemini-bridge/commit/8f3b85afd02b692c4bc974b5176e12fb277ea801"
+      ],
+      "project": "elyin/gemini-bridge",
+      "published_at": "2026-07-31T22:31:20Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "elyin/gemini-bridge",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-53502",
+      "ghsa_id": "GHSA-cj54-hpcc-gj6h",
+      "matching_commit_references": [
+        "https://github.com/thumbor/thumbor/commit/3b986d13677b30fe6651c8c72ebb25957ac0a40d"
+      ],
+      "project": "thumbor/thumbor",
+      "published_at": "2026-07-31T19:03:54Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "thumbor/thumbor",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-12072",
+      "ghsa_id": "GHSA-6hm5-jgcp-p838",
+      "matching_commit_references": [],
+      "project": "nltk/nltk",
+      "published_at": "2026-07-31T16:50:55Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "nltk/nltk",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-12074",
+      "ghsa_id": "GHSA-xh95-f55m-82fw",
+      "matching_commit_references": [],
+      "project": "nltk/nltk",
+      "published_at": "2026-07-31T16:50:41Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "nltk/nltk",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-67429",
+      "ghsa_id": "GHSA-2956-977x-2w3r",
+      "matching_commit_references": [
+        "https://github.com/flytohub/flyto-core/commit/d5f89d71303e3c1e6418d347c5c55fcd173cc8cc"
+      ],
+      "project": "flytohub/flyto-core",
+      "published_at": "2026-07-30T14:46:43Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "flytohub/flyto-core",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-13346",
+      "ghsa_id": "GHSA-qwm4-qh6w-59xr",
+      "matching_commit_references": [
+        "https://github.com/pypa/pip/commit/10dfb6b9005484578b386f64b9f36982e3dc6679"
+      ],
+      "project": "pypa/pip",
+      "published_at": "2026-07-29T21:30:59Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "pypa/pip",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-50558",
+      "ghsa_id": "GHSA-f42x-p2mx-hm8r",
+      "matching_commit_references": [
+        "https://github.com/brightio/penelope/commit/a040afb5db32c7e80b5e8a2f9b2164cf911cfa62"
+      ],
+      "project": "brightio/penelope",
+      "published_at": "2026-07-29T15:34:16Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "brightio/penelope",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-55389",
+      "ghsa_id": "GHSA-8359-h9fx-j6v9",
+      "matching_commit_references": [
+        "https://github.com/koxudaxi/datamodel-code-generator/commit/2ff4a72b4550a2b2069754c5b075b1655067e5fb"
+      ],
+      "project": "datamodel-code-generator/datamodel-code-generator",
+      "published_at": "2026-07-28T21:49:34Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "koxudaxi/datamodel-code-generator",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-55390",
+      "ghsa_id": "GHSA-442q-2j6p-642g",
+      "matching_commit_references": [
+        "https://github.com/koxudaxi/datamodel-code-generator/commit/d2d5cecd9fd3a2a6dbf148bf0740b83a11fc6820"
+      ],
+      "project": "datamodel-code-generator/datamodel-code-generator",
+      "published_at": "2026-07-28T21:26:41Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "koxudaxi/datamodel-code-generator",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-59221",
+      "ghsa_id": "GHSA-frvj-c5qp-xj4w",
+      "matching_commit_references": [
+        "https://github.com/open-webui/open-webui/commit/05098d25a58d03738e01c4e85e8852c3b4ad849c"
+      ],
+      "project": "open-webui/open-webui",
+      "published_at": "2026-07-24T21:05:51Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "open-webui/open-webui",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-61632",
+      "ghsa_id": "GHSA-9xwg-3r6f-jcx2",
+      "matching_commit_references": [
+        "https://github.com/facelessuser/pymdown-extensions/commit/edce35586d11a1ef78bb187bc60497fe6dbf3b64"
+      ],
+      "project": "facelessuser/pymdown-extensions",
+      "published_at": "2026-07-24T16:18:33Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "facelessuser/pymdown-extensions",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-59819",
+      "ghsa_id": "GHSA-4g5m-c9r5-49xf",
+      "matching_commit_references": [],
+      "project": "berriai/litellm",
+      "published_at": "2026-07-22T22:38:04Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "berriai/litellm",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-59820",
+      "ghsa_id": "GHSA-5jmr-gcrj-2c9q",
+      "matching_commit_references": [
+        "https://github.com/BerriAI/litellm/commit/6a15adcd64137d37f73dee76dfe7481f8c2d9196"
+      ],
+      "project": "berriai/litellm",
+      "published_at": "2026-07-22T22:37:15Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "berriai/litellm",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-64825",
+      "ghsa_id": "GHSA-5hxg-r395-fqxx",
+      "matching_commit_references": [
+        "https://github.com/home-assistant/core/commit/567fe858289876b68b8162a77bd46e1e1af79752"
+      ],
+      "project": "home-assistant/core",
+      "published_at": "2026-07-21T18:31:02Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "home-assistant/core",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-59924",
+      "ghsa_id": "GHSA-r4rv-85jg-w4mf",
+      "matching_commit_references": [
+        "https://github.com/lepture/mistune/commit/1bef343ade163fc3bb95572b15be720084cdb993"
+      ],
+      "project": "lepture/mistune",
+      "published_at": "2026-07-20T21:34:53Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "lepture/mistune",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-25527",
+      "ghsa_id": "GHSA-9jj8-v89v-xjvw",
+      "matching_commit_references": [
+        "https://github.com/dgtlmoon/changedetection.io/commit/9d38b4517364831889b5b0d7b3465fd060403fd4"
+      ],
+      "project": "dgtlmoon/changedetection.io",
+      "published_at": "2026-07-20T19:06:55Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "dgtlmoon/changedetection.io",
+      "status": "selected"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-mfr4-mq8w-vmg6",
+      "matching_commit_references": [],
+      "project": "termux/proot-distro",
+      "published_at": "2026-07-17T20:25:37Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "termux/proot-distro",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": "CVE-2026-53598",
+      "ghsa_id": "GHSA-wxhm-2mq7-7697",
+      "matching_commit_references": [
+        "https://github.com/microsoft/prompty/commit/88ac9948d7d37995edbb2f6d36913436626c39e1"
+      ],
+      "project": "microsoft/prompty",
+      "published_at": "2026-07-17T19:46:05Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "microsoft/prompty",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-15736",
+      "ghsa_id": "GHSA-8g6f-qw9x-4q6q",
+      "matching_commit_references": [
+        "https://github.com/snowflakedb/snowflake-sqlalchemy/commit/2c33792c91449e746a2c7ef24c25f0ede0a4a875",
+        "https://github.com/snowflakedb/snowflake-sqlalchemy/commit/35edf4dc5e76b9a9fdfa74c8e4f6fd14642110f1",
+        "https://github.com/snowflakedb/snowflake-sqlalchemy/commit/a198ed2197bb3e0be57268032ed6e8b7fdeb8129"
+      ],
+      "project": "snowflakedb/snowflake-sqlalchemy",
+      "published_at": "2026-07-14T15:32:17Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "snowflakedb/snowflake-sqlalchemy",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-12482",
+      "ghsa_id": "GHSA-58hv-7753-xmfq",
+      "matching_commit_references": [
+        "https://github.com/keras-team/keras/commit/9867df45c456dd1077a6243bb56219f66e288150",
+        "https://github.com/keras-team/keras/commit/d338a45204bdc787c8b3c4a9b82c1911cd52dedf"
+      ],
+      "project": "keras-team/keras",
+      "published_at": "2026-07-14T06:31:23Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "keras-team/keras",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-7xw9-549r-8jrc",
+      "matching_commit_references": [],
+      "project": "diracgrid/dirac",
+      "published_at": "2026-07-13T18:38:13Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "diracgrid/dirac",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": "CVE-2026-61667",
+      "ghsa_id": "GHSA-m4m7-4cw8-62j6",
+      "matching_commit_references": [],
+      "project": "diracgrid/dirac",
+      "published_at": "2026-07-13T18:37:31Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "diracgrid/dirac",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-73498",
+      "ghsa_id": "GHSA-g5r6-gv6m-f5jv",
+      "matching_commit_references": [
+        "https://github.com/sooperset/mcp-atlassian/commit/b041733473f95119dd539542a43c280737a8e460"
+      ],
+      "project": "sooperset/mcp-atlassian",
+      "published_at": "2026-07-10T19:34:37Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "sooperset/mcp-atlassian",
+      "status": "selected"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-wm45-qh3g-v83f",
+      "matching_commit_references": [],
+      "project": "sooperset/mcp-atlassian",
+      "published_at": "2026-07-10T19:34:30Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "sooperset/mcp-atlassian",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": "CVE-2026-49836",
+      "ghsa_id": "GHSA-2rmg-vrx8-9j2f",
+      "matching_commit_references": [],
+      "project": "psd-tools/psd-tools",
+      "published_at": "2026-07-09T23:20:47Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "psd-tools/psd-tools",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-53956",
+      "ghsa_id": "GHSA-h672-p7h7-97v9",
+      "matching_commit_references": [],
+      "project": "conda/rattler",
+      "published_at": "2026-07-09T23:20:12Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "conda/rattler",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-52vm-mxx8-f227",
+      "matching_commit_references": [],
+      "project": "fadelabs/phantom",
+      "published_at": "2026-07-09T13:37:34Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "fadelabs/phantom",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": "CVE-2026-54760",
+      "ghsa_id": "GHSA-6xc5-4r68-67fc",
+      "matching_commit_references": [],
+      "project": "langroid/langroid",
+      "published_at": "2026-07-06T20:39:02Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "langroid/langroid",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-49297",
+      "ghsa_id": "GHSA-v3mh-27qj-w836",
+      "matching_commit_references": [
+        "https://github.com/apache/airflow/commit/0385bae70553223677753047b3e779d8b86b15c4"
+      ],
+      "project": "apache/airflow",
+      "published_at": "2026-07-06T12:31:30Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "apache/airflow",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-49360",
+      "ghsa_id": "GHSA-rh62-j648-g5qc",
+      "matching_commit_references": [],
+      "project": "datarecce/recce",
+      "published_at": "2026-07-02T21:14:38Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "datarecce/recce",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-52830",
+      "ghsa_id": "GHSA-rxw2-pc8j-vxwm",
+      "matching_commit_references": [],
+      "project": "leshchenko1979/fast-mcp-telegram",
+      "published_at": "2026-07-02T20:38:50Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "alexeyleshchenko/fast-mcp-telegram",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-52726",
+      "ghsa_id": "GHSA-gfhv-vqv2-4544",
+      "matching_commit_references": [],
+      "project": "jelmer/dulwich",
+      "published_at": "2026-07-02T17:50:00Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "jelmer/dulwich",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-50180",
+      "ghsa_id": "GHSA-pmch-g965-grmr",
+      "matching_commit_references": [
+        "https://github.com/langroid/langroid/commit/00b7dd7b79c5d03c94be284cf3459d98195ebfba"
+      ],
+      "project": "langroid/langroid",
+      "published_at": "2026-07-02T17:42:09Z",
+      "reason": "SQL regex blocklist does not establish a grammar-level boundary for all quoted/commented function forms; no complete fixed negative control qualified.",
+      "source_project": "langroid/langroid",
+      "status": "unresolved_control"
+    },
+    {
+      "cve_id": "CVE-2026-50181",
+      "ghsa_id": "GHSA-fg23-3346-88f5",
+      "matching_commit_references": [
+        "https://github.com/langroid/langroid/commit/56e2756ecab70a70a7e6edbee2f2187b8484683e"
+      ],
+      "project": "langroid/langroid",
+      "published_at": "2026-07-02T17:38:03Z",
+      "reason": "ReadFileTool ignores safe_resolve_path's return; read_file later uses expanduser after a raw exists check. The guard/read path representation differs. No live exploit claim; do not certify this fixed control.",
+      "source_project": "langroid/langroid",
+      "status": "unresolved_control"
+    },
+    {
+      "cve_id": "CVE-2026-12480",
+      "ghsa_id": "GHSA-26c4-7vv6-867j",
+      "matching_commit_references": [
+        "https://github.com/keras-team/keras/commit/d5a88bdb137c0d3039b8f4bbbe8c7099925cc10c",
+        "https://github.com/keras-team/keras/commit/8f987f11bf7512f0df4774a8f1557bba07dc2b49"
+      ],
+      "project": "keras-team/keras",
+      "published_at": "2026-07-01T18:31:51Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "keras-team/keras",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-48776",
+      "ghsa_id": "GHSA-w39p-vh2g-g8g5",
+      "matching_commit_references": [],
+      "project": "langchain-ai/langgraph",
+      "published_at": "2026-06-25T18:32:35Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "langchain-ai/langgraph",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-qxvg-h7q2-hcxh",
+      "matching_commit_references": [],
+      "project": "motioneye-project/motioneye",
+      "published_at": "2026-06-23T18:53:04Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "motioneye-project/motioneye",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": "CVE-2026-55488",
+      "ghsa_id": "GHSA-rw9q-97r9-8gvh",
+      "matching_commit_references": [],
+      "project": "motioneye-project/motioneye",
+      "published_at": "2026-06-23T18:32:46Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "motioneye-project/motioneye",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-54134",
+      "ghsa_id": "GHSA-j4h9-pm27-4rfw",
+      "matching_commit_references": [],
+      "project": "octoprint/octoprint",
+      "published_at": "2026-06-23T18:03:54Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "octoprint/octoprint",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-53925",
+      "ghsa_id": "GHSA-3vwc-qwhc-3mj7",
+      "matching_commit_references": [],
+      "project": "nicolargo/glances",
+      "published_at": "2026-06-23T17:59:01Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "nicolargo/glances",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-12479",
+      "ghsa_id": "GHSA-gh82-f9x8-5frx",
+      "matching_commit_references": [
+        "https://github.com/keras-team/keras/commit/d8caeb58cc9e61ea092445dc7a20908ca8d693e2"
+      ],
+      "project": "keras-team/keras",
+      "published_at": "2026-06-22T18:34:13Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "keras-team/keras",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-31978",
+      "ghsa_id": "GHSA-g9fx-5r4h-pcw3",
+      "matching_commit_references": [],
+      "project": "motioneye-project/motioneye",
+      "published_at": "2026-06-22T17:10:38Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "motioneye-project/motioneye",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-66336",
+      "ghsa_id": "GHSA-pqrj-4gwg-h5f7",
+      "matching_commit_references": [],
+      "project": "apache/doris-mcp-server",
+      "published_at": "2026-06-22T09:30:45Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "apache/doris-mcp-server",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-59153",
+      "ghsa_id": "GHSA-869j-r97x-hx2g",
+      "matching_commit_references": [
+        "https://github.com/ankitects/anki/commit/858e5689d0e4fd24f74856c7e8f245412694a219"
+      ],
+      "project": "ankitects/anki",
+      "published_at": "2026-06-19T22:10:57Z",
+      "reason": "The referenced Python diff only renames a comprehension variable. Python 3 comprehension scoping does not demonstrate the advisory's request-validation correction; no matched vulnerable/fixed mechanism qualified.",
+      "source_project": "ankitects/anki",
+      "status": "excluded_fix_binding"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-4xgf-cpjx-pc3j",
+      "matching_commit_references": [],
+      "project": "pydantic/pydantic-settings",
+      "published_at": "2026-06-19T22:10:42Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "pydantic/pydantic-settings",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-f4xh-w4cj-qxq8",
+      "matching_commit_references": [],
+      "project": "langchain-ai/langsmith-sdk",
+      "published_at": "2026-06-19T22:10:34Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "langchain-ai/langsmith-sdk",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-cw6h-ffmh-x6vh",
+      "matching_commit_references": [],
+      "project": "ankitects/anki",
+      "published_at": "2026-06-19T22:10:19Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "ankitects/anki",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-c795-2g9c-j48m",
+      "matching_commit_references": [],
+      "project": "evermind-ai/everos",
+      "published_at": "2026-06-19T21:43:12Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "evermind-ai/everos",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-2jq4-q6vv-4cp3",
+      "matching_commit_references": [],
+      "project": "unclecode/crawl4ai",
+      "published_at": "2026-06-18T17:25:13Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "unclecode/crawl4ai",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": "CVE-2026-57496",
+      "ghsa_id": "GHSA-hxpf-9xvq-wph8",
+      "matching_commit_references": [],
+      "project": "labs64/netlicensing-mcp",
+      "published_at": "2026-06-18T17:22:02Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "labs64/netlicensing-mcp",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-12567",
+      "ghsa_id": "GHSA-rvp7-w75q-9fv2",
+      "matching_commit_references": [
+        "https://github.com/blacklanternsecurity/bbot/commit/16d9c42b6"
+      ],
+      "project": "blacklanternsecurity/bbot",
+      "published_at": "2026-06-18T15:04:00Z",
+      "reason": "The patch checks owner/repository directory components for symlinks, but leaves the final downloaded filename unchecked under a threat model involving a local attacker sharing that tree. No complete fixed control qualified.",
+      "source_project": "blacklanternsecurity/bbot",
+      "status": "unresolved_control"
+    },
+    {
+      "cve_id": "CVE-2026-12568",
+      "ghsa_id": "GHSA-m54h-vhf9-3w3m",
+      "matching_commit_references": [
+        "https://github.com/blacklanternsecurity/bbot/commit/36bc20818"
+      ],
+      "project": "blacklanternsecurity/bbot",
+      "published_at": "2026-06-18T15:03:38Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "blacklanternsecurity/bbot",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-12565",
+      "ghsa_id": "GHSA-3vgw-585j-4m45",
+      "matching_commit_references": [
+        "https://github.com/blacklanternsecurity/bbot/commit/4fb38fd6e"
+      ],
+      "project": "blacklanternsecurity/bbot",
+      "published_at": "2026-06-18T15:02:35Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "blacklanternsecurity/bbot",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-57145",
+      "ghsa_id": "GHSA-29w3-p9w9-wc47",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-06-18T14:27:03Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-57113",
+      "ghsa_id": "GHSA-f44v-7qgw-9gh9",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-06-18T14:24:55Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-56839",
+      "ghsa_id": "GHSA-gcq3-mfvh-3x25",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-06-18T13:59:26Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-57129",
+      "ghsa_id": "GHSA-2rcg-mm5h-xchx",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-06-18T13:57:00Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-57119",
+      "ghsa_id": "GHSA-p4pj-vh7h-6cqh",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-06-18T13:56:04Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-56834",
+      "ghsa_id": "GHSA-j7qx-p75m-wp7g",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-06-18T13:52:51Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-56833",
+      "ghsa_id": "GHSA-22cj-m4wf-fv2c",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-06-18T13:52:32Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-26240",
+      "ghsa_id": "GHSA-9g3x-6x24-vf9f",
+      "matching_commit_references": [],
+      "project": "jazzcore/python-pdfkit",
+      "published_at": "2026-06-17T18:35:56Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "jazzcore/python-pdfkit",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-50203",
+      "ghsa_id": "GHSA-qf38-jq28-3ccq",
+      "matching_commit_references": [],
+      "project": "apache/airflow",
+      "published_at": "2026-06-17T18:35:51Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "apache/airflow",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-54017",
+      "ghsa_id": "GHSA-r2wg-2mcr-66rv",
+      "matching_commit_references": [],
+      "project": "open-webui/open-webui",
+      "published_at": "2026-06-17T17:55:28Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "open-webui/open-webui",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-54014",
+      "ghsa_id": "GHSA-j2c8-v969-8r5c",
+      "matching_commit_references": [],
+      "project": "open-webui/open-webui",
+      "published_at": "2026-06-17T14:16:25Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "open-webui/open-webui",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-7cx2-g3h9-382p",
+      "matching_commit_references": [],
+      "project": "unclecode/crawl4ai",
+      "published_at": "2026-06-16T21:02:19Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "unclecode/crawl4ai",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": "CVE-2026-56266",
+      "ghsa_id": "GHSA-365w-hqf6-vxfg",
+      "matching_commit_references": [],
+      "project": "unclecode/crawl4ai",
+      "published_at": "2026-06-16T20:13:30Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "unclecode/crawl4ai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-48520",
+      "ghsa_id": "GHSA-rcjh-r59h-gq37",
+      "matching_commit_references": [],
+      "project": "langflow-ai/langflow",
+      "published_at": "2026-06-16T17:36:00Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "langflow-ai/langflow",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-42867",
+      "ghsa_id": "GHSA-79ph-745m-6wxq",
+      "matching_commit_references": [],
+      "project": "langflow-ai/langflow",
+      "published_at": "2026-06-16T17:35:09Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "langflow-ai/langflow",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-55443",
+      "ghsa_id": "GHSA-gr75-jv2w-4656",
+      "matching_commit_references": [
+        "https://github.com/langchain-ai/langchain/commit/dcaf7795a3e6590af55c3ff7bda6add6355e9ea6"
+      ],
+      "project": "langchain-ai/langchain",
+      "published_at": "2026-06-16T15:03:14Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "langchain-ai/langchain",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-54293",
+      "ghsa_id": "GHSA-p4gq-832x-fm9v",
+      "matching_commit_references": [],
+      "project": "nltk/nltk",
+      "published_at": "2026-06-16T14:34:15Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "nltk/nltk",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-48099",
+      "ghsa_id": "GHSA-wxq4-cc2q-338q",
+      "matching_commit_references": [
+        "https://github.com/mar10/wsgidav/commit/f894ed8656d7bdd7438ab8148c5a02546cb15183"
+      ],
+      "project": "mar10/wsgidav",
+      "published_at": "2026-06-11T20:28:45Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "mar10/wsgidav",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-11816",
+      "ghsa_id": "GHSA-hqp4-2352-xf5r",
+      "matching_commit_references": [
+        "https://github.com/keras-team/keras/commit/2465b6657b02c8eed308759b7e800e295ae01888"
+      ],
+      "project": "keras-team/keras",
+      "published_at": "2026-06-11T15:31:33Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "keras-team/keras",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-47764",
+      "ghsa_id": "GHSA-78v8-vpjp-cjqh",
+      "matching_commit_references": [],
+      "project": "pdm-project/pdm",
+      "published_at": "2026-06-10T20:33:13Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "pdm-project/pdm",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-52902",
+      "ghsa_id": "GHSA-g29c-rgq6-gxgj",
+      "matching_commit_references": [],
+      "project": "ansible/awx",
+      "published_at": "2026-06-09T12:32:04Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "ansible/awx",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-49818",
+      "ghsa_id": "GHSA-f6vj-48fm-hmvx",
+      "matching_commit_references": [
+        "https://github.com/apache/airflow/commit/bc1df029af15cb1d35d5ca0d33bf9235500137cc"
+      ],
+      "project": "apache/airflow",
+      "published_at": "2026-06-09T09:32:07Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "apache/airflow",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-47712",
+      "ghsa_id": "GHSA-555p-6grf-mh7f",
+      "matching_commit_references": [
+        "https://github.com/jelmer/dulwich/commit/c2446e51b"
+      ],
+      "project": "jelmer/dulwich",
+      "published_at": "2026-06-08T23:04:48Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "jelmer/dulwich",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-47731",
+      "ghsa_id": "GHSA-p462-prxw-mjx4",
+      "matching_commit_references": [],
+      "project": "nasa-ammos/ait-core",
+      "published_at": "2026-06-05T18:11:27Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "nasa-ammos/ait-core",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-48681",
+      "ghsa_id": "GHSA-9v62-qx4c-44x5",
+      "matching_commit_references": [],
+      "project": "openstack/ironic",
+      "published_at": "2026-06-04T06:30:25Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "openstack/ironic",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44023",
+      "ghsa_id": "GHSA-jmmv-h3mp-59v8",
+      "matching_commit_references": [],
+      "project": "docling-project/docling-core",
+      "published_at": "2026-06-03T21:16:25Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "docling-project/docling-core",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44019",
+      "ghsa_id": "GHSA-j5xp-7m2f-49jv",
+      "matching_commit_references": [],
+      "project": "docling-project/docling-core",
+      "published_at": "2026-06-03T21:15:31Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "docling-project/docling-core",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-47214",
+      "ghsa_id": "GHSA-q29v-xc37-wh5m",
+      "matching_commit_references": [],
+      "project": "docling-project/docling",
+      "published_at": "2026-06-03T21:15:02Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "docling-project/docling",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44022",
+      "ghsa_id": "GHSA-2j5p-7p5m-cvqr",
+      "matching_commit_references": [],
+      "project": "docling-project/docling",
+      "published_at": "2026-06-03T21:14:35Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "docling-project/docling",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44017",
+      "ghsa_id": "GHSA-cjqg-rq2h-2fvj",
+      "matching_commit_references": [],
+      "project": "docling-project/docling",
+      "published_at": "2026-06-03T20:02:42Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "docling-project/docling",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-8643",
+      "ghsa_id": "GHSA-wf93-45jw-7689",
+      "matching_commit_references": [],
+      "project": "pypa/pip",
+      "published_at": "2026-06-01T18:31:53Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "pypa/pip",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-47425",
+      "ghsa_id": "GHSA-q53q-5r4j-5729",
+      "matching_commit_references": [],
+      "project": "conda/rattler",
+      "published_at": "2026-06-01T14:15:31Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "conda/rattler",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-47397",
+      "ghsa_id": "GHSA-hvhp-v2gc-268q",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-05-29T22:31:49Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-47394",
+      "ghsa_id": "GHSA-9cr9-25q5-8prj",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-05-29T22:30:58Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-9pc9-4crj-mhpj",
+      "matching_commit_references": [],
+      "project": "eidetic-labs/stigmem",
+      "published_at": "2026-05-29T22:15:40Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "eidetic-labs/stigmem",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-4gg8-gxpx-9rph",
+      "matching_commit_references": [],
+      "project": "astral-sh/uv",
+      "published_at": "2026-05-29T19:26:33Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "astral-sh/uv",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": "CVE-2026-10108",
+      "ghsa_id": "GHSA-5j8p-5rrj-8wjg",
+      "matching_commit_references": [
+        "https://github.com/hanxi/xiaomusic/commit/88404da7a283f2c0a796a4cd16bbb6e6aa1f4722"
+      ],
+      "project": "hanxi/xiaomusic",
+      "published_at": "2026-05-29T18:31:35Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "hanxi/xiaomusic",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-10105",
+      "ghsa_id": "GHSA-82m5-3pcp-hccq",
+      "matching_commit_references": [],
+      "project": "agno-agi/agno",
+      "published_at": "2026-05-29T18:31:34Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "agno-agi/agno",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-42305",
+      "ghsa_id": "GHSA-897w-fcg9-f6xj",
+      "matching_commit_references": [
+        "https://github.com/jelmer/dulwich/commit/49eb56e51aad637fc23d54bf2a08cb42739b8290",
+        "https://github.com/jelmer/dulwich/commit/57efc4aa1581e038915a0fd79365be53b150f4a9"
+      ],
+      "project": "jelmer/dulwich",
+      "published_at": "2026-05-28T22:28:06Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "jelmer/dulwich",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-47144",
+      "ghsa_id": "GHSA-x6p3-76f2-xxvh",
+      "matching_commit_references": [
+        "https://github.com/BKDDFS/shamefile/commit/77b0aeea318503582818c708518c601fedc43557"
+      ],
+      "project": "bkddfs/shamefile",
+      "published_at": "2026-05-28T20:02:14Z",
+      "reason": "The changed vulnerable implementation is src/main.rs; Python files are only upstream tests.",
+      "source_project": "bkddfs/shamefile",
+      "status": "excluded_non_python_mechanism"
+    },
+    {
+      "cve_id": "CVE-2026-46345",
+      "ghsa_id": "GHSA-4q5v-7g7x-j79w",
+      "matching_commit_references": [
+        "https://github.com/oscal-compass/compliance-trestle/commit/247fcce289f60103f3d8e28d8ec51a6986b94fb6",
+        "https://github.com/oscal-compass/compliance-trestle/commit/7d107b3ac53caca7bde97a6278b23cd739d94525"
+      ],
+      "project": "oscal-compass/compliance-trestle",
+      "published_at": "2026-05-28T17:44:03Z",
+      "reason": "Qualified before measurement; see qualification.json.",
+      "source_project": "oscal-compass/compliance-trestle",
+      "status": "selected"
+    },
+    {
+      "cve_id": "CVE-2026-45774",
+      "ghsa_id": "GHSA-mj4x-vf5c-5xg8",
+      "matching_commit_references": [
+        "https://github.com/oscal-compass/compliance-trestle/commit/5c65c5926fe7ca908b9c1d281f904e7d97ba8310",
+        "https://github.com/oscal-compass/compliance-trestle/commit/d00a0c2f702c24f7016009fbd626036f5c46f47b"
+      ],
+      "project": "oscal-compass/compliance-trestle",
+      "published_at": "2026-05-28T17:37:08Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "oscal-compass/compliance-trestle",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-45725",
+      "ghsa_id": "GHSA-g3vg-vx23-3858",
+      "matching_commit_references": [
+        "https://github.com/oscal-compass/compliance-trestle/commit/89f4e53d159e8ff901da4d7c3b51c9556bd32ec0",
+        "https://github.com/oscal-compass/compliance-trestle/commit/9abc492329fcc8d0557182317de9bde854385da3"
+      ],
+      "project": "oscal-compass/compliance-trestle",
+      "published_at": "2026-05-27T22:57:37Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "oscal-compass/compliance-trestle",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-45309",
+      "ghsa_id": "GHSA-g794-3fmp-753h",
+      "matching_commit_references": [],
+      "project": "ronf/asyncssh",
+      "published_at": "2026-05-27T21:35:06Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "ronf/asyncssh",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-25879",
+      "ghsa_id": "GHSA-mxfr-6hcw-j9rq",
+      "matching_commit_references": [],
+      "project": "langroid/langroid",
+      "published_at": "2026-05-27T19:38:58Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "langroid/langroid",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-48544",
+      "ghsa_id": "GHSA-28gh-q3gw-pvx8",
+      "matching_commit_references": [
+        "https://github.com/Avaiga/taipy/commit/129fd407ffca49ee4ab853772c88d0c873e038dd"
+      ],
+      "project": "avaiga/taipy",
+      "published_at": "2026-05-27T15:33:26Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "avaiga/taipy",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-46703",
+      "ghsa_id": "GHSA-f396-4rp4-7v2j",
+      "matching_commit_references": [],
+      "project": "boxlite-ai/boxlite",
+      "published_at": "2026-05-21T21:54:15Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "boxlite-ai/boxlite",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-46486",
+      "ghsa_id": "GHSA-5h3g-px23-w6vw",
+      "matching_commit_references": [],
+      "project": "mvt-project/mvt",
+      "published_at": "2026-05-21T17:05:29Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mvt-project/mvt",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-46338",
+      "ghsa_id": "GHSA-62q4-447f-wv8h",
+      "matching_commit_references": [],
+      "project": "facelessuser/pymdown-extensions",
+      "published_at": "2026-05-19T20:00:29Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "facelessuser/pymdown-extensions",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-45568",
+      "ghsa_id": "GHSA-jh67-hwqw-m5r7",
+      "matching_commit_references": [],
+      "project": "openziti/zrok",
+      "published_at": "2026-05-19T15:16:08Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "openziti/zrok",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-45727",
+      "ghsa_id": "GHSA-mf33-gv72-w2h5",
+      "matching_commit_references": [],
+      "project": "cloakhq/cloakbrowser",
+      "published_at": "2026-05-18T17:50:21Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "cloakhq/cloakbrowser",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-8754",
+      "ghsa_id": "GHSA-f63h-wc26-pmvc",
+      "matching_commit_references": [
+        "https://github.com/AstrBotDevs/AstrBot/commit/aaec41e5054569ceaa1113593a34da7568e2d211"
+      ],
+      "project": "astrbotdevs/astrbot",
+      "published_at": "2026-05-17T15:31:42Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "astrbotdevs/astrbot",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-46383",
+      "ghsa_id": "GHSA-mq5j-pw29-jcv3",
+      "matching_commit_references": [
+        "https://github.com/microsoft/apm/commit/77d1dda8303c8d7ccb6148788a6274fdece98499"
+      ],
+      "project": "microsoft/apm",
+      "published_at": "2026-05-15T18:25:34Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "microsoft/apm",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-44716",
+      "ghsa_id": "GHSA-3363-2ph6-35wh",
+      "matching_commit_references": [
+        "https://github.com/pipecat-ai/pipecat/commit/7519c26ac5508573c35fa3a9c4717b013993d129"
+      ],
+      "project": "pipecat-ai/pipecat",
+      "published_at": "2026-05-15T16:55:04Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "pipecat-ai/pipecat",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-2614",
+      "ghsa_id": "GHSA-42h5-h8qh-vv9v",
+      "matching_commit_references": [
+        "https://github.com/mlflow/mlflow/commit/6e801f4259d96804c73107315b24cef0f6aa115a"
+      ],
+      "project": "mlflow/mlflow",
+      "published_at": "2026-05-11T21:31:35Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "mlflow/mlflow",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-7815",
+      "ghsa_id": "GHSA-hp84-p2gq-6fvr",
+      "matching_commit_references": [
+        "https://github.com/pgadmin-org/pgadmin4/commit/cf53953d9"
+      ],
+      "project": "pgadmin-org/pgadmin4",
+      "published_at": "2026-05-11T18:31:44Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "pgadmin-org/pgadmin4",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-7816",
+      "ghsa_id": "GHSA-j74f-g7vx-fh4x",
+      "matching_commit_references": [
+        "https://github.com/pgadmin-org/pgadmin4/commit/13badc62c"
+      ],
+      "project": "pgadmin-org/pgadmin4",
+      "published_at": "2026-05-11T18:31:44Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "pgadmin-org/pgadmin4",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-45017",
+      "ghsa_id": "GHSA-8p4x-wr7x-3788",
+      "matching_commit_references": [],
+      "project": "jg-rp/liquid",
+      "published_at": "2026-05-11T14:57:43Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "jg-rp/liquid",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44353",
+      "ghsa_id": "GHSA-hgqw-6m45-hw5f",
+      "matching_commit_references": [],
+      "project": "streamlink/streamlink",
+      "published_at": "2026-05-11T14:28:30Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "streamlink/streamlink",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44565",
+      "ghsa_id": "GHSA-j3fw-wc48-29g3",
+      "matching_commit_references": [],
+      "project": "open-webui/open-webui",
+      "published_at": "2026-05-11T14:03:24Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "open-webui/open-webui",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44340",
+      "ghsa_id": "GHSA-9q28-ghcr-c4x3",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-05-11T13:59:41Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44336",
+      "ghsa_id": "GHSA-9mqq-jqxf-grvw",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-05-11T13:58:47Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44337",
+      "ghsa_id": "GHSA-3643-7v76-5cj2",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-05-11T13:57:18Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44566",
+      "ghsa_id": "GHSA-9pgh-j74g-qj6m",
+      "matching_commit_references": [],
+      "project": "open-webui/open-webui",
+      "published_at": "2026-05-08T22:38:09Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "open-webui/open-webui",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-38360",
+      "ghsa_id": "GHSA-3rf6-x59v-5jfv",
+      "matching_commit_references": [],
+      "project": "fohrloop/dash-uploader",
+      "published_at": "2026-05-08T18:31:35Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "fohrloop/dash-uploader",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-q9m2-fhv9-3jcf",
+      "matching_commit_references": [],
+      "project": "davidjurgens/potato",
+      "published_at": "2026-05-08T17:31:07Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "davidjurgens/potato",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": "CVE-2026-44641",
+      "ghsa_id": "GHSA-xhrw-5qxx-jpwr",
+      "matching_commit_references": [],
+      "project": "microsoft/apm",
+      "published_at": "2026-05-07T21:41:08Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "microsoft/apm",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44307",
+      "ghsa_id": "GHSA-2h4p-vjrc-8xpq",
+      "matching_commit_references": [
+        "https://github.com/sqlalchemy/mako/commit/72e10c573ca0fbcbddd4455abca8ce92a61780d7"
+      ],
+      "project": "sqlalchemy/mako",
+      "published_at": "2026-05-06T21:45:16Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "sqlalchemy/mako",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-42448",
+      "ghsa_id": "GHSA-cf92-gfcw-6v53",
+      "matching_commit_references": [],
+      "project": "magic-wormhole/magic-wormhole",
+      "published_at": "2026-05-06T20:40:17Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "magic-wormhole/magic-wormhole",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-44243",
+      "ghsa_id": "GHSA-7545-fcxq-7j24",
+      "matching_commit_references": [],
+      "project": "gitpython-developers/gitpython",
+      "published_at": "2026-05-06T19:38:48Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "gitpython-developers/gitpython",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-29090",
+      "ghsa_id": "GHSA-6j7p-qjhg-9947",
+      "matching_commit_references": [],
+      "project": "rucio/rucio",
+      "published_at": "2026-05-06T16:44:07Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "rucio/rucio",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-29080",
+      "ghsa_id": "GHSA-vjr5-c9qv-hgm3",
+      "matching_commit_references": [],
+      "project": "rucio/rucio",
+      "published_at": "2026-05-06T16:42:49Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "rucio/rucio",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-42315",
+      "ghsa_id": "GHSA-838g-gr43-qqg9",
+      "matching_commit_references": [],
+      "project": "pyload/pyload",
+      "published_at": "2026-05-05T21:18:19Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "pyload/pyload",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-43891",
+      "ghsa_id": "GHSA-8757-69j2-hx56",
+      "matching_commit_references": [],
+      "project": "dgtlmoon/changedetection.io",
+      "published_at": "2026-05-05T21:16:21Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "dgtlmoon/changedetection.io",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-42314",
+      "ghsa_id": "GHSA-97r3-5w84-r4q8",
+      "matching_commit_references": [],
+      "project": "pyload/pyload",
+      "published_at": "2026-05-05T21:13:08Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "pyload/pyload",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-43901",
+      "ghsa_id": "GHSA-3r68-x3xc-rxpg",
+      "matching_commit_references": [],
+      "project": "bx33661/wireshark-mcp",
+      "published_at": "2026-05-05T20:15:12Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "bx33661/wireshark-mcp",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-42196",
+      "ghsa_id": "GHSA-67qg-7284-2277",
+      "matching_commit_references": [],
+      "project": "codingjoe/django-s3file",
+      "published_at": "2026-05-05T20:05:49Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "codingjoe/django-s3file",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-42080",
+      "ghsa_id": "GHSA-pxhg-7xr2-w7xg",
+      "matching_commit_references": [
+        "https://github.com/icip-cas/PPTAgent/commit/418491a9a1c02d9d93194b5973bb58df35cf9d00"
+      ],
+      "project": "icip-cas/pptagent",
+      "published_at": "2026-05-05T18:57:31Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "icip-cas/pptagent",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-42078",
+      "ghsa_id": "GHSA-hrcw-xc63-g29m",
+      "matching_commit_references": [
+        "https://github.com/icip-cas/PPTAgent/commit/418491a9a1c02d9d93194b5973bb58df35cf9d00"
+      ],
+      "project": "icip-cas/pptagent",
+      "published_at": "2026-05-05T18:55:50Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "icip-cas/pptagent",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-42048",
+      "ghsa_id": "GHSA-9whx-c884-c68q",
+      "matching_commit_references": [],
+      "project": "langflow-ai/langflow",
+      "published_at": "2026-05-05T18:28:59Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "langflow-ai/langflow",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-35397",
+      "ghsa_id": "GHSA-5789-5fc7-67v3",
+      "matching_commit_references": [],
+      "project": "jupyter-server/jupyter_server",
+      "published_at": "2026-05-05T16:49:10Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "jupyter-server/jupyter_server",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-42031",
+      "ghsa_id": "GHSA-h7j7-3rx6-xvcg",
+      "matching_commit_references": [],
+      "project": "ckan/ckan",
+      "published_at": "2026-04-29T23:11:21Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "ckan/ckan",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-42351",
+      "ghsa_id": "GHSA-f6pr-83pg-ghh6",
+      "matching_commit_references": [
+        "https://github.com/geopython/pygeoapi/commit/bf25b8695edbdd5476eeffc102b633d1d3e45f52"
+      ],
+      "project": "geopython/pygeoapi",
+      "published_at": "2026-04-29T22:18:02Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "geopython/pygeoapi",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-7404",
+      "ghsa_id": "GHSA-3jmq-qhg3-f58j",
+      "matching_commit_references": [],
+      "project": "getsimpletool/mcpo-simple-server",
+      "published_at": "2026-04-29T21:31:31Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "getsimpletool/mcpo-simple-server",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-7212",
+      "ghsa_id": "GHSA-vc5j-42hh-j3mr",
+      "matching_commit_references": [],
+      "project": "edvardlindelof/notes-mcp",
+      "published_at": "2026-04-28T03:31:29Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "edvardlindelof/notes-mcp",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-7159",
+      "ghsa_id": "GHSA-wfr3-hf93-qgg3",
+      "matching_commit_references": [],
+      "project": "douinc/mkdocs-mcp-plugin",
+      "published_at": "2026-04-28T00:31:40Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "douinc/mkdocs-mcp-plugin",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-7149",
+      "ghsa_id": "GHSA-q882-jc55-6343",
+      "matching_commit_references": [],
+      "project": "dexhunter/kaggle-mcp",
+      "published_at": "2026-04-27T21:31:02Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "dexhunter/kaggle-mcp",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-42208",
+      "ghsa_id": "GHSA-r75f-5x8p-qvmc",
+      "matching_commit_references": [],
+      "project": "berriai/litellm",
+      "published_at": "2026-04-24T16:17:07Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "berriai/litellm",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-6855",
+      "ghsa_id": "GHSA-pqmg-c2j8-fq92",
+      "matching_commit_references": [],
+      "project": "instructlab/instructlab",
+      "published_at": "2026-04-22T15:31:40Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "instructlab/instructlab",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-41140",
+      "ghsa_id": "GHSA-73h3-mf4w-8647",
+      "matching_commit_references": [],
+      "project": "python-poetry/poetry",
+      "published_at": "2026-04-22T14:35:30Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "python-poetry/poetry",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-39378",
+      "ghsa_id": "GHSA-7jqv-fw35-gmx9",
+      "matching_commit_references": [],
+      "project": "jupyter/nbconvert",
+      "published_at": "2026-04-21T17:18:53Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "jupyter/nbconvert",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-39377",
+      "ghsa_id": "GHSA-4c99-qj7h-p3vg",
+      "matching_commit_references": [],
+      "project": "jupyter/nbconvert",
+      "published_at": "2026-04-21T17:18:18Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "jupyter/nbconvert",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-35588",
+      "ghsa_id": "GHSA-grp3-h8m8-45p7",
+      "matching_commit_references": [
+        "https://github.com/nicolargo/glances/commit/d339181f03a14bb15506307e9d58f876e23d8160",
+        "https://github.com/nicolargo/glances/commit/e41b665576f9fd5374e3152078726cc59a01e48c"
+      ],
+      "project": "nicolargo/glances",
+      "published_at": "2026-04-21T15:18:58Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "nicolargo/glances",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-66335",
+      "ghsa_id": "GHSA-qhfq-gvvc-5q6q",
+      "matching_commit_references": [],
+      "project": "apache/doris-mcp-server",
+      "published_at": "2026-04-20T15:31:52Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "apache/doris-mcp-server",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-41490",
+      "ghsa_id": "GHSA-mjw2-v2hm-wj34",
+      "matching_commit_references": [],
+      "project": "dagster-io/dagster",
+      "published_at": "2026-04-18T01:07:59Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "dagster-io/dagster",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-41496",
+      "ghsa_id": "GHSA-rg3h-x3jw-7jm5",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-04-17T22:24:19Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-41205",
+      "ghsa_id": "GHSA-v92g-xgxw-vvmm",
+      "matching_commit_references": [
+        "https://github.com/sqlalchemy/mako/commit/e05ac61989a7fb9dd7dcde6cfd72dc48328719a3"
+      ],
+      "project": "sqlalchemy/mako",
+      "published_at": "2026-04-16T21:16:40Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "sqlalchemy/mako",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-40256",
+      "ghsa_id": "GHSA-ffgh-3jrf-8wvh",
+      "matching_commit_references": [
+        "https://github.com/WeblateOrg/weblate/commit/e30dbcb33ae78e754ecef192d54f996b89cb4e15"
+      ],
+      "project": "weblateorg/weblate",
+      "published_at": "2026-04-16T21:08:47Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "weblateorg/weblate",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-34242",
+      "ghsa_id": "GHSA-hv99-mxm5-q397",
+      "matching_commit_references": [
+        "https://github.com/WeblateOrg/weblate/commit/5db3a2a2e047ecaab627a8731cd744a30b2f51d3"
+      ],
+      "project": "weblateorg/weblate",
+      "published_at": "2026-04-16T20:43:11Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "weblateorg/weblate",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-33435",
+      "ghsa_id": "GHSA-558g-h753-6m33",
+      "matching_commit_references": [],
+      "project": "weblateorg/weblate",
+      "published_at": "2026-04-16T20:41:38Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "weblateorg/weblate",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-33220",
+      "ghsa_id": "GHSA-mqph-7h49-hqfm",
+      "matching_commit_references": [],
+      "project": "weblateorg/weblate",
+      "published_at": "2026-04-16T20:41:29Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "weblateorg/weblate",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-40491",
+      "ghsa_id": "GHSA-76hw-p97h-883f",
+      "matching_commit_references": [
+        "https://github.com/wkentaro/gdown/commit/af569fc6ed300b7974dee66dc51e9f01b57b4dff"
+      ],
+      "project": "wkentaro/gdown",
+      "published_at": "2026-04-14T01:11:30Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "wkentaro/gdown",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-40576",
+      "ghsa_id": "GHSA-j98m-w3xp-9f56",
+      "matching_commit_references": [
+        "https://github.com/haris-musa/excel-mcp-server/commit/f51340ecd5778952405044b203d3a2d4c8a46833"
+      ],
+      "project": "haris-musa/excel-mcp-server",
+      "published_at": "2026-04-14T00:03:17Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "haris-musa/excel-mcp-server",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-40258",
+      "ghsa_id": "GHSA-m5gr-86j6-99jp",
+      "matching_commit_references": [
+        "https://github.com/gramps-project/gramps-web-api/commit/3ed4342711e3ec849552df09b1fe2fbf2ca5c29a"
+      ],
+      "project": "gramps-project/gramps-web-api",
+      "published_at": "2026-04-10T21:00:09Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "gramps-project/gramps-web-api",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-40086",
+      "ghsa_id": "GHSA-3wqj-33cg-xc48",
+      "matching_commit_references": [
+        "https://github.com/danielgatis/rembg/commit/7c76d3cdc5757ffbda6a76664b24cfbecdb80273"
+      ],
+      "project": "danielgatis/rembg",
+      "published_at": "2026-04-10T20:00:12Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "danielgatis/rembg",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-vj8v-p5vw-m6v5",
+      "matching_commit_references": [
+        "https://github.com/xrootd/xrootd/commit/45efac7267a115ca4f2102214498e8cb011eb69b"
+      ],
+      "project": "xrootd/xrootd",
+      "published_at": "2026-04-10T19:50:39Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "xrootd/xrootd",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": null,
+      "ghsa_id": "GHSA-pjjw-68hj-v9mw",
+      "matching_commit_references": [
+        "https://github.com/astral-sh/uv/commit/7983c7a5bef236fd8a04580fcedae7bd5bde4cdb",
+        "https://github.com/astral-sh/uv/commit/a0e461ac44851f9a0f6e8974733e77d46f7a9ea9"
+      ],
+      "project": "astral-sh/uv",
+      "published_at": "2026-04-10T19:39:15Z",
+      "reason": "No CVE bound in the discovery response.",
+      "source_project": "astral-sh/uv",
+      "status": "excluded_missing_cve"
+    },
+    {
+      "cve_id": "CVE-2026-40315",
+      "ghsa_id": "GHSA-x783-xp3g-mqhp",
+      "matching_commit_references": [
+        "https://github.com/MervinPraison/PraisonAI/commit/0accebb2e3c3ec2fca66bbea0444fb7a35f0b4ef"
+      ],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-04-10T19:32:00Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-40157",
+      "ghsa_id": "GHSA-99g3-w8gr-x37c",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-04-10T19:27:59Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-40152",
+      "ghsa_id": "GHSA-7j2f-xc8p-fjmq",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-04-10T19:24:32Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-39981",
+      "ghsa_id": "GHSA-5gfj-64gh-mgmw",
+      "matching_commit_references": [
+        "https://github.com/Josh-XT/AGiXT/commit/2079ea5a88fa671a921bf0b5eba887a5a1b73d5f"
+      ],
+      "project": "josh-xt/agixt",
+      "published_at": "2026-04-08T20:02:01Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "josh-xt/agixt",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-56078",
+      "ghsa_id": "GHSA-766v-q9x3-g744",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-04-08T19:21:32Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-39844",
+      "ghsa_id": "GHSA-w8wv-vfpc-hw2w",
+      "matching_commit_references": [
+        "https://github.com/zauberzeug/nicegui/commit/d38a702e3af2da5b0708f689be8d71413fc77056"
+      ],
+      "project": "zauberzeug/nicegui",
+      "published_at": "2026-04-08T15:04:13Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "zauberzeug/nicegui",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-39847",
+      "ghsa_id": "GHSA-pr46-2v3c-5356",
+      "matching_commit_references": [],
+      "project": "emmett-framework/emmett",
+      "published_at": "2026-04-08T00:18:46Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "emmett-framework/emmett",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-35592",
+      "ghsa_id": "GHSA-mvwx-582f-56r7",
+      "matching_commit_references": [],
+      "project": "pyload/pyload",
+      "published_at": "2026-04-08T00:04:37Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "pyload/pyload",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-35615",
+      "ghsa_id": "GHSA-693f-pf34-72c5",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-04-06T23:09:28Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-39308",
+      "ghsa_id": "GHSA-r9x3-wx45-2v7f",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-04-06T23:09:19Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-39306",
+      "ghsa_id": "GHSA-4rx4-4r3x-6534",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-04-06T23:09:12Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-39305",
+      "ghsa_id": "GHSA-jfxc-v5g9-38xr",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-04-06T23:09:03Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-39307",
+      "ghsa_id": "GHSA-4ph2-f6pf-79wv",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-04-06T23:08:55Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-35492",
+      "ghsa_id": "GHSA-cjg8-h5qc-hrjv",
+      "matching_commit_references": [
+        "https://github.com/kedro-org/kedro-plugins/commit/65115f76b872217317734b6bde8927170c98fc4b"
+      ],
+      "project": "kedro-org/kedro-plugins",
+      "published_at": "2026-04-06T17:55:14Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "kedro-org/kedro-plugins",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-35167",
+      "ghsa_id": "GHSA-6326-w46w-ppjw",
+      "matching_commit_references": [],
+      "project": "kedro-org/kedro",
+      "published_at": "2026-04-03T03:46:48Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "kedro-org/kedro",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-49114",
+      "ghsa_id": "GHSA-q56x-g2fj-4rj6",
+      "matching_commit_references": [],
+      "project": "onnx/onnx",
+      "published_at": "2026-04-01T23:40:58Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "onnx/onnx",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-34934",
+      "ghsa_id": "GHSA-9cq8-3v94-434g",
+      "matching_commit_references": [],
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-04-01T23:20:32Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mervinpraison/praisonai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-34730",
+      "ghsa_id": "GHSA-hgjq-p8cr-gg4h",
+      "matching_commit_references": [
+        "https://github.com/copier-org/copier/commit/5413062eb17b73dc885f5e645cdc161e69ef641b"
+      ],
+      "project": "copier-org/copier",
+      "published_at": "2026-04-01T22:38:39Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "copier-org/copier",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-34726",
+      "ghsa_id": "GHSA-85v3-4m8g-hrh6",
+      "matching_commit_references": [
+        "https://github.com/copier-org/copier/commit/cb80a3ffc9c3787de3ed837e04ca29a0ff8ca3df"
+      ],
+      "project": "copier-org/copier",
+      "published_at": "2026-04-01T22:28:49Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "copier-org/copier",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-34591",
+      "ghsa_id": "GHSA-2599-h6xx-hpxp",
+      "matching_commit_references": [],
+      "project": "python-poetry/poetry",
+      "published_at": "2026-04-01T22:17:36Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "python-poetry/poetry",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-34515",
+      "ghsa_id": "GHSA-p998-jp59-783m",
+      "matching_commit_references": [
+        "https://github.com/aio-libs/aiohttp/commit/0ae2aa076c84573df83fc1fdc39eec0f5862fe3d"
+      ],
+      "project": "aio-libs/aiohttp",
+      "published_at": "2026-04-01T21:26:36Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "aio-libs/aiohttp",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-34447",
+      "ghsa_id": "GHSA-p433-9wv8-28xj",
+      "matching_commit_references": [],
+      "project": "onnx/onnx",
+      "published_at": "2026-04-01T21:14:00Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "onnx/onnx",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-34446",
+      "ghsa_id": "GHSA-cmw6-hcpp-c6jp",
+      "matching_commit_references": [
+        "https://github.com/onnx/onnx/commit/4755f8053928dce18a61db8fec71b69c74f786cb"
+      ],
+      "project": "onnx/onnx",
+      "published_at": "2026-04-01T21:13:37Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "onnx/onnx",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-34400",
+      "ghsa_id": "GHSA-8prr-286p-4w7j",
+      "matching_commit_references": [
+        "https://github.com/alerta/alerta/commit/aeba85a37a09e5769a7a2da56481aa979ff99a00",
+        "https://github.com/alerta/alerta/commit/fdd52cd1abad8d02d1dfb8ecdcdbb43b6af3b883"
+      ],
+      "project": "alerta/alerta",
+      "published_at": "2026-03-31T23:23:21Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "alerta/alerta",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-32727",
+      "ghsa_id": "GHSA-3x2w-63fp-3qvw",
+      "matching_commit_references": [
+        "https://github.com/scitokens/scitokens/commit/2d1cc9e42bc944fe0bbc429b85d166e7156d53f9"
+      ],
+      "project": "scitokens/scitokens",
+      "published_at": "2026-03-31T22:51:36Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "scitokens/scitokens",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-32714",
+      "ghsa_id": "GHSA-rh5m-2482-966c",
+      "matching_commit_references": [
+        "https://github.com/scitokens/scitokens/commit/3dba108853f2f4a6c0f2325c03779bf083c41cf2"
+      ],
+      "project": "scitokens/scitokens",
+      "published_at": "2026-03-31T22:49:15Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "scitokens/scitokens",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-27489",
+      "ghsa_id": "GHSA-3r9x-f23j-gc73",
+      "matching_commit_references": [
+        "https://github.com/onnx/onnx/commit/4755f8053928dce18a61db8fec71b69c74f786cb"
+      ],
+      "project": "onnx/onnx",
+      "published_at": "2026-03-31T22:34:25Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "onnx/onnx",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-34070",
+      "ghsa_id": "GHSA-qh6h-p6c9-ff54",
+      "matching_commit_references": [
+        "https://github.com/langchain-ai/langchain/commit/27add913474e01e33bededf4096151130ba0d47c"
+      ],
+      "project": "langchain-ai/langchain",
+      "published_at": "2026-03-27T19:45:00Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "langchain-ai/langchain",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-28786",
+      "ghsa_id": "GHSA-vvxm-vxmr-624h",
+      "matching_commit_references": [
+        "https://github.com/open-webui/open-webui/commit/387225eb8b3906909436004f84fff1b012e067d4"
+      ],
+      "project": "open-webui/open-webui",
+      "published_at": "2026-03-27T15:29:32Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "open-webui/open-webui",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-33545",
+      "ghsa_id": "GHSA-hqjr-43r5-9q58",
+      "matching_commit_references": [
+        "https://github.com/MobSF/Mobile-Security-Framework-MobSF/commit/6f8a43c1b78d21cfbd7186aaafa7f622d990e0f1"
+      ],
+      "project": "mobsf/mobile-security-framework-mobsf",
+      "published_at": "2026-03-24T19:23:52Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "mobsf/mobile-security-framework-mobsf",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-33046",
+      "ghsa_id": "GHSA-rm2q-f7jv-3cfp",
+      "matching_commit_references": [
+        "https://github.com/indico/indico/commit/0adb70f0ed66e129361d447868f5f3eb90dc5e96",
+        "https://github.com/indico/indico/commit/1dbb12525b3de14229bf4d1ae192988068f975f6",
+        "https://github.com/indico/indico/commit/5f24d23ce9c4b0e4b68b3d0b58987a948fc57c8a",
+        "https://github.com/indico/indico/commit/fb169ced710c30cf792ce4b9f48688db0633cfd8"
+      ],
+      "project": "indico/indico",
+      "published_at": "2026-03-23T20:43:43Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "indico/indico",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-33497",
+      "ghsa_id": "GHSA-ph9w-r52h-28p7",
+      "matching_commit_references": [],
+      "project": "langflow-ai/langflow",
+      "published_at": "2026-03-20T20:56:14Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "langflow-ai/langflow",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-32711",
+      "ghsa_id": "GHSA-v856-2rf8-9f28",
+      "matching_commit_references": [
+        "https://github.com/pydicom/pydicom/commit/6414f01a053dff925578799f5a7208d2ae585e82"
+      ],
+      "project": "pydicom/pydicom",
+      "published_at": "2026-03-20T15:57:01Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "pydicom/pydicom",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-3029",
+      "ghsa_id": "GHSA-cxqh-p2w9-fmr7",
+      "matching_commit_references": [],
+      "project": "pymupdf/pymupdf",
+      "published_at": "2026-03-19T18:31:18Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "pymupdf/pymupdf",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-33309",
+      "ghsa_id": "GHSA-g2j9-7rj2-gm6c",
+      "matching_commit_references": [],
+      "project": "langflow-ai/langflow",
+      "published_at": "2026-03-19T17:46:43Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "langflow-ai/langflow",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-33236",
+      "ghsa_id": "GHSA-469j-vmhf-r6v7",
+      "matching_commit_references": [
+        "https://github.com/nltk/nltk/commit/89fe2ec2c6bae6e2e7a46dad65cc34231976ed8a"
+      ],
+      "project": "nltk/nltk",
+      "published_at": "2026-03-19T12:42:42Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "nltk/nltk",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2025-15031",
+      "ghsa_id": "GHSA-fhff-qmm8-h2fp",
+      "matching_commit_references": [
+        "https://github.com/mlflow/mlflow/commit/3bf6d81ac4d38654c8ff012dbd0c3e9f17e7e346"
+      ],
+      "project": "mlflow/mlflow",
+      "published_at": "2026-03-19T00:30:20Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "mlflow/mlflow",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-33054",
+      "ghsa_id": "GHSA-8qvf-mr4w-9x2c",
+      "matching_commit_references": [
+        "https://github.com/mesop-dev/mesop/commit/c6b382f363b73ac32c402a2db3aadc7784f66a5b"
+      ],
+      "project": "mesop-dev/mesop",
+      "published_at": "2026-03-18T20:01:21Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "mesop-dev/mesop",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-32981",
+      "ghsa_id": "GHSA-j3mh-qmjj-xp83",
+      "matching_commit_references": [],
+      "project": "ray-project/ray",
+      "published_at": "2026-03-17T21:31:45Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "ray-project/ray",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-32611",
+      "ghsa_id": "GHSA-49g7-2ww7-3vf5",
+      "matching_commit_references": [
+        "https://github.com/nicolargo/glances/commit/63b7da28895249d775202d639e5531ba63491a5c"
+      ],
+      "project": "nicolargo/glances",
+      "published_at": "2026-03-16T16:34:03Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "nicolargo/glances",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-4229",
+      "ghsa_id": "GHSA-6mj8-jmp2-g8q7",
+      "matching_commit_references": [],
+      "project": "vanna-ai/vanna",
+      "published_at": "2026-03-16T15:30:46Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "vanna-ai/vanna",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-32116",
+      "ghsa_id": "GHSA-4g4c-mfqg-pj8r",
+      "matching_commit_references": [],
+      "project": "magic-wormhole/magic-wormhole",
+      "published_at": "2026-03-13T15:40:20Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "magic-wormhole/magic-wormhole",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-32274",
+      "ghsa_id": "GHSA-3936-cmfr-pm3m",
+      "matching_commit_references": [
+        "https://github.com/psf/black/commit/4937fe6cf241139ddbfc16b0bdbb5b422798909d",
+        "https://github.com/psf/black/commit/ed770ba4dd50c419148a0fca2b43937a7447e1f9"
+      ],
+      "project": "psf/black",
+      "published_at": "2026-03-12T18:33:10Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "psf/black",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-27825",
+      "ghsa_id": "GHSA-xjgw-4wvw-rgm4",
+      "matching_commit_references": [
+        "https://github.com/sooperset/mcp-atlassian/commit/52b9b0997681e87244b20d58034deae89c91631e"
+      ],
+      "project": "sooperset/mcp-atlassian",
+      "published_at": "2026-03-10T18:56:07Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "sooperset/mcp-atlassian",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-0846",
+      "ghsa_id": "GHSA-h8wq-7xc4-p3qx",
+      "matching_commit_references": [
+        "https://github.com/nltk/nltk/commit/b2e1164bf89277f79b65406c829b99fb20ca1974"
+      ],
+      "project": "nltk/nltk",
+      "published_at": "2026-03-09T21:31:38Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "nltk/nltk",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-30930",
+      "ghsa_id": "GHSA-x46r-mf5g-xpr6",
+      "matching_commit_references": [
+        "https://github.com/nicolargo/glances/commit/39161f0d6fd723d83f534b48f24cdca722573336"
+      ],
+      "project": "nicolargo/glances",
+      "published_at": "2026-03-09T19:51:35Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "nicolargo/glances",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-45691",
+      "ghsa_id": "GHSA-v2xr-wvrv-p969",
+      "matching_commit_references": [
+        "https://github.com/vibrantlabsai/ragas/commit/b28433709cbedbb531db79dadcfbdbd3aa6adcb0"
+      ],
+      "project": "vibrantlabsai/ragas",
+      "published_at": "2026-03-05T21:30:46Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "vibrantlabsai/ragas",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-29790",
+      "ghsa_id": "GHSA-w75w-9qv4-j5xj",
+      "matching_commit_references": [
+        "https://github.com/dbt-labs/dbt-common/commit/e547954a48bac9394ef6eb98432e429dce9a7709"
+      ],
+      "project": "dbt-labs/dbt-common",
+      "published_at": "2026-03-05T00:59:10Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "dbt-labs/dbt-common",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-29778",
+      "ghsa_id": "GHSA-6px9-j4qr-xfjw",
+      "matching_commit_references": [],
+      "project": "pyload/pyload",
+      "published_at": "2026-03-05T00:32:19Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "pyload/pyload",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-29780",
+      "ghsa_id": "GHSA-389r-rccm-h3h5",
+      "matching_commit_references": [
+        "https://github.com/GOVCERT-LU/eml_parser/commit/99af03a09a90aaaaadd0ed2ffb5eea46d1ea2cc9"
+      ],
+      "project": "govcert-lu/eml_parser",
+      "published_at": "2026-03-05T00:16:57Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "govcert-lu/eml_parser",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-0847",
+      "ghsa_id": "GHSA-68j8-pq59-fqgm",
+      "matching_commit_references": [],
+      "project": "nltk/nltk",
+      "published_at": "2026-03-04T21:32:45Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "nltk/nltk",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-29065",
+      "ghsa_id": "GHSA-25g8-2mcf-fcx9",
+      "matching_commit_references": [
+        "https://github.com/dgtlmoon/changedetection.io/commit/1d7d812eb0faab37042246e2fbce04f29bb1b3aa"
+      ],
+      "project": "dgtlmoon/changedetection.io",
+      "published_at": "2026-03-04T21:28:42Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "dgtlmoon/changedetection.io",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-27905",
+      "ghsa_id": "GHSA-m6w7-qv66-g3mf",
+      "matching_commit_references": [
+        "https://github.com/bentoml/BentoML/commit/4e0eb007765ac04c7924220d643f264715cc9670"
+      ],
+      "project": "bentoml/bentoml",
+      "published_at": "2026-03-03T17:46:47Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "bentoml/bentoml",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-28518",
+      "ghsa_id": "GHSA-rpqr-j937-6qr9",
+      "matching_commit_references": [
+        "https://github.com/volcengine/OpenViking/commit/46b3e76e28b9b3eee73693720c9ec48820228b72"
+      ],
+      "project": "volcengine/openviking",
+      "published_at": "2026-03-03T15:31:41Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "volcengine/openviking",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-28795",
+      "ghsa_id": "GHSA-vmwq-8g8c-jm79",
+      "matching_commit_references": [
+        "https://github.com/zhongyu09/openchatbi/commit/372a7e861da5159c3106d64d6f6edf8284db8c75"
+      ],
+      "project": "zhongyu09/openchatbi",
+      "published_at": "2026-03-02T21:47:32Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "zhongyu09/openchatbi",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-28438",
+      "ghsa_id": "GHSA-59g6-v3vg-f7wc",
+      "matching_commit_references": [
+        "https://github.com/cocoindex-io/cocoindex/commit/ba2fc4a89e22d35572c64bd2990737c7913b0729"
+      ],
+      "project": "cocoindex-io/cocoindex",
+      "published_at": "2026-03-02T20:27:48Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "cocoindex-io/cocoindex",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-28414",
+      "ghsa_id": "GHSA-39mp-8hj3-5c49",
+      "matching_commit_references": [
+        "https://github.com/gradio-app/gradio/commit/6011b00d0154b85532fa901dd73cf8fa7d86fd04"
+      ],
+      "project": "gradio-app/gradio",
+      "published_at": "2026-03-01T01:28:41Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "gradio-app/gradio",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-27735",
+      "ghsa_id": "GHSA-vjqx-cfc4-9h6v",
+      "matching_commit_references": [
+        "https://github.com/modelcontextprotocol/servers/commit/862e717ff714987bd5577318df09858e14883863"
+      ],
+      "project": "modelcontextprotocol/servers",
+      "published_at": "2026-02-26T15:16:57Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "modelcontextprotocol/servers",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-27641",
+      "ghsa_id": "GHSA-65mp-fq8v-56jr",
+      "matching_commit_references": [
+        "https://github.com/jugmac00/flask-reuploaded/commit/d64c6b2f71cb73734fc38baa0e3e156926361288"
+      ],
+      "project": "jugmac00/flask-reuploaded",
+      "published_at": "2026-02-25T19:06:50Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "jugmac00/flask-reuploaded",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-27483",
+      "ghsa_id": "GHSA-4894-xqv6-vrfq",
+      "matching_commit_references": [
+        "https://github.com/mindsdb/mindsdb/commit/87a44bdb2b97f963e18f10a068e1a1e2690505ef"
+      ],
+      "project": "mindsdb/mindshub",
+      "published_at": "2026-02-24T20:07:58Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "mindsdb/mindsdb",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-23969",
+      "ghsa_id": "GHSA-48m2-v2r8-h23m",
+      "matching_commit_references": [],
+      "project": "apache/superset",
+      "published_at": "2026-02-24T15:30:30Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "apache/superset",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-23980",
+      "ghsa_id": "GHSA-gvxg-9hqx-f4rg",
+      "matching_commit_references": [],
+      "project": "apache/superset",
+      "published_at": "2026-02-24T15:30:30Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "apache/superset",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-26198",
+      "ghsa_id": "GHSA-xxh2-68g9-8jqr",
+      "matching_commit_references": [
+        "https://github.com/collerek/ormar/commit/a03bae14fe01358d3eaf7e319fcd5db2e4956b16"
+      ],
+      "project": "ormar-orm/ormar",
+      "published_at": "2026-02-23T22:12:17Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "collerek/ormar",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-2033",
+      "ghsa_id": "GHSA-q2r8-vmq7-fpx2",
+      "matching_commit_references": [
+        "https://github.com/mlflow/mlflow/commit/5bf2ec2bd4222a18d78631183ac7f6b752afe8a4"
+      ],
+      "project": "mlflow/mlflow",
+      "published_at": "2026-02-21T00:31:43Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "mlflow/mlflow",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-1669",
+      "ghsa_id": "GHSA-3m4q-jmj6-r34q",
+      "matching_commit_references": [
+        "https://github.com/keras-team/keras/commit/8a37f9dadd8e23fa4ee3f537eeb6413e75d12553"
+      ],
+      "project": "keras-team/keras",
+      "published_at": "2026-02-18T22:41:58Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "keras-team/keras",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2026-25640",
+      "ghsa_id": "GHSA-wjp5-868j-wqv7",
+      "matching_commit_references": [],
+      "project": "pydantic/pydantic-ai",
+      "published_at": "2026-02-06T18:51:57Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "pydantic/pydantic-ai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-25592",
+      "ghsa_id": "GHSA-2ww3-72rp-wpp4",
+      "matching_commit_references": [],
+      "project": "microsoft/semantic-kernel",
+      "published_at": "2026-02-06T18:37:24Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "microsoft/semantic-kernel",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-25732",
+      "ghsa_id": "GHSA-9ffm-fxg3-xrhh",
+      "matching_commit_references": [],
+      "project": "zauberzeug/nicegui",
+      "published_at": "2026-02-05T21:08:53Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "zauberzeug/nicegui",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-64712",
+      "ghsa_id": "GHSA-gm8q-m8mv-jj5m",
+      "matching_commit_references": [
+        "https://github.com/Unstructured-IO/unstructured/commit/b01d35b2373fd087d2e15162b9c021663c97155d"
+      ],
+      "project": "unstructured-io/unstructured",
+      "published_at": "2026-02-03T17:43:56Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "unstructured-io/unstructured",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-1312",
+      "ghsa_id": "GHSA-6426-9fv3-65x8",
+      "matching_commit_references": [
+        "https://github.com/django/django/commit/005d60d97c4dfb117503bdb6f2facfcaf9315d84",
+        "https://github.com/django/django/commit/69065ca869b0970dff8fdd8fafb390bf8b3bf222"
+      ],
+      "project": "django/django",
+      "published_at": "2026-02-03T15:30:24Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "django/django",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-1287",
+      "ghsa_id": "GHSA-gvg8-93h5-g6qq",
+      "matching_commit_references": [
+        "https://github.com/django/django/commit/e891a84c7ef9962bfcc3b4685690219542f86a22"
+      ],
+      "project": "django/django",
+      "published_at": "2026-02-03T15:30:24Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "django/django",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-1207",
+      "ghsa_id": "GHSA-mwm9-4648-f68q",
+      "matching_commit_references": [
+        "https://github.com/django/django/commit/81aa5292967cd09319c45fe2c1a525ce7b6684d8"
+      ],
+      "project": "django/django",
+      "published_at": "2026-02-03T15:30:23Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "django/django",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2026-1703",
+      "ghsa_id": "GHSA-6vgw-5pg2-w6jp",
+      "matching_commit_references": [
+        "https://github.com/pypa/pip/commit/8e227a9be4faa9594e05d02ca05a413a2a4e7735"
+      ],
+      "project": "pypa/pip",
+      "published_at": "2026-02-02T15:30:34Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "pypa/pip",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2024-5986",
+      "ghsa_id": "GHSA-wj3h-wx8g-x699",
+      "matching_commit_references": [],
+      "project": "h2oai/h2o-3",
+      "published_at": "2026-02-02T12:31:14Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "h2oai/h2o-3",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-69662",
+      "ghsa_id": "GHSA-6497-prx7-gpmq",
+      "matching_commit_references": [
+        "https://github.com/geopandas/geopandas/commit/6aa8ef14ffdee4ba1044349ab948e1a1fbfaf419"
+      ],
+      "project": "geopandas/geopandas",
+      "published_at": "2026-01-30T21:30:22Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "geopandas/geopandas",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-24486",
+      "ghsa_id": "GHSA-wp53-j4wj-2cfg",
+      "matching_commit_references": [
+        "https://github.com/Kludex/python-multipart/commit/9433f4bbc9652bdde82bbe380984e32f8cfc89c4"
+      ],
+      "project": "kludex/python-multipart",
+      "published_at": "2026-01-26T23:28:05Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "kludex/python-multipart",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-24123",
+      "ghsa_id": "GHSA-6r62-w2q3-48hf",
+      "matching_commit_references": [
+        "https://github.com/bentoml/BentoML/commit/84d08cfeb40c5f2ce71b3d3444bbaa0fb16b5ca4"
+      ],
+      "project": "bentoml/bentoml",
+      "published_at": "2026-01-26T21:17:16Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "bentoml/bentoml",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-24049",
+      "ghsa_id": "GHSA-8rrh-rw8j-w5fx",
+      "matching_commit_references": [
+        "https://github.com/pypa/wheel/commit/7a7d2de96b22a9adf9208afcc9547e1001569fef",
+        "https://github.com/pypa/wheel/commit/934fe177ff912c8e03d5ae951d3805e1fd90ba5e"
+      ],
+      "project": "pypa/wheel",
+      "published_at": "2026-01-22T18:02:56Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "pypa/wheel",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-26217",
+      "ghsa_id": "GHSA-vx9w-5cx4-9796",
+      "matching_commit_references": [],
+      "project": "unclecode/crawl4ai",
+      "published_at": "2026-01-16T20:58:51Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "unclecode/crawl4ai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-23535",
+      "ghsa_id": "GHSA-mmwx-79f6-67jg",
+      "matching_commit_references": [
+        "https://github.com/WeblateOrg/wlc/commit/216e691c6e50abae97fe2e4e4f21501bf49a585f"
+      ],
+      "project": "weblateorg/wlc",
+      "published_at": "2026-01-16T16:58:26Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "weblateorg/wlc",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-22871",
+      "ghsa_id": "GHSA-xg9w-vg3g-6m68",
+      "matching_commit_references": [
+        "https://github.com/DataDog/guarddog/commit/9aa6a725b2c71d537d3c18d1c15621395ebb879c"
+      ],
+      "project": "datadog/guarddog",
+      "published_at": "2026-01-13T21:54:49Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "datadog/guarddog",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-23949",
+      "ghsa_id": "GHSA-58pv-8j8x-9vj2",
+      "matching_commit_references": [
+        "https://github.com/jaraco/jaraco.context/commit/7b26a42b525735e4085d2e994e13802ea339d5f9"
+      ],
+      "project": "jaraco/jaraco.context",
+      "published_at": "2026-01-13T21:48:17Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "jaraco/jaraco.context",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-68472",
+      "ghsa_id": "GHSA-qqhf-pm3j-96g7",
+      "matching_commit_references": [],
+      "project": "mindsdb/mindshub",
+      "published_at": "2026-01-12T16:10:55Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mindsdb/mindsdb",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2026-53872",
+      "ghsa_id": "GHSA-9726-w42j-3qjr",
+      "matching_commit_references": [
+        "https://github.com/mmaitre314/picklescan/commit/a01c58d5dd7960db557b849817c0ab83ab111ef1"
+      ],
+      "project": "mmaitre314/picklescan",
+      "published_at": "2026-01-08T17:25:35Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "mmaitre314/picklescan",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-21892",
+      "ghsa_id": "GHSA-f2mf-q878-gh58",
+      "matching_commit_references": [
+        "https://github.com/Parsl/parsl/commit/013a928461e70f38a33258bd525a351ed828e974"
+      ],
+      "project": "parsl/parsl",
+      "published_at": "2026-01-06T18:04:21Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "parsl/parsl",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2026-21851",
+      "ghsa_id": "GHSA-9rg3-9pvr-6p27",
+      "matching_commit_references": [
+        "https://github.com/Project-MONAI/MONAI/commit/4014c8475626f20f158921ae0cf98ed259ae4d59"
+      ],
+      "project": "project-monai/monai",
+      "published_at": "2026-01-06T17:32:52Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "project-monai/monai",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-69226",
+      "ghsa_id": "GHSA-54jq-c3m8-4m76",
+      "matching_commit_references": [
+        "https://github.com/aio-libs/aiohttp/commit/f2a86fd5ac0383000d1715afddfa704413f0711e"
+      ],
+      "project": "aio-libs/aiohttp",
+      "published_at": "2026-01-05T23:09:51Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "aio-libs/aiohttp",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2025-65713",
+      "ghsa_id": "GHSA-pp3g-xmm4-5cw9",
+      "matching_commit_references": [],
+      "project": "home-assistant/core",
+      "published_at": "2025-12-23T18:30:27Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "home-assistant/core",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2025-68478",
+      "ghsa_id": "GHSA-f43r-cc68-gpx4",
+      "matching_commit_references": [],
+      "project": "langflow-ai/langflow",
+      "published_at": "2025-12-19T22:53:13Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "langflow-ai/langflow",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-68398",
+      "ghsa_id": "GHSA-8vcg-cfxj-p5m3",
+      "matching_commit_references": [
+        "https://github.com/WeblateOrg/weblate/commit/4837a4154390f7c1d03c0e398aa6439dcfa361b4",
+        "https://github.com/WeblateOrg/weblate/commit/dd8c9d7b00eebe28770fa0e2cd96126791765ea7"
+      ],
+      "project": "weblateorg/weblate",
+      "published_at": "2025-12-18T23:20:35Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "weblateorg/weblate",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-68279",
+      "ghsa_id": "GHSA-g925-f788-4jh7",
+      "matching_commit_references": [],
+      "project": "weblateorg/weblate",
+      "published_at": "2025-12-18T22:58:56Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "weblateorg/weblate",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-68145",
+      "ghsa_id": "GHSA-j22h-9j4x-23w5",
+      "matching_commit_references": [],
+      "project": "modelcontextprotocol/servers",
+      "published_at": "2025-12-17T22:50:38Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "modelcontextprotocol/servers",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-68143",
+      "ghsa_id": "GHSA-5cgr-j3jf-jw3v",
+      "matching_commit_references": [
+        "https://github.com/modelcontextprotocol/servers/commit/eac56e7bcde48fb64d5a973924d05d69a7d876e6"
+      ],
+      "project": "modelcontextprotocol/servers",
+      "published_at": "2025-12-17T19:49:54Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "modelcontextprotocol/servers",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-67720",
+      "ghsa_id": "GHSA-6h2f-wjhf-4wjx",
+      "matching_commit_references": [
+        "https://github.com/Mayuri-Chan/pyrofork/commit/2f2d515575cc9c360bd74340a61a1d2b1e1f1f95"
+      ],
+      "project": "mayuri-chan/pyrofork",
+      "published_at": "2025-12-10T20:21:54Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "mayuri-chan/pyrofork",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2025-67644",
+      "ghsa_id": "GHSA-9rwj-6rc7-p77c",
+      "matching_commit_references": [
+        "https://github.com/langchain-ai/langgraph/commit/297242913f8ad2143ee3e2f72e67db0911d48e2a"
+      ],
+      "project": "langchain-ai/langgraph",
+      "published_at": "2025-12-10T00:02:21Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "langchain-ai/langgraph",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-66645",
+      "ghsa_id": "GHSA-hxp3-63hc-5366",
+      "matching_commit_references": [
+        "https://github.com/zauberzeug/nicegui/commit/a1b89e2a24e1911a40389ace2153a37f4eea92a9"
+      ],
+      "project": "zauberzeug/nicegui",
+      "published_at": "2025-12-09T14:25:15Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "zauberzeug/nicegui",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-56427",
+      "ghsa_id": "GHSA-3mwv-j45g-vp3w",
+      "matching_commit_references": [],
+      "project": "composiohq/composio",
+      "published_at": "2025-12-04T18:30:53Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "composiohq/composio",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-65896",
+      "ghsa_id": "GHSA-qhqw-rrw9-25rm",
+      "matching_commit_references": [],
+      "project": "long2ice/asyncmy",
+      "published_at": "2025-12-02T21:31:30Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "long2ice/asyncmy",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-13372",
+      "ghsa_id": "GHSA-rqw2-ghq9-44m7",
+      "matching_commit_references": [
+        "https://github.com/django/django/commit/479415ce5249bcdebeb6570c72df2a87f45a7bbf",
+        "https://github.com/django/django/commit/56aea00c3c5e1aacf4ed05f8ee06c2e78f02cea0",
+        "https://github.com/django/django/commit/5b90ca1e7591fa36fccf2d6dad67cf1477e6293e",
+        "https://github.com/django/django/commit/9c6a5bde24240382807d13bc3748d08444709355",
+        "https://github.com/django/django/commit/f997037b235f6b5c9e7c4a501491ec45f3400f3d"
+      ],
+      "project": "django/django",
+      "published_at": "2025-12-02T18:30:35Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "django/django",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2025-12060",
+      "ghsa_id": "GHSA-hjqc-jx6g-rwp9",
+      "matching_commit_references": [
+        "https://github.com/keras-team/keras/commit/47fcb397ee4caffd5a75efd1fa3067559594e951"
+      ],
+      "project": "keras-team/keras",
+      "published_at": "2025-12-02T00:58:33Z",
+      "reason": "A newer qualifying advisory for this project was selected.",
+      "source_project": "keras-team/keras",
+      "status": "not_selected_duplicate_project"
+    },
+    {
+      "cve_id": "CVE-2021-4472",
+      "ghsa_id": "GHSA-75hx-6r6j-hw56",
+      "matching_commit_references": [],
+      "project": null,
+      "published_at": "2025-11-26T21:31:25Z",
+      "reason": "No valid GitHub source/canonical repository identity.",
+      "source_project": null,
+      "status": "excluded_unbound_project"
+    },
+    {
+      "cve_id": "CVE-2025-57697",
+      "ghsa_id": "GHSA-vm2f-46xc-5jc3",
+      "matching_commit_references": [],
+      "project": "astrbotdevs/astrbot",
+      "published_at": "2025-11-07T18:30:31Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "astrbotdevs/astrbot",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-57698",
+      "ghsa_id": "GHSA-xrj9-mw57-j34v",
+      "matching_commit_references": [],
+      "project": "astrbotdevs/astrbot",
+      "published_at": "2025-11-07T18:30:30Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "astrbotdevs/astrbot",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-64459",
+      "ghsa_id": "GHSA-frmv-pr5f-9mcr",
+      "matching_commit_references": [
+        "https://github.com/django/django/commit/06dd38324ac3d60d83d9f3adabf0dcdf423d2a85",
+        "https://github.com/django/django/commit/59ae82e67053d281ff4562a24bbba21299f0a7d4",
+        "https://github.com/django/django/commit/6703f364d767e949c5b0e4016433ef75063b4f9b",
+        "https://github.com/django/django/commit/72d2c87431f2ae0431d65d0ec792047f078c8241"
+      ],
+      "project": "django/django",
+      "published_at": "2025-11-05T15:31:07Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "django/django",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2025-64184",
+      "ghsa_id": "GHSA-4vcx-3pj3-44m7",
+      "matching_commit_references": [
+        "https://github.com/webcomics/dosage/commit/336a9684191604bc49eed7296b74bd582151181e"
+      ],
+      "project": "webcomics/dosage",
+      "published_at": "2025-11-04T15:31:48Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "webcomics/dosage",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-64104",
+      "ghsa_id": "GHSA-7p73-8jqx-23r8",
+      "matching_commit_references": [
+        "https://github.com/langchain-ai/langgraph/commit/bc9d45b476101e441cb1cc602dea03eb29232de4"
+      ],
+      "project": "langchain-ai/langgraph",
+      "published_at": "2025-10-29T22:21:43Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "langchain-ai/langgraph",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-11201",
+      "ghsa_id": "GHSA-5cvj-7rg6-jggj",
+      "matching_commit_references": [
+        "https://github.com/mlflow/mlflow/commit/e7dc0574fa3459e0003cfeb68d4e4a625491f03d",
+        "https://github.com/mlflow/mlflow/commit/5f98ff98659dddb188591ecf6b10a4e276a0dba7"
+      ],
+      "project": "mlflow/mlflow",
+      "published_at": "2025-10-29T21:30:33Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "mlflow/mlflow",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2025-61385",
+      "ghsa_id": "GHSA-wq2g-r956-j8cc",
+      "matching_commit_references": [],
+      "project": null,
+      "published_at": "2025-10-27T18:31:13Z",
+      "reason": "No valid GitHub source/canonical repository identity.",
+      "source_project": null,
+      "status": "excluded_unbound_project"
+    },
+    {
+      "cve_id": "CVE-2025-8709",
+      "ghsa_id": "GHSA-4h97-wpxp-3757",
+      "matching_commit_references": [
+        "https://github.com/langchain-ai/langgraph/commit/bc9d45b476101e441cb1cc602dea03eb29232de4"
+      ],
+      "project": "langchain-ai/langgraph",
+      "published_at": "2025-10-26T06:30:20Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "langchain-ai/langgraph",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-62611",
+      "ghsa_id": "GHSA-r397-ff8c-wv2g",
+      "matching_commit_references": [
+        "https://github.com/aio-libs/aiomysql/commit/32c4520dae3711367ded74a4726dcb8bb8919538"
+      ],
+      "project": "aio-libs/aiomysql",
+      "published_at": "2025-10-22T16:47:10Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "aio-libs/aiomysql",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-11849",
+      "ghsa_id": "GHSA-rmjr-87wv-gf87",
+      "matching_commit_references": [],
+      "project": "mwilliamson/java-mammoth",
+      "published_at": "2025-10-17T06:31:11Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "mwilliamson/java-mammoth",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-10283",
+      "ghsa_id": "GHSA-h6m2-r6h9-4c44",
+      "matching_commit_references": [
+        "https://github.com/blacklanternsecurity/bbot/commit/0ede97fa887de33fcfd1378b4213a09c21dc6140"
+      ],
+      "project": "blacklanternsecurity/bbot",
+      "published_at": "2025-10-09T22:29:46Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "blacklanternsecurity/bbot",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-10284",
+      "ghsa_id": "GHSA-fhw8-8v9p-7jp7",
+      "matching_commit_references": [
+        "https://github.com/blacklanternsecurity/bbot/commit/6325f2f4f8f6f4545703e4c9b8004e69f71bec82"
+      ],
+      "project": "blacklanternsecurity/bbot",
+      "published_at": "2025-10-09T22:22:11Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "blacklanternsecurity/bbot",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-61784",
+      "ghsa_id": "GHSA-527m-2xhr-j27g",
+      "matching_commit_references": [
+        "https://github.com/hiyouga/LLaMAFactory/commit/95b7188090a1018935c9dc072bfc97f24f1c96e9"
+      ],
+      "project": "hiyouga/llamafactory",
+      "published_at": "2025-10-07T22:08:53Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "hiyouga/llama-factory",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-8917",
+      "ghsa_id": "GHSA-579p-qf78-fqm2",
+      "matching_commit_references": [
+        "https://github.com/clearml/clearml/commit/64fb2bcbdbb87a74af90dd723d5ef4a99fceeb73"
+      ],
+      "project": "clearml/clearml",
+      "published_at": "2025-10-05T12:30:24Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "clearml/clearml",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-8406",
+      "ghsa_id": "GHSA-q92x-2x5g-h365",
+      "matching_commit_references": [
+        "https://github.com/zenml-io/zenml/commit/5d22a48d7bf6c7f10b748577c2be79cc7969d398"
+      ],
+      "project": "zenml-io/zenml",
+      "published_at": "2025-10-05T09:30:19Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "zenml-io/zenml",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-59682",
+      "ghsa_id": "GHSA-q95w-c7qg-hrff",
+      "matching_commit_references": [
+        "https://github.com/django/django/commit/43d84aef04a9e71164c21a74885996981857e66e",
+        "https://github.com/django/django/commit/924a0c092e65fa2d0953fd1855d2dc8786d94de2"
+      ],
+      "project": "django/django",
+      "published_at": "2025-10-01T21:31:22Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "django/django",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2025-59681",
+      "ghsa_id": "GHSA-hpr9-3m2g-3j9p",
+      "matching_commit_references": [
+        "https://github.com/django/django/commit/41b43c74bda19753c757036673ea9db74acf494a",
+        "https://github.com/django/django/commit/43d84aef04a9e71164c21a74885996981857e66e"
+      ],
+      "project": "django/django",
+      "published_at": "2025-10-01T21:31:21Z",
+      "reason": "Canonical or source alias matches a prior population/cache project identity.",
+      "source_project": "django/django",
+      "status": "excluded_prior_project"
+    },
+    {
+      "cve_id": "CVE-2025-10951",
+      "ghsa_id": "GHSA-8x9j-2p8r-7xc6",
+      "matching_commit_references": [],
+      "project": "geyang/ml-logger",
+      "published_at": "2025-09-25T15:30:24Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "geyang/ml-logger",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-6237",
+      "ghsa_id": "GHSA-vv9c-xxg7-wmv7",
+      "matching_commit_references": [],
+      "project": "invoke-ai/invokeai",
+      "published_at": "2025-09-18T09:31:13Z",
+      "reason": "No advisory commit reference matches the source or canonical repository identity; cross-repository references remain unresolved.",
+      "source_project": "invoke-ai/invokeai",
+      "status": "excluded_unbound_fix"
+    },
+    {
+      "cve_id": "CVE-2025-11059",
+      "ghsa_id": "GHSA-9mv7-3c64-mmqw",
+      "matching_commit_references": [
+        "https://github.com/ietf-tools/xml2rfc/commit/73fb1c91fc62ac540bb6bd24f982f2becf84c1b0"
+      ],
+      "project": "ietf-tools/xml2rfc",
+      "published_at": "2025-09-10T20:44:58Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "ietf-tools/xml2rfc",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    },
+    {
+      "cve_id": "CVE-2025-58755",
+      "ghsa_id": "GHSA-x6ww-pf9m-m73m",
+      "matching_commit_references": [
+        "https://github.com/Project-MONAI/MONAI/commit/946cfdff096d8b1d289063f06a04cae3fa3559d9"
+      ],
+      "project": "project-monai/monai",
+      "published_at": "2025-09-09T21:19:22Z",
+      "reason": "Not qualified for inclusion before the first 24 eligible projects were filled; no detector-based selection.",
+      "source_project": "project-monai/monai",
+      "status": "not_selected_after_quota_or_unresolved_project"
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "claim_boundary": "Six isolated pure-function smoke controls from six selected projects; separate denominator, not six additional independent projects or an estimate of general repository precision. Names/types are parsed, never imported or resolved through third-party execution.",
+  "controls": [
+    {
+      "benign_contract": "Pure type-name classification; no SQL execution or filesystem access.",
+      "checkout_dir": "mar10__wsgidav",
+      "expected_warning_count": 0,
+      "function": "_is_data_type_numeric",
+      "id": "wsgidav-is_data_type_numeric",
+      "line_range": [
+        357,
+        381
+      ],
+      "path": "wsgidav/samples/mysql_dav_provider.py",
+      "project": "mar10/wsgidav",
+      "revision": "6f35776c9188f130ab044ce557015d51aaa83500",
+      "snippet_sha256": "d3da0ac8582e8188803b7d566a0185185adae752c9d21038e3d11bb73b16a184",
+      "source_sha256": "0b84e7aada63ec770360afdc25ff642951af5e491b1d6f0c53e4e703fbfbb511"
+    },
+    {
+      "benign_contract": "String validation/normalization only, returning or raising without file operations.",
+      "checkout_dir": "mervinpraison__praisonai",
+      "expected_warning_count": 0,
+      "function": "_sanitise_user_id",
+      "id": "praisonai-sanitise_user_id",
+      "line_range": [
+        120,
+        127
+      ],
+      "path": "src/praisonai-agents/praisonaiagents/memory/file_memory.py",
+      "project": "mervinpraison/praisonai",
+      "revision": "2f9677abb2ea68eab864ee8b6a828fd0141612e1",
+      "snippet_sha256": "53401fd4ee5d379cb3af39e89ccb4f702b79203ad8e132e882fce914add7e05d",
+      "source_sha256": "4e19213f043ca7b6123eba424ff53199424f583046e4edefa4ab8dc8e67b9470"
+    },
+    {
+      "benign_contract": "Pure set-membership test on an open-mode string; it does not open a file.",
+      "checkout_dir": "nltk__nltk",
+      "expected_warning_count": 0,
+      "function": "_is_readonly_mode",
+      "id": "nltk-is_readonly_mode",
+      "line_range": [
+        578,
+        580
+      ],
+      "path": "nltk/pathsec.py",
+      "project": "nltk/nltk",
+      "revision": "10d34b3f4fe3fec74b76527a409eb0acbac2e8ab",
+      "snippet_sha256": "87d0952f810aa934af83c0c9b0cb241aa0dad03fdb4954ebfab668a1b4f6dbd5",
+      "source_sha256": "b41eeff11b4b6376eab1d9f86bb541fae85faa6bfe1f9e003c0ffbed8f4ca63f"
+    },
+    {
+      "benign_contract": "Pure commonpath comparison; no filesystem read/write.",
+      "checkout_dir": "thumbor__thumbor",
+      "expected_warning_count": 0,
+      "function": "_inside_root_path",
+      "id": "thumbor-inside_root_path",
+      "line_range": [
+        18,
+        22
+      ],
+      "path": "thumbor/loaders/file_loader.py",
+      "project": "thumbor/thumbor",
+      "revision": "3b986d13677b30fe6651c8c72ebb25957ac0a40d",
+      "snippet_sha256": "9deef8560d951e11d0f5a997c8e3ed5d437e9a194504a161855dc9151735c89b",
+      "source_sha256": "b37f2ac556959fde2b8198cbe789fc8350c6381d4740d5d4e8515ad8de9d9e8f"
+    },
+    {
+      "benign_contract": "Pure basename/dot-name transformation and a NewType marker; no file operation.",
+      "checkout_dir": "pypa__pip",
+      "expected_warning_count": 0,
+      "function": "_to_path_component",
+      "id": "pip-to_path_component",
+      "line_range": [
+        40,
+        50
+      ],
+      "path": "src/pip/_internal/models/link.py",
+      "project": "pypa/pip",
+      "revision": "10dfb6b9005484578b386f64b9f36982e3dc6679",
+      "snippet_sha256": "0f1371c45276d841d20db5e1e1df2061b345e097ea05e65179e7bbf6af10ee36",
+      "source_sha256": "4925ed14edd802b794618d91d0faad2976c07b5bd5f41aade6bfea3cddb5f331"
+    },
+    {
+      "benign_contract": "Pure string replacement; it does not execute or submit SQL.",
+      "checkout_dir": "snowflakedb__snowflake-sqlalchemy",
+      "expected_warning_count": 0,
+      "function": "escape_string_literal_interior",
+      "id": "snowflake-sqlalchemy-escape_string_literal_interior",
+      "line_range": [
+        330,
+        340
+      ],
+      "path": "src/snowflake/sqlalchemy/util.py",
+      "project": "snowflakedb/snowflake-sqlalchemy",
+      "revision": "35edf4dc5e76b9a9fdfa74c8e4f6fd14642110f1",
+      "snippet_sha256": "eba8d724bbcfe6d31397c9ce279ba40942139e3e977040ca83c9218602bc596a",
+      "source_sha256": "c4e79a0ebad9b765fe4ebb38819cad9a4723f265ebd9490bf9505a86fb25d6c9"
+    }
+  ],
+  "extraction": "UTF-8 decode exact pinned blob, splitlines, take inclusive AST def/end_lineno interval, dedent, append LF. No imports/decorators added, no function executed.",
+  "registered_detector_revision": "83c65692239a85435cb8f17c0eb9a8cc951a1d9b",
+  "repetitions": 2,
+  "schema_version": "belief.benign_function_controls.v1",
+  "selection_before_measurement": true
+}

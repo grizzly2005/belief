@@ -1,0 +1,193 @@
+{
+  "all_bound_sources_parse_with_python_3_12": true,
+  "analysis_target_count": 27,
+  "bound_variant_blobs": 74,
+  "cases": [
+    {
+      "id": "wsgidav-cve-2026-55509",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "asyncssh-cve-2026-54591",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "praisonai-cve-2026-55527",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "nltk-cve-2026-71514",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 2
+    },
+    {
+      "id": "mobile-security-framework-mobsf-cve-2026-68922",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 3
+    },
+    {
+      "id": "transformers-cve-2026-9856",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 2
+    },
+    {
+      "id": "keras-cve-2026-9335",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 2
+    },
+    {
+      "id": "gemini-bridge-cve-2026-54785",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "thumbor-cve-2026-53502",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "flyto-core-cve-2026-67429",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 2
+    },
+    {
+      "id": "pip-cve-2026-13346",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 2
+    },
+    {
+      "id": "penelope-cve-2026-50558",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "datamodel-code-generator-cve-2026-55389",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "open-webui-cve-2026-59221",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "pymdown-extensions-cve-2026-61632",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "litellm-cve-2026-59820",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 2
+    },
+    {
+      "id": "mistune-cve-2026-59924",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "changedetection.io-cve-2026-25527",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "prompty-cve-2026-53598",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "snowflake-sqlalchemy-cve-2026-15736",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 3
+    },
+    {
+      "id": "mcp-atlassian-cve-2026-73498",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 2
+    },
+    {
+      "id": "dulwich-cve-2026-47712",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 2
+    },
+    {
+      "id": "xiaomusic-cve-2026-10108",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 1
+    },
+    {
+      "id": "compliance-trestle-cve-2026-46345",
+      "license_verified": true,
+      "origin_and_parent_verified": true,
+      "project_exclusion_overlap": false,
+      "source_bindings_verified": 2
+    }
+  ],
+  "detector_and_pair_runner_diff": [],
+  "detector_revision": "83c65692239a85435cb8f17c0eb9a8cc951a1d9b",
+  "focused_runner_tests": {
+    "command": "python -m pytest tests/test_open_source_pairs_benchmark.py tests/test_open_source_detector_integration.py -q -p no:cacheprovider",
+    "duration_seconds": 2.59,
+    "exit_code": 0,
+    "passed": 19
+  },
+  "manifest_sha256": "350db7418224aac1fcb3619e52a423c4a9ebfb84e57a39b61d77d97fb5bec9a5",
+  "network_used_by_verification": false,
+  "project_exclusion_overlap_count": 0,
+  "qualification_sha256": "725df1f59f1ca6002876f59c195b795c2a6080760166d743e8373604f2f292ad",
+  "schema_version": "belief.independent_pair_input_verification.v1",
+  "selected_project_count": 24,
+  "source_binding_count": 37,
+  "third_party_code_executed": false,
+  "thresholds_unchanged": true,
+  "verified_at": "2026-09-17T15:55:04.512489+00:00"
+}
