@@ -1,0 +1,255 @@
+{
+  "analysis_options": {
+    "audit_mode": true,
+    "dataflow_cycle_detection": true,
+    "dedup_audit_cases": false,
+    "denied_source_sha256_count": 0,
+    "denied_source_sha256_set_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "hide_structural": false,
+    "import_tool_results": [],
+    "include_audit_cases": true,
+    "include_cycles": false,
+    "include_dataflow": true,
+    "include_guarantees": true,
+    "include_hypotheses": true,
+    "include_routes": false,
+    "interesting_only": false,
+    "legacy_single_file_path_projection": false,
+    "max_ast_nodes_per_file": 250000,
+    "max_cycles": 100,
+    "max_dataflow_depth": 32,
+    "max_dataflow_nodes": 10000,
+    "max_file_bytes": 2097152,
+    "max_files": 1,
+    "max_total_source_bytes": 33554432,
+    "min_confidence": 0.0,
+    "min_reportability_score": 0,
+    "only_hypotheses": "all",
+    "only_reportable": false,
+    "reportability": true,
+    "security_analysis_profile": "default",
+    "selected_categories": [
+      "cycles",
+      "security",
+      "structural",
+      "taint",
+      "temporal"
+    ],
+    "show_dataflow": false,
+    "show_proofs": false
+  },
+  "belief_revision": "a7c2488c670e460da4849c4d33ca5955c8b30615",
+  "classification": "post_measurement_development_probe_not_independent_holdout",
+  "rows": [
+    {
+      "argument_name": "value",
+      "benign_contract": "Pure string strip; no request, resource lookup, authorization or I/O.",
+      "deterministic": true,
+      "function_name": "normalize_label",
+      "repetitions": [
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        },
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        }
+      ],
+      "source": "def normalize_label(value: str) -> str:\n    return value.strip()\n"
+    },
+    {
+      "argument_name": "user_id",
+      "benign_contract": "Pure string strip; no request, resource lookup, authorization or I/O.",
+      "deterministic": true,
+      "function_name": "normalize_label",
+      "repetitions": [
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 1,
+          "audit_cases": [
+            {
+              "case_id": "case_c8166e16c4d8d55a",
+              "case_type": "idor_bola_possible",
+              "cwe": "",
+              "file": "sample.py",
+              "guarantees": [],
+              "line": 1,
+              "reason": "Missing proof for idor_bola_possible: route authentication decorator, query scoped to current principal.",
+              "reportability": {
+                "proof_state": "signal_only",
+                "score": 30,
+                "verdict": "weak_signal"
+              },
+              "sanitizers": [],
+              "sink": "",
+              "source": "",
+              "status": "needs_review"
+            }
+          ],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 1,
+          "target_signal_count": 1,
+          "target_warning_count": 1,
+          "unrelated_warning_count": 0,
+          "warning_count": 1
+        },
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 1,
+          "audit_cases": [
+            {
+              "case_id": "case_c8166e16c4d8d55a",
+              "case_type": "idor_bola_possible",
+              "cwe": "",
+              "file": "sample.py",
+              "guarantees": [],
+              "line": 1,
+              "reason": "Missing proof for idor_bola_possible: route authentication decorator, query scoped to current principal.",
+              "reportability": {
+                "proof_state": "signal_only",
+                "score": 30,
+                "verdict": "weak_signal"
+              },
+              "sanitizers": [],
+              "sink": "",
+              "source": "",
+              "status": "needs_review"
+            }
+          ],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 1,
+          "target_signal_count": 1,
+          "target_warning_count": 1,
+          "unrelated_warning_count": 0,
+          "warning_count": 1
+        }
+      ],
+      "source": "def normalize_label(user_id: str) -> str:\n    return user_id.strip()\n"
+    },
+    {
+      "argument_name": "value",
+      "benign_contract": "Pure string strip; no request, resource lookup, authorization or I/O.",
+      "deterministic": true,
+      "function_name": "normalize_user_id",
+      "repetitions": [
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        },
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        }
+      ],
+      "source": "def normalize_user_id(value: str) -> str:\n    return value.strip()\n"
+    },
+    {
+      "argument_name": "user_id",
+      "benign_contract": "Pure string strip; no request, resource lookup, authorization or I/O.",
+      "deterministic": true,
+      "function_name": "normalize_user_id",
+      "repetitions": [
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 1,
+          "audit_cases": [
+            {
+              "case_id": "case_c8166e16c4d8d55a",
+              "case_type": "idor_bola_possible",
+              "cwe": "",
+              "file": "sample.py",
+              "guarantees": [],
+              "line": 1,
+              "reason": "Missing proof for idor_bola_possible: route authentication decorator, query scoped to current principal.",
+              "reportability": {
+                "proof_state": "signal_only",
+                "score": 30,
+                "verdict": "weak_signal"
+              },
+              "sanitizers": [],
+              "sink": "",
+              "source": "",
+              "status": "needs_review"
+            }
+          ],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 1,
+          "target_signal_count": 1,
+          "target_warning_count": 1,
+          "unrelated_warning_count": 0,
+          "warning_count": 1
+        },
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 1,
+          "audit_cases": [
+            {
+              "case_id": "case_c8166e16c4d8d55a",
+              "case_type": "idor_bola_possible",
+              "cwe": "",
+              "file": "sample.py",
+              "guarantees": [],
+              "line": 1,
+              "reason": "Missing proof for idor_bola_possible: route authentication decorator, query scoped to current principal.",
+              "reportability": {
+                "proof_state": "signal_only",
+                "score": 30,
+                "verdict": "weak_signal"
+              },
+              "sanitizers": [],
+              "sink": "",
+              "source": "",
+              "status": "needs_review"
+            }
+          ],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 1,
+          "target_signal_count": 1,
+          "target_warning_count": 1,
+          "unrelated_warning_count": 0,
+          "warning_count": 1
+        }
+      ],
+      "source": "def normalize_user_id(user_id: str) -> str:\n    return user_id.strip()\n"
+    }
+  ],
+  "schema_version": "belief.development_diagnostic.v1",
+  "third_party_code_executed": false
+}

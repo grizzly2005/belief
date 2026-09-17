@@ -1,3 +1,5 @@
 *.json text eol=lf
 *.md text eol=lf
 *.py text eol=lf
+# Preserve the raw post-measurement probe bytes and its recorded SHA-256.
+label-probe-a7c2488.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
