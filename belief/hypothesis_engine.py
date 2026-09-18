@@ -29,6 +29,7 @@ from .reportability.guards import (
     blockers_for,
     classify_guard,
 )
+from .security_classification import is_authorization_finding
 
 HYPOTHESIS_STATUSES = {"unproven", "weakened", "strengthened", "contradicted", "all"}
 
@@ -196,9 +197,7 @@ def classify_finding_hypothesis(finding: Finding) -> str | None:
         return "path_traversal_possible"
     if cwe == "CWE-79" or "xss" in text or "markup" in text or "html" in text:
         return "xss_possible"
-    if cwe in {"CWE-639", "CWE-862", "CWE-863"} or any(
-        token in text for token in ["idor", "access control", "owner_id", "source_id", "user_id"]
-    ):
+    if is_authorization_finding(finding):
         return "authorization_bypass_possible"
     if cwe == "CWE-502" or any(token in text for token in ["pickle", "deserial", "yaml.load"]):
         return "unsafe_deserialization_possible"

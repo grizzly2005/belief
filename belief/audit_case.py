@@ -18,6 +18,7 @@ from typing import Any, Iterable
 from .dataflow import DataFlowPath, DataFlowSummary
 from .json_contracts import StrictJSONError, strict_json_clone
 from .models import Belief, Finding, _json_safe
+from .security_classification import is_authorization_finding
 
 
 AUDIT_SCHEMA_VERSION = "belief.audit.v1"
@@ -455,12 +456,6 @@ def _case_type_for_finding(finding: Finding, hypothesis: dict[str, Any]) -> str 
         return "hardcoded_secret_possible"
 
     cwe = str(finding.cwe or "").upper()
-    text = " ".join([
-        finding.rule_id,
-        finding.title,
-        finding.description,
-        finding.evidence,
-    ]).lower()
     if cwe in {"CWE-22", "CWE-73"}:
         return "path_traversal_possible"
     if cwe == "CWE-79":
@@ -475,7 +470,7 @@ def _case_type_for_finding(finding: Finding, hypothesis: dict[str, Any]) -> str 
         return "ssrf_possible"
     if cwe == "CWE-89":
         return "sql_injection_possible"
-    if cwe in {"CWE-639", "CWE-862", "CWE-863"} or "idor" in text:
+    if is_authorization_finding(finding):
         return "idor_bola_possible"
     return None
 
