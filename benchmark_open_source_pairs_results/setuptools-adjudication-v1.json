@@ -1,0 +1,206 @@
+{
+  "case_count": 16,
+  "case_id": "setuptools-cve-2025-47273",
+  "cases": [
+    {
+      "accepted": true,
+      "case": "ordinary_leaf",
+      "error": null,
+      "expected_behavior_observed": true,
+      "inside_by_path_components": true,
+      "platform": "posix",
+      "root": "/synthetic/download",
+      "selected_path": "/synthetic/download/probe.bin",
+      "url": "https://example.invalid/probe.bin"
+    },
+    {
+      "accepted": true,
+      "case": "absolute_inside",
+      "error": null,
+      "expected_behavior_observed": true,
+      "inside_by_path_components": true,
+      "platform": "posix",
+      "root": "/synthetic/download",
+      "selected_path": "/synthetic/download/probe.bin",
+      "url": "https://example.invalid/%2Fsynthetic%2Fdownload%2Fprobe.bin"
+    },
+    {
+      "accepted": false,
+      "case": "absolute_unrelated",
+      "error": "ValueError",
+      "expected_behavior_observed": true,
+      "inside_by_path_components": null,
+      "platform": "posix",
+      "root": "/synthetic/download",
+      "selected_path": null,
+      "url": "https://example.invalid/%2Fsynthetic%2Foutside-other%2Fprobe.bin"
+    },
+    {
+      "accepted": true,
+      "case": "known_root_prefix_sibling",
+      "error": null,
+      "expected_behavior_observed": true,
+      "inside_by_path_components": false,
+      "platform": "posix",
+      "root": "/synthetic/download",
+      "selected_path": "/synthetic/download-sibling/probe.bin",
+      "url": "https://example.invalid/%2Fsynthetic%2Fdownload-sibling%2Fprobe.bin"
+    },
+    {
+      "accepted": false,
+      "case": "root_with_separator",
+      "error": "ValueError",
+      "expected_behavior_observed": true,
+      "inside_by_path_components": null,
+      "platform": "posix",
+      "root": "/synthetic/download/",
+      "selected_path": null,
+      "url": "https://example.invalid/%2Fsynthetic%2Fdownload-sibling%2Fprobe.bin"
+    },
+    {
+      "accepted": false,
+      "case": "wrong_root_guess",
+      "error": "ValueError",
+      "expected_behavior_observed": true,
+      "inside_by_path_components": null,
+      "platform": "posix",
+      "root": "/synthetic/download",
+      "selected_path": null,
+      "url": "https://example.invalid/%2Fsynthetic%2Funknown-sibling%2Fprobe.bin"
+    },
+    {
+      "accepted": true,
+      "case": "dot_component_scrubbing",
+      "error": null,
+      "expected_behavior_observed": true,
+      "inside_by_path_components": true,
+      "platform": "posix",
+      "root": "/synthetic/download",
+      "selected_path": "/synthetic/download/./probe.bin",
+      "url": "https://example.invalid/..%2Fprobe.bin"
+    },
+    {
+      "accepted": true,
+      "case": "empty_leaf_fallback",
+      "error": null,
+      "expected_behavior_observed": true,
+      "inside_by_path_components": true,
+      "platform": "posix",
+      "root": "/synthetic/download",
+      "selected_path": "/synthetic/download/__downloaded__",
+      "url": "https://example.invalid/"
+    },
+    {
+      "accepted": true,
+      "case": "ordinary_leaf",
+      "error": null,
+      "expected_behavior_observed": true,
+      "inside_by_path_components": true,
+      "platform": "windows",
+      "root": "C:\\synthetic\\download",
+      "selected_path": "C:\\synthetic\\download\\probe.bin",
+      "url": "https://example.invalid/probe.bin"
+    },
+    {
+      "accepted": true,
+      "case": "absolute_inside",
+      "error": null,
+      "expected_behavior_observed": true,
+      "inside_by_path_components": true,
+      "platform": "windows",
+      "root": "C:\\synthetic\\download",
+      "selected_path": "C:\\synthetic\\download\\probe.bin",
+      "url": "https://example.invalid/C%3A%5Csynthetic%5Cdownload%5Cprobe.bin"
+    },
+    {
+      "accepted": false,
+      "case": "absolute_unrelated",
+      "error": "ValueError",
+      "expected_behavior_observed": true,
+      "inside_by_path_components": null,
+      "platform": "windows",
+      "root": "C:\\synthetic\\download",
+      "selected_path": null,
+      "url": "https://example.invalid/C%3A%5Csynthetic%5Coutside-other%5Cprobe.bin"
+    },
+    {
+      "accepted": true,
+      "case": "known_root_prefix_sibling",
+      "error": null,
+      "expected_behavior_observed": true,
+      "inside_by_path_components": false,
+      "platform": "windows",
+      "root": "C:\\synthetic\\download",
+      "selected_path": "C:\\synthetic\\download-sibling\\probe.bin",
+      "url": "https://example.invalid/C%3A%5Csynthetic%5Cdownload-sibling%5Cprobe.bin"
+    },
+    {
+      "accepted": false,
+      "case": "root_with_separator",
+      "error": "ValueError",
+      "expected_behavior_observed": true,
+      "inside_by_path_components": null,
+      "platform": "windows",
+      "root": "C:\\synthetic\\download\\",
+      "selected_path": null,
+      "url": "https://example.invalid/C%3A%5Csynthetic%5Cdownload-sibling%5Cprobe.bin"
+    },
+    {
+      "accepted": false,
+      "case": "wrong_root_guess",
+      "error": "ValueError",
+      "expected_behavior_observed": true,
+      "inside_by_path_components": null,
+      "platform": "windows",
+      "root": "C:\\synthetic\\download",
+      "selected_path": null,
+      "url": "https://example.invalid/C%3A%5Csynthetic%5Cunknown-sibling%5Cprobe.bin"
+    },
+    {
+      "accepted": true,
+      "case": "dot_component_scrubbing",
+      "error": null,
+      "expected_behavior_observed": true,
+      "inside_by_path_components": true,
+      "platform": "windows",
+      "root": "C:\\synthetic\\download",
+      "selected_path": "C:\\synthetic\\download\\./probe.bin",
+      "url": "https://example.invalid/..%2Fprobe.bin"
+    },
+    {
+      "accepted": true,
+      "case": "empty_leaf_fallback",
+      "error": null,
+      "expected_behavior_observed": true,
+      "inside_by_path_components": true,
+      "platform": "windows",
+      "root": "C:\\synthetic\\download",
+      "selected_path": "C:\\synthetic\\download\\__downloaded__",
+      "url": "https://example.invalid/"
+    }
+  ],
+  "conclusion": "fixed_revision_not_a_universal_containment_negative_control",
+  "deterministic_digest": "cf26731a532cdb3aa6afe9a6a3faa65435a7715cd39b4f4c84647e7f76d49768",
+  "helper_line_ranges": {
+    "_resolve_download_filename": [
+      811,
+      844
+    ],
+    "egg_info_for_url": [
+      105,
+      113
+    ]
+  },
+  "limits": [
+    "only the pinned filename-selection helpers were executed",
+    "the sibling case assumes knowledge of the synthetic root prefix",
+    "Windows behavior is pure ntpath emulation, not a Windows file write",
+    "no package import, download, file write, symlink or live exploit test",
+    "the original paired benchmark and thresholds remain unchanged"
+  ],
+  "schema_version": "belief.paired_control_adjudication.v1",
+  "source_path": "setuptools/package_index.py",
+  "source_revision": "250a6d17978f9f6ac3ac887091f2d32886fbbb0b",
+  "source_sha256": "870ffc77a62224af26252657edcdc035002dbf31f6557be807516d0fc34f842e",
+  "status": "reproduced"
+}

@@ -388,10 +388,15 @@ def attach_dataflow_to_findings(
     enriched = list(findings)
     for finding in enriched:
         payload = dataflow_for_finding(finding, summary_map, show_dataflow=show_dataflow)
-        if not payload:
-            continue
         metadata = dict(finding.metadata or {})
-        metadata["dataflow"] = payload
+        metadata.pop("dataflow", None)
+        hypothesis = metadata.get("hypothesis")
+        if isinstance(hypothesis, dict) and "dataflow" in hypothesis:
+            # Its status may depend on the old path. The hypothesis stage must
+            # recompute it; removing only its path would retain a stale verdict.
+            metadata.pop("hypothesis")
+        if payload:
+            metadata["dataflow"] = payload
         finding.metadata = metadata
     return enriched
 
@@ -418,30 +423,53 @@ def dataflow_paths_for_finding(
     finding: Finding,
     summaries: dict[str, DataFlowSummary] | Iterable[DataFlowSummary],
 ) -> list[DataFlowPath]:
-    """Return deterministic candidate paths related to a finding."""
+    """Return paths bound to the finding's file and operation, never just nearby."""
     summary_map = _summary_map(summaries)
     file_key = _norm_path(finding.file)
+    if not file_key:
+        return []
     candidate_summaries = []
     if file_key in summary_map:
         candidate_summaries.append(summary_map[file_key])
     else:
-        file_tail = file_key.split("/")[-1]
-        candidate_summaries.extend(
+        # A producer may use an absolute path or omit a common root. Match the
+        # complete relative suffix, not an unrelated directory's basename.
+        matches = [
             summary for key, summary in summary_map.items()
-            if key.endswith("/" + file_tail) or key == file_tail
-        )
+            if key and (key.endswith("/" + file_key) or file_key.endswith("/" + key))
+        ]
+        if len(matches) == 1:
+            candidate_summaries = matches
 
     wanted = _categories_for_finding(finding)
     wanted_function = _finding_function_context(finding)
+    explicit_sink_line = _finding_explicit_sink_line(finding)
+    line = explicit_sink_line or int(finding.line or 0)
     paths: list[DataFlowPath] = []
     for summary in candidate_summaries:
         for path in summary.paths:
+            if _norm_path(path.file_path) != _norm_path(summary.file_path):
+                continue
             if wanted and path.sink_category not in wanted and path.cwe not in wanted:
                 continue
             if wanted_function and not _same_function(path.function_name, wanted_function):
                 continue
+            exact_sink = line > 0 and path.sink_line == line
+            # Some producers anchor a finding on the def and give its extent.
+            # Only an exact function identity can corroborate that range; a
+            # known sink location must not fall back to a different operation.
+            in_function_range = (
+                not explicit_sink_line
+                and bool(wanted_function)
+                and _function_key(path.function_name) == _function_key(wanted_function)
+                and isinstance(finding.line, int)
+                and isinstance(finding.end_line, int)
+                and isinstance(path.sink_line, int)
+                and 0 < finding.line <= path.sink_line <= finding.end_line
+            )
+            if not exact_sink and not in_function_range:
+                continue
             paths.append(path)
-    line = _finding_sink_line(finding)
     return sorted(paths, key=lambda path: (
         0 if line and path.sink_line == line else 1,
         abs((path.sink_line or 0) - line) if line else 0,
@@ -464,8 +492,8 @@ def _finding_function_context(finding: Finding) -> str:
 
 
 def _same_function(path_function: str, finding_function: str) -> bool:
-    path_name = str(path_function or "").replace("::", ".").strip(".")
-    finding_name = str(finding_function or "").replace("::", ".").strip(".")
+    path_name = _function_key(path_function)
+    finding_name = _function_key(finding_function)
     if not path_name or not finding_name:
         return False
     if "." in path_name and "." in finding_name:
@@ -477,12 +505,15 @@ def _same_function(path_function: str, finding_function: str) -> bool:
     )
 
 
-def _finding_sink_line(finding: Finding) -> int:
+def _function_key(name: str) -> str:
+    return str(name or "").replace("::", ".").strip(".")
+
+
+def _finding_explicit_sink_line(finding: Finding) -> int:
+    """Read the producer's location, not a previously attached path's location."""
     metadata = finding.metadata if isinstance(finding.metadata, dict) else {}
-    dataflow = metadata.get("dataflow") if isinstance(metadata.get("dataflow"), dict) else {}
     for value in (
         metadata.get("sink_line"),
-        dataflow.get("sink_line"),
         metadata.get("line_number"),
     ):
         if isinstance(value, int) and value > 0:
@@ -493,7 +524,7 @@ def _finding_sink_line(finding: Finding) -> int:
         match = re.search(r"\bline\s*[:#]?\s*(\d+)\b", str(text or ""), re.IGNORECASE)
         if match:
             return int(match.group(1))
-    return int(finding.line or 0)
+    return 0
 
 
 class _LocalDataFlowAnalyzer:
@@ -1507,7 +1538,8 @@ def _summary_map(
     summaries: dict[str, DataFlowSummary] | Iterable[DataFlowSummary],
 ) -> dict[str, DataFlowSummary]:
     if isinstance(summaries, dict):
-        return {_norm_path(key): value for key, value in summaries.items()}
+        # A caller's lookup alias is not evidence of the analyzed file identity.
+        summaries = summaries.values()
     return {_norm_path(summary.file_path): summary for summary in summaries}
 
 

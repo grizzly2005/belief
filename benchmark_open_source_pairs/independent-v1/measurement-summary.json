@@ -1,0 +1,210 @@
+{
+  "benign_analysis_error_count": 0,
+  "benign_control_count": 6,
+  "benign_control_status": "failed",
+  "benign_controls_without_warning": 5,
+  "benign_deterministic_count": 6,
+  "benign_exit_code": 1,
+  "case_outcomes": [
+    {
+      "fixed_range_match": true,
+      "project": "mar10/wsgidav",
+      "range_discrimination": false,
+      "vulnerable_range_match": true
+    },
+    {
+      "fixed_range_match": false,
+      "project": "ronf/asyncssh",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "mervinpraison/praisonai",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "nltk/nltk",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "mobsf/mobile-security-framework-mobsf",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": true,
+      "project": "huggingface/transformers",
+      "range_discrimination": false,
+      "vulnerable_range_match": true
+    },
+    {
+      "fixed_range_match": false,
+      "project": "keras-team/keras",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "elyin/gemini-bridge",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "thumbor/thumbor",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "flytohub/flyto-core",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "pypa/pip",
+      "range_discrimination": true,
+      "vulnerable_range_match": true
+    },
+    {
+      "fixed_range_match": true,
+      "project": "brightio/penelope",
+      "range_discrimination": false,
+      "vulnerable_range_match": true
+    },
+    {
+      "fixed_range_match": false,
+      "project": "datamodel-code-generator/datamodel-code-generator",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "open-webui/open-webui",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": true,
+      "project": "facelessuser/pymdown-extensions",
+      "range_discrimination": false,
+      "vulnerable_range_match": true
+    },
+    {
+      "fixed_range_match": false,
+      "project": "berriai/litellm",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": true,
+      "project": "lepture/mistune",
+      "range_discrimination": false,
+      "vulnerable_range_match": true
+    },
+    {
+      "fixed_range_match": false,
+      "project": "dgtlmoon/changedetection.io",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "microsoft/prompty",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "snowflakedb/snowflake-sqlalchemy",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "sooperset/mcp-atlassian",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "jelmer/dulwich",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "hanxi/xiaomusic",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    },
+    {
+      "fixed_range_match": false,
+      "project": "oscal-compass/compliance-trestle",
+      "range_discrimination": false,
+      "vulnerable_range_match": false
+    }
+  ],
+  "detector_base_revision": "83c65692239a85435cb8f17c0eb9a8cc951a1d9b",
+  "freeze_revision": "a7c2488c670e460da4849c4d33ca5955c8b30615",
+  "pair_deterministic_digest": "373d22377d3736931fa5edd354db6ab5d3de1dfe23441099081122f30d3be83d",
+  "pair_duration_seconds": 120.983221,
+  "pair_exit_code": 1,
+  "pair_metrics": {
+    "analysis_error_count": 0,
+    "case_count": 24,
+    "deterministic_repetition_rate": 1.0,
+    "deterministic_variant_count": 48,
+    "fixed_warning_false_positive_count": 5,
+    "fixed_warning_false_positive_rate": 0.208333,
+    "paired_discrimination_count": 1,
+    "paired_discrimination_rate": 0.041667,
+    "unrelated_warning_count_fixed": 25,
+    "unrelated_warning_count_vulnerable": 24,
+    "variant_count": 48,
+    "vulnerable_warning_count": 6,
+    "vulnerable_warning_recall": 0.25
+  },
+  "pair_status": "failed",
+  "raw_artifacts": [
+    {
+      "bytes": 4492911,
+      "path": "pair-result-a7c2488.json",
+      "sha256": "6175da704e357176625e4a0971cce31bfdc056af1310d2af6e0a50af2e94875e"
+    },
+    {
+      "bytes": 10529,
+      "path": "benign-result-a7c2488.json",
+      "sha256": "cbe1128acccbddec7a6b425f48b9278b12a96d5ddecd8de4002727eeb1325505"
+    },
+    {
+      "bytes": 8698,
+      "path": "label-probe-a7c2488.json",
+      "sha256": "2adc0710e688142e2f1414fde6ac4eba962cb7e056f72b3f0086672fed8c9846"
+    }
+  ],
+  "schema_version": "belief.independent_pair_measurement_summary.v1",
+  "semantic_caveat": "Frozen v1 file/line/type matching overstates mechanism attribution for Transformers/Penelope. Pip apparent discrimination also leaves a fixed helper warning outside the scoring range; it does not establish that its actual guard was recognized. Do not relabel or re-score this result as a passing benchmark.",
+  "warning_partition": {
+    "fixed": {
+      "all_nonlocalized_warnings": 43,
+      "all_warnings": 50,
+      "other_type_warnings": 25,
+      "range_matched_warnings": 7,
+      "same_type_outside_range": 18
+    },
+    "vulnerable": {
+      "all_nonlocalized_warnings": 44,
+      "all_warnings": 51,
+      "other_type_warnings": 24,
+      "range_matched_warnings": 7,
+      "same_type_outside_range": 20
+    }
+  }
+}

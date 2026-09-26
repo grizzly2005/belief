@@ -1,0 +1,1904 @@
+{
+  "cases": [
+    {
+      "advisory_cwes": [
+        "CWE-89"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-p6gw-4frg-j7jw",
+      "assumptions": [
+        "MySQLdb parameter binding and MySQL identifier grammar; trusted connection and database selection.",
+        "Qualification covers the named SELECT flow, not every database operation."
+      ],
+      "commit_metadata": {
+        "bytes": 14092,
+        "http_status": 200,
+        "rate_remaining": "54",
+        "request_url": "https://api.github.com/repos/mar10/wsgidav/commits/6f35776c9188f130ab044ce557015d51aaa83500",
+        "retrieved_at": "2026-09-16T16:39:38.492330+00:00",
+        "sha256": "40310268180154cd0bfcfecab46d310f7723da6e32b8b5dd4489256ce04ed6e0"
+      },
+      "commit_url": "https://github.com/mar10/wsgidav/commit/6f35776c9188f130ab044ce557015d51aaa83500",
+      "cve_id": "CVE-2026-55509",
+      "fixed_control": "The value is passed as the second execute argument; every interpolated identifier is backtick-delimited after doubling embedded backticks in _escape_id.",
+      "fixed_revision": "6f35776c9188f130ab044ce557015d51aaa83500",
+      "ghsa_id": "GHSA-p6gw-4frg-j7jw",
+      "id": "wsgidav-cve-2026-55509",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "a7989e6c15aa8e9aa23630253376e4284409a6e4d9ec7f018459bf33774177cf",
+        "spdx": "MIT"
+      },
+      "mechanism": "A WebDAV primary-key value and table identifier are concatenated into a MySQL SELECT in _exists_record_by_primary_key.",
+      "ordinal": 1,
+      "project": "mar10/wsgidav",
+      "published_at": "2026-08-28T18:12:17Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "mar10/wsgidav"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 19970,
+          "fixed_sha256": "0b84e7aada63ec770360afdc25ff642951af5e491b1d6f0c53e4e703fbfbb511",
+          "path": "wsgidav/samples/mysql_dav_provider.py",
+          "relevant_line_range": [
+            372,
+            422
+          ],
+          "vulnerable_bytes": 20941,
+          "vulnerable_sha256": "12baad7339c35db2d46a2159c856ec48c5f6cf18a25063abf98689f70ae9eaac"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [],
+      "upstream_test_changes_present": false,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "67abdbd7d622fcf29aefdfbd0c9910de9e0c8b3d"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-2wxc-x7rj-hg8f",
+      "assumptions": [
+        "POSIX destination semantics; trusted destination root without hostile links or concurrent filesystem mutation.",
+        "Windows drive-relative names and race resistance are not qualified."
+      ],
+      "commit_metadata": {
+        "bytes": 6399,
+        "http_status": 200,
+        "rate_remaining": "53",
+        "request_url": "https://api.github.com/repos/ronf/asyncssh/commits/d730803b8e4e94c20c7580d90f94d1e05f9f58de",
+        "retrieved_at": "2026-09-16T16:39:38.734406+00:00",
+        "sha256": "4d5f6060101931142214cfb157ef4da2ae8ec6fbbb140dacd7041b4d1606ee2d"
+      },
+      "commit_url": "https://github.com/ronf/asyncssh/commit/d730803b8e4e94c20c7580d90f94d1e05f9f58de",
+      "cve_id": "CVE-2026-54591",
+      "fixed_control": "_parse_cd_args rejects slash, backslash and the exact parent component before returning the peer filename to _recv_files.",
+      "fixed_revision": "d730803b8e4e94c20c7580d90f94d1e05f9f58de",
+      "ghsa_id": "GHSA-2wxc-x7rj-hg8f",
+      "id": "asyncssh-cve-2026-54591",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "0becf16567beb77fa252b7664631dd177c8f9a1889e48995b45379c7130e5303",
+        "spdx": "EPL-2.0"
+      },
+      "mechanism": "An SCP peer's C/D request filename reaches posixpath.join and _recv_file/_recv_dir filesystem operations.",
+      "ordinal": 2,
+      "project": "ronf/asyncssh",
+      "published_at": "2026-08-26T15:34:22Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "ronf/asyncssh"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 39965,
+          "fixed_sha256": "797665a6a840de3de5ff8d30485b099874eab9a00e7abc321ba3253f3e4ddab9",
+          "path": "asyncssh/scp.py",
+          "relevant_line_range": [
+            609,
+            735
+          ],
+          "vulnerable_bytes": 39839,
+          "vulnerable_sha256": "56997be2fe92fcdc56eac543c9639fc1c34e272854f60bbe8975a1632156a9f1"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 14,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "054cee129461608621d206d0fa07715ee0dea1971a20eeca23beeca76e6c9a15",
+          "path": "tests/test_sftp.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "3d515ba9ba0cd9990d248bdf62bcf05d51261a88"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22",
+        "CWE-73"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-gxmw-5f7x-6g22",
+      "assumptions": [
+        "Primitive string user_id; POSIX paths and trusted base directory without hostile links or concurrent mutation.",
+        "This does not certify Windows drive-relative paths, user-id normalization consistency, or all later memory operations."
+      ],
+      "commit_metadata": {
+        "bytes": 40604,
+        "http_status": 200,
+        "rate_remaining": "52",
+        "request_url": "https://api.github.com/repos/mervinpraison/praisonai/commits/2f9677abb2ea68eab864ee8b6a828fd0141612e1",
+        "retrieved_at": "2026-09-16T16:39:39.016978+00:00",
+        "sha256": "ea541011a6753f7e57e895d215e546db0126dedce37650d61fccd24f45dee7df"
+      },
+      "commit_url": "https://github.com/MervinPraison/PraisonAI/commit/2f9677abb2ea68eab864ee8b6a828fd0141612e1",
+      "cve_id": "CVE-2026-55527",
+      "fixed_control": "The constructor calls _sanitise_user_id before joining; it raises for either separator or a '..' substring. The original string is still joined, but any traversal string in the qualified POSIX model has already raised.",
+      "fixed_revision": "2f9677abb2ea68eab864ee8b6a828fd0141612e1",
+      "ghsa_id": "GHSA-gxmw-5f7x-6g22",
+      "id": "praisonai-cve-2026-55527",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "92abc5cac5659c5c583aed07c427b61e5999989b5d98d18ec56451913f53b167",
+        "spdx": "MIT"
+      },
+      "mechanism": "FileMemory joins a supplied user_id to the configured memory base and creates the resulting directories.",
+      "ordinal": 3,
+      "project": "mervinpraison/praisonai",
+      "published_at": "2026-08-25T15:09:54Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "mervinpraison/praisonai"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 63586,
+          "fixed_sha256": "4e19213f043ca7b6123eba424ff53199424f583046e4edefa4ab8dc8e67b9470",
+          "path": "src/praisonai-agents/praisonaiagents/memory/file_memory.py",
+          "relevant_line_range": [
+            119,
+            182
+          ],
+          "vulnerable_bytes": 63103,
+          "vulnerable_sha256": "091043dc10687ec83209d297ea31eca908965001fb687c711beb2e59ae35a311"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 64,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "5c701abdc1d08c9ea9e0319ff6a992cea17e5b6a16b5509aba5df5c260ad5a7c",
+          "path": "src/praisonai-agents/tests/unit/test_security_audit_fixes.py",
+          "status": "added"
+        },
+        {
+          "changed_lines": 55,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "394938ac21dc89be58165e1b432b835f8b0ecc13d9fc5885d394cc86ef155a6f",
+          "path": "src/praisonai/tests/unit/test_security_audit_fixes.py",
+          "status": "added"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "9991e00f5245de182321288918e7ac1add390d0d"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-cv22-g7mw-8v73",
+      "assumptions": [
+        "Trusted corpus root; input is an ordinary filesystem path string, not an overridden object.",
+        "The disclosure is limited to the filename suffix and parseable frequency data described by the source.",
+        "Qualification covers path containment in a stable filesystem; platform-specific hardlink/descriptor race protection is not claimed."
+      ],
+      "commit_metadata": {
+        "bytes": 38372,
+        "http_status": 200,
+        "rate_remaining": "51",
+        "request_url": "https://api.github.com/repos/nltk/nltk/commits/10d34b3f4fe3fec74b76527a409eb0acbac2e8ab",
+        "retrieved_at": "2026-09-16T16:39:39.358613+00:00",
+        "sha256": "70da9acee639b473c3b62a709b4410d828b48524d4b27d19177f2b0fe1501f70"
+      },
+      "commit_url": "https://github.com/nltk/nltk/commit/10d34b3f4fe3fec74b76527a409eb0acbac2e8ab",
+      "cve_id": "CVE-2026-71514",
+      "fixed_control": "The reader now calls pathsec.open with required_root=self.root. The bound helper resolves root and target and rejects targets outside that root; ENFORCE is True at the pinned revision.",
+      "fixed_revision": "10d34b3f4fe3fec74b76527a409eb0acbac2e8ab",
+      "ghsa_id": "GHSA-cv22-g7mw-8v73",
+      "id": "nltk-cve-2026-71514",
+      "license": {
+        "path": "LICENSE.txt",
+        "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "spdx": "Apache-2.0"
+      },
+      "mechanism": "Crubadan table column zero supplies a code joined to the corpus root and read as a *-3grams.txt file.",
+      "ordinal": 4,
+      "project": "nltk/nltk",
+      "published_at": "2026-08-22T15:31:03Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "nltk/nltk"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 4372,
+          "fixed_sha256": "bce136837d352ff65873eae86f10b6d9a0ac20294d770d681f6129af72e5cf46",
+          "path": "nltk/corpus/reader/crubadan.py",
+          "relevant_line_range": [
+            83,
+            124
+          ],
+          "vulnerable_bytes": 3521,
+          "vulnerable_sha256": "bd4c7fe6127ea1e74f4f1cff7f7f1ebf2009eeefe58099449a025edc1f424af7"
+        },
+        {
+          "analysis_target": false,
+          "fixed_bytes": 30802,
+          "fixed_sha256": "b41eeff11b4b6376eab1d9f86bb541fae85faa6bfe1f9e003c0ffbed8f4ca63f",
+          "path": "nltk/pathsec.py",
+          "vulnerable_bytes": 26186,
+          "vulnerable_sha256": "840697fdca3d66fd4cc0e631640798db60932b2be64802e4ba53933659884a4c"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 139,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "5d5912607b12182789d1ae9ab5810acff75fba6d642f27c95c4c9cd28275a4fa",
+          "path": "nltk/test/unit/test_corpus_reader_pathsec.py",
+          "status": "added"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "006000117a9e3132a8074d16f2587e837f41b9b0"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-8j49-mmcx-4mp5",
+      "assumptions": [
+        "Named res/ or /res/ manifest branch, trusted resource root and stable filesystem.",
+        "Fallback folder search, unrelated archive extraction, download authentication and concurrent link swaps are outside this qualification."
+      ],
+      "commit_metadata": {
+        "bytes": 66323,
+        "http_status": 200,
+        "rate_remaining": "50",
+        "request_url": "https://api.github.com/repos/mobsf/mobile-security-framework-mobsf/commits/62563ca429a75b3e5d47a13b958e1d2e7d5e2bbf",
+        "retrieved_at": "2026-09-16T16:39:39.746823+00:00",
+        "sha256": "b002030df2acf64621432c2fed02ee2c473ef3978e70641b6966340252cbc6d5"
+      },
+      "commit_url": "https://github.com/MobSF/Mobile-Security-Framework-MobSF/commit/62563ca429a75b3e5d47a13b958e1d2e7d5e2bbf",
+      "cve_id": "CVE-2026-68922",
+      "fixed_control": "The selected res/ branch rejects traversal input and checks realpath containment with a separator boundary before either returned candidate. The helper body is bound in security.py; its previous location in utils.py is also retained.",
+      "fixed_revision": "62563ca429a75b3e5d47a13b958e1d2e7d5e2bbf",
+      "ghsa_id": "GHSA-8j49-mmcx-4mp5",
+      "id": "mobile-security-framework-mobsf-cve-2026-68922",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "8f4ef73fa17c16c04fbf16cf2041db022b0c141609127285536dab67c25debdd",
+        "spdx": "LicenseRef-Upstream-GPL"
+      },
+      "mechanism": "A manifest android:icon path is resolved by find_icon_path_zip and its returned file is copied into the download directory.",
+      "ordinal": 5,
+      "project": "mobsf/mobile-security-framework-mobsf",
+      "published_at": "2026-08-18T18:01:26Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "mobsf/mobile-security-framework-mobsf"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 13353,
+          "fixed_sha256": "b101f4f6612f3b28092ad109105110a856f959a11e24ac800954cf97a3fcb139",
+          "path": "mobsf/StaticAnalyzer/views/android/icon_analysis.py",
+          "relevant_line_range": [
+            75,
+            165
+          ],
+          "vulnerable_bytes": 12687,
+          "vulnerable_sha256": "464719df7ea2a685a84177732249e25e9f078b3150197c7e84c59d0004a6289e"
+        },
+        {
+          "analysis_target": false,
+          "fixed_bytes": 14345,
+          "fixed_sha256": "60e5b5ed4033a321fa4ea085ca67cf01eca0d7e977687b232efbc7500f48698b",
+          "path": "mobsf/MobSF/security.py",
+          "vulnerable_bytes": 11428,
+          "vulnerable_sha256": "a6b9c966e737f56e9c8b0bf95b98078db4857348c4fcb13a22ab53310ae5ccbd"
+        },
+        {
+          "analysis_target": false,
+          "fixed_bytes": 27943,
+          "fixed_sha256": "eaf7f0044d6a96faf557904d59a78ad6655e0479475f64fd42f83b7b86facb02",
+          "path": "mobsf/MobSF/utils.py",
+          "vulnerable_bytes": 30653,
+          "vulnerable_sha256": "d3db9e86d16e7f155b025856d9b9ba4beb4464851775f68634a35ed609bd2225"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 2,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "3ed22ad1e06bfc79ee9e21e40a704ecf9cdee89b349a1a6c9d3474bd64877116",
+          "path": "mobsf/DynamicAnalyzer/views/android/tests_common.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 2,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "c989e2b00ae382576d725a0271f695ad3f3d04507e52b20dbaf8b7d1c4142a25",
+          "path": "mobsf/DynamicAnalyzer/views/android/tests_frida.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 2,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "37c04d51483f7a5f16d0dacce1528a740c30d27def102ea4785634133915c492",
+          "path": "mobsf/DynamicAnalyzer/views/ios/tests_frida.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "c098134845a9f537a4feb64090883865cea5383e"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-xrqw-3rrv-vx5w",
+      "assumptions": [
+        "Trusted save directory and stable filesystem; no concurrent symlink replacement.",
+        "The named non-default template branch is the control; unrelated save/push behavior is excluded."
+      ],
+      "commit_metadata": {
+        "bytes": 13010,
+        "http_status": 200,
+        "rate_remaining": "49",
+        "request_url": "https://api.github.com/repos/huggingface/transformers/commits/eaaaf8494dd5386634ae37d1d122212fdc315be5",
+        "retrieved_at": "2026-09-16T16:39:40.095522+00:00",
+        "sha256": "1ab62fecd7f67aff10e7ec6bf1f1a560e7a2b48df8691b6c81ff7f2fe6c5ffc2"
+      },
+      "commit_url": "https://github.com/huggingface/transformers/commit/eaaaf8494dd5386634ae37d1d122212fdc315be5",
+      "cve_id": "CVE-2026-9856",
+      "fixed_control": "Both writes compare the resolved output parent to the resolved chat-template directory and raise on a mismatch before open.",
+      "fixed_revision": "eaaaf8494dd5386634ae37d1d122212fdc315be5",
+      "ghsa_id": "GHSA-xrqw-3rrv-vx5w",
+      "id": "transformers-cve-2026-9856",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "77fd4710def9ec3c0f6225800e0235f15a425abd4a8b03559127fcd782612049",
+        "spdx": "Apache-2.0"
+      },
+      "mechanism": "Non-default chat-template dictionary keys become .jinja output paths in processor/tokenizer save operations.",
+      "ordinal": 6,
+      "project": "huggingface/transformers",
+      "published_at": "2026-08-02T18:30:20Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "huggingface/transformers"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 112865,
+          "fixed_sha256": "9fd0f642dbaed7727f25dcb5e9c86110a20b5dde7139fb0d14b465900ce1cbc5",
+          "path": "src/transformers/processing_utils.py",
+          "relevant_line_range": [
+            1120,
+            1154
+          ],
+          "vulnerable_bytes": 112579,
+          "vulnerable_sha256": "1c6c8eb28b5d730f76adca1d2d74204979dba3383cb115eaed4b85822c4676dc"
+        },
+        {
+          "analysis_target": true,
+          "fixed_bytes": 176756,
+          "fixed_sha256": "15a70e2ecca607fc0a948fc224bebaab515dbb83e93553b8b8d5a0e7ecf5affe",
+          "path": "src/transformers/tokenization_utils_base.py",
+          "relevant_line_range": [
+            3280,
+            3325
+          ],
+          "vulnerable_bytes": 176470,
+          "vulnerable_sha256": "c2cce6123f042052475867332cac670d245d0364a56f82a2724fa14adecbcc1d"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 20,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "111e028e8c6bad075f8bd846ce03dc6ab4683f4cfb37971b1deed094934ae74d",
+          "path": "tests/test_processing_common.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 16,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "0170aca78f4e6d5cfa7b4fd437467aa04d2f6b67d2caa124e188c6c528f809d2",
+          "path": "tests/test_tokenization_common.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "47949d3a0e1cf9248f2a3eb3cd0deb12ee37b9e9"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-m8wh-29wm-52mv",
+      "assumptions": [
+        "h5py's getlink/getclass semantics and ordinary HDF5 objects.",
+        "KerasFileEditor link disclosure only; tensor allocation limits and every load_weights path are not certified.",
+        "HDF5 dereference is a less conventional file-read primitive; lack of a recognized builtin sink must remain a miss."
+      ],
+      "commit_metadata": {
+        "bytes": 129625,
+        "http_status": 200,
+        "rate_remaining": "47",
+        "request_url": "https://api.github.com/repos/keras-team/keras/commits/d338a45204bdc787c8b3c4a9b82c1911cd52dedf",
+        "retrieved_at": "2026-09-16T16:39:40.901614+00:00",
+        "sha256": "b9a5f8d132b54594b0e0ea435b3340098bbb133d68739a4a76f428a1603f94f8"
+      },
+      "commit_selection": "Advisory reference index 1 includes the file-editor link checks and virtual-dataset rejection; reference index 0 is retained as acquisition evidence only.",
+      "commit_url": "https://github.com/keras-team/keras/commit/d338a45204bdc787c8b3c4a9b82c1911cd52dedf",
+      "cve_id": "CVE-2026-9335",
+      "fixed_control": "Use the later complete advisory-linked patch: inspect link type before dereference, reject ExternalLink/SoftLink, use the bound safe_get_h5_group helper for vars, and reject external/virtual datasets before value[()].",
+      "fixed_revision": "d338a45204bdc787c8b3c4a9b82c1911cd52dedf",
+      "ghsa_id": "GHSA-m8wh-29wm-52mv",
+      "id": "keras-cve-2026-9335",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+        "spdx": "Apache-2.0"
+      },
+      "mechanism": "KerasFileEditor dereferences attacker-controlled HDF5 links while extracting groups and datasets.",
+      "ordinal": 7,
+      "project": "keras-team/keras",
+      "published_at": "2026-08-02T06:30:20Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "keras-team/keras"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 32908,
+          "fixed_sha256": "08f332f11540a8900f6339a7bd3da3a04ad549593e3e985162b8f9de56feed92",
+          "path": "keras/src/saving/file_editor.py",
+          "relevant_line_range": [
+            455,
+            582
+          ],
+          "vulnerable_bytes": 32297,
+          "vulnerable_sha256": "06c28103df78f1ea08cef429eebdad0f37b19e6dda0afdd398f97d3c6d125b7d"
+        },
+        {
+          "analysis_target": false,
+          "fixed_bytes": 70121,
+          "fixed_sha256": "de1c9a25097d224ae6806db013fe9dccf7fc0a49b7bd6861263fba326acb4b99",
+          "path": "keras/src/saving/saving_lib.py",
+          "vulnerable_bytes": 60112,
+          "vulnerable_sha256": "f5010cf4586d22ee597621debdee5be0ad118c13fe5a8c65bc7e3a0183f8e3e9"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 8,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "998d47940c489a6cf2820fd3a4204da329b11c20ab403c7e0e047daa7347b92e",
+          "path": "keras/src/layers/core/lambda_layer_test.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 51,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "7d174bfd035e024699197217ed22d0572cd14e9acdb858e5d0daa904ff435315",
+          "path": "keras/src/saving/file_editor_test.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 29,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "ba4623334502b95d320326e8b3aafd1e0cdc78d2a121e58c82b7a6090b4ceffb",
+          "path": "keras/src/saving/saving_api_test.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 419,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "4d0a2508b36e1c7234946d1ccebe53cc1c16326194eb2a37373d2540545b93cf",
+          "path": "keras/src/saving/saving_lib_test.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 27,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "60a281a317e42e1d0c59c2eeadb52606b79ea212d801d5b9f63f0cbcb3e11d4b",
+          "path": "keras/src/utils/file_utils_test.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 24,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "32023820340010ba0234c4fd1f946e032e9fee24d8ef4d98e781d36250b2756a",
+          "path": "keras/src/utils/torch_utils_test.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "8f987f11bf7512f0df4774a8f1557bba07dc2b49"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22",
+        "CWE-200"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-c5px-58j2-7fqp",
+      "assumptions": [
+        "The authorized working directory is trusted; stable filesystem.",
+        "Only static source text is acquired/analyzed: no bridge, MCP server, CLI or model is called.",
+        "The separate at-command mode is outside the named advisory mechanism."
+      ],
+      "commit_metadata": {
+        "bytes": 16511,
+        "http_status": 200,
+        "rate_remaining": "46",
+        "request_url": "https://api.github.com/repos/elyin/gemini-bridge/commits/8f3b85afd02b692c4bc974b5176e12fb277ea801",
+        "retrieved_at": "2026-09-16T16:39:41.301498+00:00",
+        "sha256": "0f5838043d9ce07bf9ebadd5346a823cabbdd93546021f6b1aa877ae625b2523"
+      },
+      "commit_url": "https://github.com/eLyiN/gemini-bridge/commit/8f3b85afd02b692c4bc974b5176e12fb277ea801",
+      "cve_id": "CVE-2026-54785",
+      "fixed_control": "_resolve_path resolves root and candidate, uses relative_to, and _prepare_inline_payload skips a None result before reading.",
+      "fixed_revision": "8f3b85afd02b692c4bc974b5176e12fb277ea801",
+      "ghsa_id": "GHSA-c5px-58j2-7fqp",
+      "id": "gemini-bridge-cve-2026-54785",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "c93cff47ca1c5aeeb812e6f1afabdd6422914b4741fcf8b745b8d4367e2a3f14",
+        "spdx": "MIT"
+      },
+      "mechanism": "Inline file attachments pass caller-supplied paths to _read_file_for_inline.",
+      "ordinal": 8,
+      "project": "elyin/gemini-bridge",
+      "published_at": "2026-07-31T22:31:20Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "elyin/gemini-bridge"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 18102,
+          "fixed_sha256": "a69317bb41a72ecc9d2ac34e7c6c016bda6f232ef81e4f6b6d81458203711430",
+          "path": "src/mcp_server.py",
+          "relevant_line_range": [
+            130,
+            241
+          ],
+          "vulnerable_bytes": 17636,
+          "vulnerable_sha256": "1896bde7c8cca3aba2a97603869920d3df662cd8042039151d66a3da564908d4"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 92,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "8dca62d1beba455404b55e28290a7f9697a3d13f0e7ce3d46f53f5d4fde3774c",
+          "path": "tests/test_mcp_server.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "bb3ad9e44dba04092abc2e2a8af83223f10402db"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-cj54-hpcc-gj6h",
+      "assumptions": [
+        "Trusted FILE_LOADER_ROOT_PATH and filesystem without hostile symlinks or concurrent mutation.",
+        "This is a lexical traversal/decoding control, not a symlink containment guarantee."
+      ],
+      "commit_metadata": {
+        "bytes": 9563,
+        "http_status": 200,
+        "rate_remaining": "45",
+        "request_url": "https://api.github.com/repos/thumbor/thumbor/commits/3b986d13677b30fe6651c8c72ebb25957ac0a40d",
+        "retrieved_at": "2026-09-16T16:40:08.129719+00:00",
+        "sha256": "74fec29b8600dec11fc4465930efa9752720c60f24e02d12544d9ffc85e17067"
+      },
+      "commit_url": "https://github.com/thumbor/thumbor/commit/3b986d13677b30fe6651c8c72ebb25957ac0a40d",
+      "cve_id": "CVE-2026-53502",
+      "fixed_control": "Decode before abspath and commonpath containment; the literal-filename fallback receives the same boundary check. No decoding follows either accepted candidate.",
+      "fixed_revision": "3b986d13677b30fe6651c8c72ebb25957ac0a40d",
+      "ghsa_id": "GHSA-cj54-hpcc-gj6h",
+      "id": "thumbor-cve-2026-53502",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "5ef586989ee92537e76b25006f202883c4859427382fb844d7a8f9b6788af5dd",
+        "spdx": "MIT"
+      },
+      "mechanism": "The file loader validates an encoded path then decodes it before reading, also allowing a sibling directory through a raw string prefix.",
+      "ordinal": 9,
+      "project": "thumbor/thumbor",
+      "published_at": "2026-07-31T19:03:54Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "thumbor/thumbor"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 2291,
+          "fixed_sha256": "b37f2ac556959fde2b8198cbe789fc8350c6381d4740d5d4e8515ad8de9d9e8f",
+          "path": "thumbor/loaders/file_loader.py",
+          "relevant_line_range": [
+            15,
+            67
+          ],
+          "vulnerable_bytes": 1535,
+          "vulnerable_sha256": "d612a17cc6fcb8f7bbe8fcabdb37821eb47d3b4f3eabcc228e419f2549274d10"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 38,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "d8a00c24eda4a8a602643cbf60cb47da9d1c88435418cff02290e2c3d0f22709",
+          "path": "tests/loaders/test_file_loader.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "471ef279700e9f79941d451acf88abe1601df875"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22",
+        "CWE-73"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-2956-977x-2w3r",
+      "assumptions": [
+        "Operator-controlled environment and CWD, ordinary strings and a stable filesystem.",
+        "Only output-path confinement is qualified; URL/network behavior and other modules are excluded."
+      ],
+      "commit_metadata": {
+        "bytes": 44332,
+        "http_status": 200,
+        "rate_remaining": "44",
+        "request_url": "https://api.github.com/repos/flytohub/flyto-core/commits/d5f89d71303e3c1e6418d347c5c55fcd173cc8cc",
+        "retrieved_at": "2026-09-16T16:40:08.436945+00:00",
+        "sha256": "4df83a67344b6841cfd1e92bc0645ea20e85717c08f5a27861e009f84495aa9e"
+      },
+      "commit_url": "https://github.com/flytohub/flyto-core/commit/d5f89d71303e3c1e6418d347c5c55fcd173cc8cc",
+      "cve_id": "CVE-2026-67429",
+      "fixed_control": "The output now passes the bound validate_path_with_env_config/validate_path_safe helper before mkdir/open. Its base comes from FLYTO_SANDBOX_DIR or CWD, and canonical containment includes a separator boundary.",
+      "fixed_revision": "d5f89d71303e3c1e6418d347c5c55fcd173cc8cc",
+      "ghsa_id": "GHSA-2956-977x-2w3r",
+      "id": "flyto-core-cve-2026-67429",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "6e408f63fe0c9521d058d8adb133eeb94219c08f13489c85e8b27746aba4025b",
+        "spdx": "Apache-2.0"
+      },
+      "mechanism": "image_download previously checked a supplied output path against an equally caller-controlled output_dir, then wrote the downloaded bytes.",
+      "ordinal": 10,
+      "project": "flytohub/flyto-core",
+      "published_at": "2026-07-30T14:46:43Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "flytohub/flyto-core"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 5598,
+          "fixed_sha256": "d397af17be670dc2ef165712af5626f8bd1ad5b636a64a5adb3198c9c3738e07",
+          "path": "src/core/modules/atomic/image/download.py",
+          "relevant_line_range": [
+            111,
+            177
+          ],
+          "vulnerable_bytes": 5284,
+          "vulnerable_sha256": "38e7d1440eab0dafe7f78e656262310ef9e94ec6017d400aeb9fc528c32ec513"
+        },
+        {
+          "analysis_target": false,
+          "fixed_bytes": 27341,
+          "fixed_sha256": "ff56beb267ce4cbf995db5f3205904f5b41ea9893a031bf86636ea04bab964ac",
+          "path": "src/core/utils.py",
+          "vulnerable_bytes": 24895,
+          "vulnerable_sha256": "0b97f43d43178e6718effc1c1a7c541db4d5a2ac6ac1cd679a05dffec87dfb43"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 7,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "f95c26b2491827e80fa30a10f27a183abda68f9530319287d2d737a205bd8543",
+          "path": "tests/modules/test_new_modules.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "9103529c204cad3e698b726ed958b626bcfbc182"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-36"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-qwm4-qh6w-59xr",
+      "assumptions": [
+        "Trusted download directory, OS basename semantics, no later decoding and no hostile filesystem links.",
+        "Qualified download flow only; no packages are installed or executed."
+      ],
+      "commit_metadata": {
+        "bytes": 20303,
+        "http_status": 200,
+        "rate_remaining": "43",
+        "request_url": "https://api.github.com/repos/pypa/pip/commits/10dfb6b9005484578b386f64b9f36982e3dc6679",
+        "retrieved_at": "2026-09-16T16:40:08.798925+00:00",
+        "sha256": "f10939a18585f734daef99cc84f34b3a204bfb89e50158434e0f6cd0a68dc49b"
+      },
+      "commit_url": "https://github.com/pypa/pip/commit/10dfb6b9005484578b386f64b9f36982e3dc6679",
+      "cve_id": "CVE-2026-13346",
+      "fixed_control": "Link.filename stops the second URL decoding and reduces to an OS basename. _get_http_response_filename applies as_path_component before the guarded join/open, rejecting empty/dot/parent results.",
+      "fixed_revision": "10dfb6b9005484578b386f64b9f36982e3dc6679",
+      "ghsa_id": "GHSA-qwm4-qh6w-59xr",
+      "id": "pip-cve-2026-13346",
+      "license": {
+        "path": "LICENSE.txt",
+        "sha256": "634300a669d49aeae65b12c6c48c924c51a4cdf3d1ff086dc3456dc8bcaa2104",
+        "spdx": "MIT"
+      },
+      "mechanism": "A package URL/response filename can be decoded into a path component that resets or escapes the download directory.",
+      "ordinal": 11,
+      "project": "pypa/pip",
+      "published_at": "2026-07-29T21:30:59Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "pypa/pip"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 23474,
+          "fixed_sha256": "4925ed14edd802b794618d91d0faad2976c07b5bd5f41aade6bfea3cddb5f331",
+          "path": "src/pip/_internal/models/link.py",
+          "relevant_line_range": [
+            424,
+            497
+          ],
+          "vulnerable_bytes": 21997,
+          "vulnerable_sha256": "e7246ae179fabb0e62029b22ff14310071d8795802e9a15a5d9a948a918523c1"
+        },
+        {
+          "analysis_target": true,
+          "fixed_bytes": 13142,
+          "fixed_sha256": "7e4cde465bbcc6b77845517fbb0a82c6a9137a6ee936cc510b381b1deceb4a8a",
+          "path": "src/pip/_internal/network/download.py",
+          "relevant_line_range": [
+            121,
+            213
+          ],
+          "vulnerable_bytes": 12871,
+          "vulnerable_sha256": "3fcbde9c07b366378ca9974c20c6a9c1669204c3be966b41e3efd55002a2f55d"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 113,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "ed23b02bd34b82f3dffe9b99c709820ed9169c94a76708c7ab1da0e28d6aa673",
+          "path": "tests/unit/test_link.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "ba52753ecf1803e5b6b5dfb2782835266a71c470"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-f42x-p2mx-hm8r",
+      "assumptions": [
+        "TarFile calls the guarded _extract_member for members; trusted root and no concurrent local filesystem mutation.",
+        "The old call and relocated guarded sink require a broad single scoring interval in the existing runner. Range-localized warnings are a proxy, not a claim that every warning in this interval is the advisory."
+      ],
+      "commit_metadata": {
+        "bytes": 6942,
+        "http_status": 200,
+        "rate_remaining": "42",
+        "request_url": "https://api.github.com/repos/brightio/penelope/commits/a040afb5db32c7e80b5e8a2f9b2164cf911cfa62",
+        "retrieved_at": "2026-09-16T16:40:09.111151+00:00",
+        "sha256": "77f3ec5a3cad89fe6576392325dcd886d7abef7d18a4cfe301005a298393211e"
+      },
+      "commit_url": "https://github.com/brightio/penelope/commit/a040afb5db32c7e80b5e8a2f9b2164cf911cfa62",
+      "cve_id": "CVE-2026-50558",
+      "fixed_control": "safe_tar_extractall wraps each _extract_member operation: realpath/commonpath containment, accepted entry kinds, link-destination containment and mode sanitization precede the original member extraction.",
+      "fixed_revision": "a040afb5db32c7e80b5e8a2f9b2164cf911cfa62",
+      "ghsa_id": "GHSA-f42x-p2mx-hm8r",
+      "id": "penelope-cve-2026-50558",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+        "spdx": "GPL-3.0-or-later"
+      },
+      "mechanism": "A supplied session tar archive reaches extractall under the local download directory.",
+      "ordinal": 12,
+      "project": "brightio/penelope",
+      "published_at": "2026-07-29T15:34:16Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "brightio/penelope"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 179245,
+          "fixed_sha256": "c84ff758f2fae7e65e9d51b50836e42b3ebc7f691906120d9c524ea00947a1d6",
+          "path": "penelope.py",
+          "relevant_line_range": [
+            3261,
+            5252
+          ],
+          "vulnerable_bytes": 178025,
+          "vulnerable_sha256": "957bdf3977e66cf21f13bbe87ff62ce79baf338d96ec6dae9ece4dbe901a04a8"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [],
+      "upstream_test_changes_present": false,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "ef417fff6cfb2ab02f3303949fe60a4f163d0ed5"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22",
+        "CWE-200",
+        "CWE-610"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-8359-h9fx-j6v9",
+      "assumptions": [
+        "allow_remote_refs is explicitly False, as in the advisory; the default warning mode is not a negative control.",
+        "Trusted base path/cache state, normal Path semantics, stable filesystem.",
+        "Canonical repository rename is verified by the commit API response; both old and new identities are screened."
+      ],
+      "commit_metadata": {
+        "bytes": 21182,
+        "http_status": 200,
+        "rate_remaining": "59",
+        "request_url": "https://api.github.com/repos/datamodel-code-generator/datamodel-code-generator/commits/2ff4a72b4550a2b2069754c5b075b1655067e5fb",
+        "retrieved_at": "2026-09-16T16:41:37.032530+00:00",
+        "sha256": "f52e157bdf9b456a90a6f5fe4572aad2cf65b4862ca7f45fee5e53c8c522a5f7"
+      },
+      "commit_url": "https://github.com/datamodel-code-generator/datamodel-code-generator/commit/2ff4a72b4550a2b2069754c5b075b1655067e5fb",
+      "cve_id": "CVE-2026-55389",
+      "fixed_control": "The bound _resolve_local_ref_path resolves both paths and raises outside the base in the False configuration; both local read routes use it before load_data_from_path. The file:// dispatch also honors the disabled external-reference option.",
+      "fixed_revision": "2ff4a72b4550a2b2069754c5b075b1655067e5fb",
+      "ghsa_id": "GHSA-8359-h9fx-j6v9",
+      "id": "datamodel-code-generator-cve-2026-55389",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "2b9e0bc1cebf8ddbb272ccbca051634047924ae122aaf5488c21885ce327b934",
+        "spdx": "MIT"
+      },
+      "mechanism": "JSON-Schema file:// or relative references can read outside the input base despite allow_remote_refs=False.",
+      "ordinal": 13,
+      "project": "datamodel-code-generator/datamodel-code-generator",
+      "published_at": "2026-07-28T21:49:34Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "datamodel-code-generator/datamodel-code-generator",
+        "koxudaxi/datamodel-code-generator"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 249465,
+          "fixed_sha256": "73e85aad1784ce66d355035e0559d0e95a4ee3a76f0f130dfa55d7482349e2e6",
+          "path": "src/datamodel_code_generator/parser/jsonschema.py",
+          "relevant_line_range": [
+            4812,
+            4930
+          ],
+          "vulnerable_bytes": 247902,
+          "vulnerable_sha256": "27c901e05071c494e1fcac98f2394b9415fc120a523105edad846ba908d779d4"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 140,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "558913696cdf908a5c21dfec325aca992c99c53007175472abeb3d863342e7bf",
+          "path": "tests/main/jsonschema/test_main_jsonschema.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 16,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "63530fe15915dbcdc5fc6570259b531ece85106eda0a33bae9eece1eee483e3e",
+          "path": "tests/main/openapi/test_main_openapi.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 4,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "6cf59cd6370860198e157d01fa9f8c3564b554e905de3e856f7c3cb301dc4a78",
+          "path": "tests/parser/test_jsonschema.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "2dbe5b5794472a4cad8e9286c942dffda7359816"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22",
+        "CWE-918"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-frvj-c5qp-xj4w",
+      "assumptions": [
+        "The named repeated-percent-decoding mechanism and trusted configured base URL/policy identifier.",
+        "No claim about all URL parser differences, authentication, SSRF, or websocket behavior.",
+        "This is URL path traversal; a detector limited to filesystem sinks can legitimately miss it."
+      ],
+      "commit_metadata": {
+        "bytes": 8752,
+        "http_status": 200,
+        "rate_remaining": "41",
+        "request_url": "https://api.github.com/repos/open-webui/open-webui/commits/05098d25a58d03738e01c4e85e8852c3b4ad849c",
+        "retrieved_at": "2026-09-16T16:40:09.433421+00:00",
+        "sha256": "08e221480287311d5c7809813ec80aad1995da47f4cc653ff876dfa2ef3bff5b"
+      },
+      "commit_url": "https://github.com/open-webui/open-webui/commit/05098d25a58d03738e01c4e85e8852c3b4ad849c",
+      "cve_id": "CVE-2026-59221",
+      "fixed_control": "_sanitize_proxy_path now rejects any value still changed by unquote after the cap, then normalizes/rejects parent references before proxy_terminal constructs the upstream URL.",
+      "fixed_revision": "05098d25a58d03738e01c4e85e8852c3b4ad849c",
+      "ghsa_id": "GHSA-frvj-c5qp-xj4w",
+      "id": "open-webui-cve-2026-59221",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "5f1bd74c48bf13ab0f82e177ad9e637313b92533d20ead2593d49347a47fc232",
+        "spdx": "LicenseRef-Open-WebUI"
+      },
+      "mechanism": "A terminal proxy path can remain encoded after eight decoding rounds and acquire traversal syntax downstream.",
+      "ordinal": 14,
+      "project": "open-webui/open-webui",
+      "published_at": "2026-07-24T21:05:51Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "open-webui/open-webui"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 13544,
+          "fixed_sha256": "c400cfb70fac5e0ac817f924f5c5ce0037bed5c65f0ce1dfe75f66c612a4e609",
+          "path": "backend/open_webui/routers/terminals.py",
+          "relevant_line_range": [
+            31,
+            192
+          ],
+          "vulnerable_bytes": 13385,
+          "vulnerable_sha256": "71ffe2708f64c65996bd0038d7918629e86cbe3e216c8edd3326f76e540efce5"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [],
+      "upstream_test_changes_present": false,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "3266a8c9eb6b8408a869a33378a0f4ad8a46809e"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-9xwg-3r6f-jcx2",
+      "assumptions": [
+        "Trusted base/root configuration; POSIX stable filesystem without hostile symlinks.",
+        "The lexical prefix boundary is qualified; symlink confinement and restrict_path=False are not."
+      ],
+      "commit_metadata": {
+        "bytes": 15369,
+        "http_status": 200,
+        "rate_remaining": "40",
+        "request_url": "https://api.github.com/repos/facelessuser/pymdown-extensions/commits/edce35586d11a1ef78bb187bc60497fe6dbf3b64",
+        "retrieved_at": "2026-09-16T16:40:09.786260+00:00",
+        "sha256": "db687533b7e9b26d1cd2a6c3334bd9634328d1d9bf74d244a16cec9c212c17da"
+      },
+      "commit_url": "https://github.com/facelessuser/pymdown-extensions/commit/edce35586d11a1ef78bb187bc60497fe6dbf3b64",
+      "cve_id": "CVE-2026-61632",
+      "fixed_control": "With restrict_path=True (the pinned default), the decoded normalized absolute filename must begin with the absolute root plus a path separator before open. The root-ending-separator case preserves that boundary.",
+      "fixed_revision": "edce35586d11a1ef78bb187bc60497fe6dbf3b64",
+      "ghsa_id": "GHSA-9xwg-3r6f-jcx2",
+      "id": "pymdown-extensions-cve-2026-61632",
+      "license": {
+        "path": "LICENSE.md",
+        "sha256": "e6645f914fbae5bc557419fcafbeab9e375897e8274c54e2b177953e9354f93e",
+        "spdx": "MIT"
+      },
+      "mechanism": "A Markdown image src is converted to a local path and read into a base64 data URL outside the intended root.",
+      "ordinal": 15,
+      "project": "facelessuser/pymdown-extensions",
+      "published_at": "2026-07-24T16:18:33Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "facelessuser/pymdown-extensions"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 5828,
+          "fixed_sha256": "de4441f821b615297e419c3c2db9f71542bea850b8a47771862b0a48a22bd440",
+          "path": "pymdownx/b64.py",
+          "relevant_line_range": [
+            68,
+            159
+          ],
+          "vulnerable_bytes": 4414,
+          "vulnerable_sha256": "f110e3336e863bd85676401f68d593d50e2ab6784f8d4737079d018074387894"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 52,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "434f9249523c8d840255ea37329b28524f5ff63ffb76abc7bc1d2366722ab42e",
+          "path": "tests/test_extensions/test_b64.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "9fb9643c84c46386d77eef1a18929330620e3111"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-5jmr-gcrj-2c9q",
+      "assumptions": [
+        "Fresh private temporary directory, ordinary strings, no hostile links or concurrent local mutation.",
+        "Only staging writes are qualified; no sandbox, container, model or remote execution is started."
+      ],
+      "commit_metadata": {
+        "bytes": 7586,
+        "http_status": 200,
+        "rate_remaining": "39",
+        "request_url": "https://api.github.com/repos/berriai/litellm/commits/6a15adcd64137d37f73dee76dfe7481f8c2d9196",
+        "retrieved_at": "2026-09-16T16:40:10.049810+00:00",
+        "sha256": "06d2363ba707ccda54c3ac5dc78794fc774a2db70dd114a7da2ddeb38bd45eee"
+      },
+      "commit_url": "https://github.com/BerriAI/litellm/commit/6a15adcd64137d37f73dee76dfe7481f8c2d9196",
+      "cve_id": "CVE-2026-59820",
+      "fixed_control": "Archive names are POSIX-normalized and reject absolute/parent escapes. The actual staging writer independently checks the absolute joined path against the fresh temporary-directory prefix plus os.sep before mkdir/open.",
+      "fixed_revision": "6a15adcd64137d37f73dee76dfe7481f8c2d9196",
+      "ghsa_id": "GHSA-5jmr-gcrj-2c9q",
+      "id": "litellm-cve-2026-59820",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "b170d6bf8e8835dd357e011681db028f4d51e2fb0ea892058f56e01fb39b8273",
+        "spdx": "MIT"
+      },
+      "mechanism": "Skill archive entry names become paths in a local staging directory and are written before sandbox transfer.",
+      "ordinal": 16,
+      "project": "berriai/litellm",
+      "published_at": "2026-07-22T22:37:15Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "berriai/litellm"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 11432,
+          "fixed_sha256": "e8872fd0a8809597878c234aa82cb8dd2842f14a237167b87c80b8dd9ade865e",
+          "path": "litellm/llms/litellm_proxy/skills/prompt_injection.py",
+          "relevant_line_range": [
+            74,
+            124
+          ],
+          "vulnerable_bytes": 10925,
+          "vulnerable_sha256": "f6677c2db8b6529c83bba69b81b9a6efd0061b83e3471d9c555c6b977b7878f2"
+        },
+        {
+          "analysis_target": true,
+          "fixed_bytes": 10066,
+          "fixed_sha256": "4bc28e9aa815082235790875307afd26ff83febc38757196ba39e6ed0d9d1595",
+          "path": "litellm/llms/litellm_proxy/skills/sandbox_executor.py",
+          "relevant_line_range": [
+            45,
+            185
+          ],
+          "vulnerable_bytes": 9700,
+          "vulnerable_sha256": "4ecf9513a98a398d7143450b1799b34ae912affca5e332c160e1bb6fb4d026d2"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [],
+      "upstream_test_changes_present": false,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "e828a91eeefbc2e6e5fe7a34ddd40a5201216b15"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-r4rv-85jg-w4mf",
+      "assumptions": [
+        "Trusted source document location, POSIX path semantics and stable filesystem.",
+        "HTML rendering and recursion exhaustion beyond the named path-read mechanism are not certified."
+      ],
+      "commit_metadata": {
+        "bytes": 13760,
+        "http_status": 200,
+        "rate_remaining": "38",
+        "request_url": "https://api.github.com/repos/lepture/mistune/commits/1bef343ade163fc3bb95572b15be720084cdb993",
+        "retrieved_at": "2026-09-16T16:40:10.411206+00:00",
+        "sha256": "97e3b9308c792e8bb177afcba15577a28cfa8f2154f133ace432ca90579e988f"
+      },
+      "commit_url": "https://github.com/lepture/mistune/commit/1bef343ade163fc3bb95572b15be720084cdb993",
+      "cve_id": "CVE-2026-59924",
+      "fixed_control": "Both paths are resolved using realpath; absolute titles or a commonpath outside the source directory return an error before open. Recursive include state carries the current file and detects cycles.",
+      "fixed_revision": "1bef343ade163fc3bb95572b15be720084cdb993",
+      "ghsa_id": "GHSA-r4rv-85jg-w4mf",
+      "id": "mistune-cve-2026-59924",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "539013fd8e19f744f8bf0e27a532bbff54cd689ecef7a800f56ae5dc824be870",
+        "spdx": "BSD-3-Clause"
+      },
+      "mechanism": "An include directive joins an arbitrary relative title to the source document directory and reads it.",
+      "ordinal": 17,
+      "project": "lepture/mistune",
+      "published_at": "2026-07-20T21:34:53Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "lepture/mistune"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 3804,
+          "fixed_sha256": "8bde6d30761c5dd3e2966b16b6e53dab7043d650acead8dc16a4a29251629c14",
+          "path": "src/mistune/directives/include.py",
+          "relevant_line_range": [
+            14,
+            99
+          ],
+          "vulnerable_bytes": 2377,
+          "vulnerable_sha256": "b53d207b33841cb05fd58134b0ae4007674e5bcd3c45651e3675e2168c855d39"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 2,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "b567669b2ca506a3d7502e672d125aad8878abbfcb93150559d2ee6a3467abec",
+          "path": "tests/test_directives.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 69,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "c0da68945b12239082fa24290de6e0cd3dd1b653f457d5ac491c28dc2ea232ca",
+          "path": "tests/test_security_include.py",
+          "status": "added"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "c7101fcbb6e8790e8e39157c5ca2238fc6dd6cbc"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-9jj8-v89v-xjvw",
+      "assumptions": [
+        "Primitive route strings, trusted static roots/plugins and stable filesystem.",
+        "Only path containment is qualified; filename compatibility and authentication policy are separate."
+      ],
+      "commit_metadata": {
+        "bytes": 8876,
+        "http_status": 200,
+        "rate_remaining": "37",
+        "request_url": "https://api.github.com/repos/dgtlmoon/changedetection.io/commits/9d38b4517364831889b5b0d7b3465fd060403fd4",
+        "retrieved_at": "2026-09-16T16:40:41.002578+00:00",
+        "sha256": "1da06f6a77afb29bdc8bf83bb26c4eaf9186a09368f4fb40b9a5b21a85e08d73"
+      },
+      "commit_url": "https://github.com/dgtlmoon/changedetection.io/commit/9d38b4517364831889b5b0d7b3465fd060403fd4",
+      "cve_id": "CVE-2026-25527",
+      "fixed_control": "Both route components are reduced to ASCII letters/digits/underscore, and an empty result aborts before directory construction.",
+      "fixed_revision": "9d38b4517364831889b5b0d7b3465fd060403fd4",
+      "ghsa_id": "GHSA-9jj8-v89v-xjvw",
+      "id": "changedetection.io-cve-2026-25527",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "47a348e041897a91041f8c4054fe2ceacc400f079f8e08c27a7a28b31ec2e625",
+        "spdx": "Apache-2.0"
+      },
+      "mechanism": "The static-content route allowed '..' as a group, changing the directory supplied to send_from_directory.",
+      "ordinal": 18,
+      "project": "dgtlmoon/changedetection.io",
+      "published_at": "2026-07-20T19:06:55Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "dgtlmoon/changedetection.io"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 53012,
+          "fixed_sha256": "926de49ece909a5e2081e230eba47a33b4658311c625d354b3b86993d49e1ee5",
+          "path": "changedetectionio/flask_app.py",
+          "relevant_line_range": [
+            712,
+            822
+          ],
+          "vulnerable_bytes": 52767,
+          "vulnerable_sha256": "252dd6061fd7145cdbcf6a2981ce4e34e19c0f9ecbc15de6524af1bc6d3aca82"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 77,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "36abff11cd76c6c11198366f15f855d079f8caea4e2c9df79dbf93fa921e9e8f",
+          "path": "changedetectionio/tests/test_security.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "3558e9ee10cfe19cfe9209e469e43e9327c26735"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22",
+        "CWE-200"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-wxhm-2mq7-7697",
+      "assumptions": [
+        "Prompt file location and any additional allowed roots are caller-authorized; stable filesystem.",
+        "Environment-variable expansion and model behavior are excluded."
+      ],
+      "commit_metadata": {
+        "bytes": 268737,
+        "http_status": 200,
+        "rate_remaining": "36",
+        "request_url": "https://api.github.com/repos/microsoft/prompty/commits/88ac9948d7d37995edbb2f6d36913436626c39e1",
+        "retrieved_at": "2026-09-16T16:40:41.488514+00:00",
+        "sha256": "2093f51049dbe98c942fd7a46c7332aef3881a0b78b7912aa56c974660bd2bde"
+      },
+      "commit_url": "https://github.com/microsoft/prompty/commit/88ac9948d7d37995edbb2f6d36913436626c39e1",
+      "cve_id": "CVE-2026-53598",
+      "fixed_control": "_resolve_file_reference resolves the candidate and requires membership in the prompt directory or an explicitly trusted allowed_file_roots entry. The returned resolved path is passed to the reader.",
+      "fixed_revision": "88ac9948d7d37995edbb2f6d36913436626c39e1",
+      "ghsa_id": "GHSA-wxhm-2mq7-7697",
+      "id": "prompty-cve-2026-53598",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+        "spdx": "MIT"
+      },
+      "mechanism": "${file:...} prompt references resolve to arbitrary local files and are opened by _load_file_content.",
+      "ordinal": 19,
+      "project": "microsoft/prompty",
+      "published_at": "2026-07-17T19:46:05Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "microsoft/prompty"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 7273,
+          "fixed_sha256": "8b1bef303e9299f2929d1c870a34af283ad3e06c0fd2f609f2d3bbab9555e926",
+          "path": "runtime/python/prompty/prompty/core/loader.py",
+          "relevant_line_range": [
+            112,
+            214
+          ],
+          "vulnerable_bytes": 5650,
+          "vulnerable_sha256": "ce88c2c1996e47dcbee5863b6e46ef3d1db263b2a846f57e69686cdfa8323272"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 98,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "c3b89daf5f3267d46e9b7c4c1b9130fd6200af96ffdccc1ad6ddd6c17b0b3ba5",
+          "path": "runtime/csharp/Prompty.Core.Tests/LoaderTests.cs",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 2,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "8a820843e6fe8d14ca75abdf671ebf8a93d7d8e69c0d6bbf6e33249785e76a6c",
+          "path": "runtime/csharp/Prompty.Core.Tests/SpecVectorTests.cs",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 61,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "2304c9afb69616e8ef7a7bad6288c960a41495c73437400b76d9730cadfcaabf",
+          "path": "runtime/python/prompty/tests/test_loader.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 64,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "5992951d56ca8e69a6851493c8d11bae4111a7285b687be78798bfa041acce9f",
+          "path": "runtime/typescript/packages/core/tests/loader.test.ts",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 8,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "dfc89a9661869dce6cfb574a17222a00a64666219ae867263eef5d845c7c70da",
+          "path": "runtime/typescript/packages/foundry/tests/models.test.ts",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 8,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "8f822cea271b2732b5418aca0ffad7898db38d9ed366cc260309216de7a764c2",
+          "path": "runtime/typescript/packages/openai/tests/models.test.ts",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "90171a7738f9ff5a186416381cbfad9077cdf637"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-73"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-8g6f-qw9x-4q6q",
+      "assumptions": [
+        "Trusted option identifier from the table-option API; Snowflake's documented ordinary string-literal grammar.",
+        "Only LiteralOption string values are qualified. Other SQL/connection vulnerabilities in the same advisory require other commits.",
+        "Literal construction without a visible execute call remains in scope and must not be dropped if the detector misses it."
+      ],
+      "commit_metadata": {
+        "bytes": 32086,
+        "http_status": 200,
+        "rate_remaining": "34",
+        "request_url": "https://api.github.com/repos/snowflakedb/snowflake-sqlalchemy/commits/35edf4dc5e76b9a9fdfa74c8e4f6fd14642110f1",
+        "retrieved_at": "2026-09-16T16:40:42.313866+00:00",
+        "sha256": "c4e4f88b8d77362b11454ca1cb7feaab620f9e4f25b6974d4224b5750ebe07b3"
+      },
+      "commit_selection": "Advisory reference index 1 is the exact parent/fix pair for LiteralOption; the separate connection and other identifier patches are not conflated.",
+      "commit_url": "https://github.com/snowflakedb/snowflake-sqlalchemy/commit/35edf4dc5e76b9a9fdfa74c8e4f6fd14642110f1",
+      "cve_id": "CVE-2026-15736",
+      "fixed_control": "The string branch delegates through TableOption to escape_string_literal_interior, which doubles both single quotes and backslashes before insertion. Integer values use the integer template.",
+      "fixed_revision": "35edf4dc5e76b9a9fdfa74c8e4f6fd14642110f1",
+      "ghsa_id": "GHSA-8g6f-qw9x-4q6q",
+      "id": "snowflake-sqlalchemy-cve-2026-15736",
+      "license": {
+        "path": "LICENSE.txt",
+        "sha256": "3dd129e7a02fe66dff925db58859154d7fc46c724a14611d9987883b5a4bfd89",
+        "spdx": "Apache-2.0"
+      },
+      "mechanism": "LiteralOption inserts a string value directly inside a single-quoted Snowflake DDL literal.",
+      "ordinal": 20,
+      "project": "snowflakedb/snowflake-sqlalchemy",
+      "published_at": "2026-07-14T15:32:17Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "snowflakedb/snowflake-sqlalchemy"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 2004,
+          "fixed_sha256": "a39bc119bdbfe6289483c87f7625c337770d60513831ff077c7d2e842025cc66",
+          "path": "src/snowflake/sqlalchemy/sql/custom_schema/options/literal_option.py",
+          "relevant_line_range": [
+            31,
+            59
+          ],
+          "vulnerable_bytes": 1850,
+          "vulnerable_sha256": "440fa91c67106d56ae7fa7354903dd36ef897a726e93d7c2300cb76c26f8049d"
+        },
+        {
+          "analysis_target": false,
+          "fixed_bytes": 3407,
+          "fixed_sha256": "e0d74d70a20c3695b3db040103a6c40a23109c7ebc76e9e8f1fdd9e70f272a8f",
+          "path": "src/snowflake/sqlalchemy/sql/custom_schema/options/table_option.py",
+          "vulnerable_bytes": 2313,
+          "vulnerable_sha256": "a47d0006dcbfaff2b9d7b3a6afd16d147613af0c53305e2f2bfd91ee0f78fbf3"
+        },
+        {
+          "analysis_target": false,
+          "fixed_bytes": 13592,
+          "fixed_sha256": "c4e79a0ebad9b765fe4ebb38819cad9a4723f265ebd9490bf9505a86fb25d6c9",
+          "path": "src/snowflake/sqlalchemy/util.py",
+          "vulnerable_bytes": 12598,
+          "vulnerable_sha256": "bbfb58f76c117e9c32e6f1d01394bc3d53519dd9ebd31669235b659f12096a42"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "taxonomy_note": "The aggregate official advisory is tagged CWE-73 only. Preserve that tag in the manifest; the SQL detector category is a source-review mapping for the explicitly described LiteralOption SQL mechanism, not a claim that GitHub assigned CWE-89.",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 204,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "99ff5c62c0a50d6492ee2ecc56925b94bc34f7eedffc5ea2d1d4fbf625e845c9",
+          "path": "tests/test_table_option_quoting.py",
+          "status": "added"
+        },
+        {
+          "changed_lines": 111,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "b51e0bab60f30a21daa6c7eab60f088eb14e9c8ee8f9d228f4136196d6509942",
+          "path": "tests/test_unit_escaping.py",
+          "status": "added"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "20ad218611bad394db55b1e1530e6d4853d2ab6d"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-g5r6-gv6m-f5jv",
+      "assumptions": [
+        "Trusted CWD, ordinary paths, stable filesystem and use through the validated public upload method.",
+        "The private direct reader is not claimed to be an independent public sandbox. Nothing is uploaded or sent during qualification."
+      ],
+      "commit_metadata": {
+        "bytes": 174847,
+        "http_status": 200,
+        "rate_remaining": "32",
+        "request_url": "https://api.github.com/repos/sooperset/mcp-atlassian/commits/b041733473f95119dd539542a43c280737a8e460",
+        "retrieved_at": "2026-09-16T16:40:43.131148+00:00",
+        "sha256": "cab30899185ef0cb81bb5a084b814782236b6c5ee4e6c11e1c2628fcc5368cfa"
+      },
+      "commit_url": "https://github.com/sooperset/mcp-atlassian/commit/b041733473f95119dd539542a43c280737a8e460",
+      "cve_id": "CVE-2026-73498",
+      "fixed_control": "upload_attachment now replaces the path with the result of validate_safe_path before forwarding. The bound io.py helper resolves root and target and rejects a non-relative target.",
+      "fixed_revision": "b041733473f95119dd539542a43c280737a8e460",
+      "ghsa_id": "GHSA-g5r6-gv6m-f5jv",
+      "id": "mcp-atlassian-cve-2026-73498",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "e990a8422c25876d76b9dce9ee720ff2b662d5ca10a842afb0f787a0573276db",
+        "spdx": "MIT"
+      },
+      "mechanism": "Public upload_attachment accepts a local path and forwards it to _upload_attachment_direct's open call.",
+      "ordinal": 21,
+      "project": "sooperset/mcp-atlassian",
+      "published_at": "2026-07-10T19:34:37Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "sooperset/mcp-atlassian"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 30435,
+          "fixed_sha256": "0f32292c7cd19f7075420ee7c0bbe3b7af6c6d682aa70e63a6d936ce1138ae03",
+          "path": "src/mcp_atlassian/confluence/attachments.py",
+          "relevant_line_range": [
+            612,
+            648
+          ],
+          "vulnerable_bytes": 30305,
+          "vulnerable_sha256": "c3aa1c200e83f33c284c94c0bfc9e5eec3dd893f7b719e1a35d64d2a7961d08c"
+        },
+        {
+          "analysis_target": false,
+          "fixed_bytes": 1701,
+          "fixed_sha256": "9faefb6b39ad53cdb19f6b5bdea2cb04ba2cf1f1c00541e79060b5e0f53402df",
+          "path": "src/mcp_atlassian/utils/io.py",
+          "vulnerable_bytes": 1701,
+          "vulnerable_sha256": "9faefb6b39ad53cdb19f6b5bdea2cb04ba2cf1f1c00541e79060b5e0f53402df"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 4,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "11b241349c7b56627963ffdf200fe18bd9774bccbdd46f9208f5231082943639",
+          "path": "tests/e2e/cloud/test_confluence_cloud_operations.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 6,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "bcf61a546a4e7470f1a71d49b960d8ac805d40c0e86b320bd40b53289391f96c",
+          "path": "tests/e2e/cloud/test_mcp_tools_cloud.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 24,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "d03b769b2246ee609ec6055858fa03de9cad91b4fd69f78cb41b8baa1d968ce0",
+          "path": "tests/e2e/conftest.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 4,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "57e0b532d2f01a615e521f76f1bbb582fb642d693372a7027249ae74c2b91dd0",
+          "path": "tests/e2e/test_confluence_dc_operations.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 6,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "868bc210d57a43ebebe3c85b63c305e4b829c0d625a40f17e6c83542ee153451",
+          "path": "tests/e2e/test_mcp_tools_dc.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 70,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "af5fcc55833fa960e4dcff9fb0aa0e03798e280cfc1ca75fc79c4bedd933fa2d",
+          "path": "tests/unit/confluence/test_attachments.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 1,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "c6acbf12bd505d905d8060aa06a3e6b98f305699c30da5f54d3a81ee222a3aa4",
+          "path": "tests/unit/confluence/test_client.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 49,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "ba6ceb227ffdeaca25f4ee85004b9cd8bfdace11a1bb9cef17aba76f0b082281",
+          "path": "tests/unit/confluence/test_search.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 154,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "a5627a68f6449374ab31126452163dc6499101ef4131c014f51cdf2fe393e52f",
+          "path": "tests/unit/jira/test_attachments.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 87,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "5f31432d54e85e2e73bcd351ec7b19f6e2a329e3d0baa87e6d0354938307473c",
+          "path": "tests/unit/jira/test_client.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 134,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "b4ceca18d4329dd38946a5ab0f002fb6d48aa8f03bd8db21e5edaf87285661ae",
+          "path": "tests/unit/jira/test_search.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 41,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "b69d3adcc2c881281c043f8991546e202144474c8ca6644f0afe9ecdbc082a0d",
+          "path": "tests/unit/servers/test_confluence_server.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 229,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "b63cb63492dac6288f31c9fd37300b148808244c8870d69f0e45d1a207044b4c",
+          "path": "tests/unit/servers/test_dependencies.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 25,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "121a429b0efd7d5d1f3d44f8f0b301d7bf62cb7f0565b8b1de813505a61cd59d",
+          "path": "tests/unit/servers/test_main_server.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 52,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "c762f04b51d8c550c690d3ac4d782c601553cb103221e5c6015c76ab84fabcfb",
+          "path": "tests/unit/servers/test_mcp_protocol.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 93,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "be327257610af4ef97d8511724d4ed7f348059f423e0b9ce1bc3d8109a6e5b96",
+          "path": "tests/unit/utils/test_oauth.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 34,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "da3329e09d399991708040dadb2c9218b02994a2122bcef148fe35e543d36cf4",
+          "path": "tests/unit/utils/test_oauth_setup.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 185,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "5b4741cf59d9285d6bc533706244c9092173398fd13837592c026fdaf4f365ff",
+          "path": "tests/unit/utils/test_ssrf_adapter.py",
+          "status": "added"
+        },
+        {
+          "changed_lines": 39,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "384eda9dd75d409388a965aca6d65f61bd9a33868e0c8c7cc44dd612a41d1a41",
+          "path": "tests/unit/utils/test_urls.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "4067d1db4097755cc6add87f95fe3f0746c98c0b"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-555p-6grf-mh7f",
+      "assumptions": [
+        "Trusted output directory, primitive decoded commit message and stable filesystem without hostile links.",
+        "The sanitizer is an analysis target; the unchanged actual write caller is pinned as qualification-only context because the unchanged v1 pair runner requires different blobs for each scored file."
+      ],
+      "commit_metadata": {
+        "bytes": 14523,
+        "http_status": 200,
+        "rate_remaining": "28",
+        "request_url": "https://api.github.com/repos/jelmer/dulwich/commits/c2446e51b",
+        "retrieved_at": "2026-09-16T16:40:44.445320+00:00",
+        "sha256": "8c15f9c1529c29ec3be1c16e639f5cb4e9ebdf974bbfac59928ea0dbd5d58a0d"
+      },
+      "commit_url": "https://github.com/jelmer/dulwich/commit/c2446e51b49e5bc0ad1b623e47f4b0b961ecaa46",
+      "cve_id": "CVE-2026-47712",
+      "fixed_control": "get_summary now keeps only ASCII alphanumerics, dot and underscore with other characters replaced by hyphens, collapses repeated dots and removes trailing dot/hyphen. The caller adds a numeric prefix and .patch suffix before joining/opening.",
+      "fixed_revision": "c2446e51b49e5bc0ad1b623e47f4b0b961ecaa46",
+      "ghsa_id": "GHSA-555p-6grf-mh7f",
+      "id": "dulwich-cve-2026-47712",
+      "license": {
+        "path": "COPYING",
+        "sha256": "e17db6e0f06d3a70a9a6a6e4e1b85c6dfaa2c7d0154147c798435e333f4b366d",
+        "spdx": "Apache-2.0 OR GPL-2.0-or-later"
+      },
+      "mechanism": "A commit subject reaches porcelain.format_patch's generated output filename through get_summary.",
+      "ordinal": 25,
+      "project": "jelmer/dulwich",
+      "published_at": "2026-06-08T23:04:48Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "jelmer/dulwich"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 64495,
+          "fixed_sha256": "ff5a75441e99f7d52d4822976b91c1035a9542652588b65ac5a99419bbc30c93",
+          "path": "dulwich/patch.py",
+          "relevant_line_range": [
+            174,
+            233
+          ],
+          "vulnerable_bytes": 62749,
+          "vulnerable_sha256": "d391268b24fe9f02a437ef07ffeb3990ba4f8396853330e36373adcd5032b9db"
+        },
+        {
+          "analysis_target": false,
+          "fixed_bytes": 316691,
+          "fixed_sha256": "03a6b586af2727625a1c853d0c5038b7b543009502a62b16b42caa940e385b5d",
+          "path": "dulwich/porcelain/__init__.py",
+          "vulnerable_bytes": 316691,
+          "vulnerable_sha256": "03a6b586af2727625a1c853d0c5038b7b543009502a62b16b42caa940e385b5d"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 70,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "c3312dc08e1a8daaa023b6353a4830b71eed3cfe2c0daf95ba0987ba27a6e3dd",
+          "path": "tests/porcelain/__init__.py",
+          "status": "modified"
+        },
+        {
+          "changed_lines": 51,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "09ec63bf659a57a20e73eaa1bc445ae4da685c8451d3de2e5ee8ec60edcfd034",
+          "path": "tests/test_patch.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "951b008edd5034066da8294b1d4c3cd558f5d9a3"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-5j8p-5rrj-8wjg",
+      "assumptions": [
+        "Trusted canonical configured roots, POSIX filesystem without hostile links or concurrent mutation.",
+        "Conversion options disabled for the named direct FileResponse flow; authentication and conversion subprocesses are not qualified.",
+        "Root '/' and trailing separators can cause false rejections; this is not a compatibility certification."
+      ],
+      "commit_metadata": {
+        "bytes": 7858,
+        "http_status": 200,
+        "rate_remaining": "58",
+        "request_url": "https://api.github.com/repos/hanxi/xiaomusic/commits/88404da7a283f2c0a796a4cd16bbb6e6aa1f4722",
+        "retrieved_at": "2026-09-16T16:41:37.669428+00:00",
+        "sha256": "4cb23d7128aa2169dbb4d633bcc98a2244a3093ea8df9aa58ffe5d238ad6b277"
+      },
+      "commit_url": "https://github.com/hanxi/xiaomusic/commit/88404da7a283f2c0a796a4cd16bbb6e6aa1f4722",
+      "cve_id": "CVE-2026-10108",
+      "fixed_control": "Every selected normalized join requires the configured root plus os.sep before FileResponse, excluding equal-prefix siblings.",
+      "fixed_revision": "88404da7a283f2c0a796a4cd16bbb6e6aa1f4722",
+      "ghsa_id": "GHSA-5j8p-5rrj-8wjg",
+      "id": "xiaomusic-cve-2026-10108",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "2e08f89828718ab1f292a42a68053ddcfd9a8edb4f7300a074d9667a00958fa7",
+        "spdx": "MIT"
+      },
+      "mechanism": "Music/picture route paths exploit a raw prefix check to address a sibling directory whose name starts with the configured root.",
+      "ordinal": 26,
+      "project": "hanxi/xiaomusic",
+      "published_at": "2026-05-29T18:31:35Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "hanxi/xiaomusic"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 54368,
+          "fixed_sha256": "979bc1bb4a1e33f11c302dbf8674c431c9c953760d4505b01b39b9dbc3bb76c8",
+          "path": "xiaomusic/api/routers/file.py",
+          "relevant_line_range": [
+            955,
+            1027
+          ],
+          "vulnerable_bytes": 54341,
+          "vulnerable_sha256": "3dc7a6811880c18a7a000f63d493adcb88c27106be8cd608d1c28c2ea1301884"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [],
+      "upstream_test_changes_present": false,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "c6679a69e4295a7e508f5ec157b60c5ac5b8a041"
+    },
+    {
+      "advisory_cwes": [
+        "CWE-22",
+        "CWE-36",
+        "CWE-73"
+      ],
+      "advisory_url": "https://github.com/advisories/GHSA-4q5v-7g7x-j79w",
+      "assumptions": [
+        "Trusted workspace root and stable filesystem; no concurrent link swaps.",
+        "Path output only; Jinja template execution/security is not qualified and no template is executed."
+      ],
+      "commit_metadata": {
+        "bytes": 16901,
+        "http_status": 200,
+        "rate_remaining": "25",
+        "request_url": "https://api.github.com/repos/oscal-compass/compliance-trestle/commits/7d107b3ac53caca7bde97a6278b23cd739d94525",
+        "retrieved_at": "2026-09-16T16:57:30.387076+00:00",
+        "sha256": "dd1487cddad54cebaa96e70809e81b025021e10968696b4085ac975999f04d9b"
+      },
+      "commit_selection": "Reference index 0 changes recursive rendering only; index 1 contains the path guard and is used for this named mechanism.",
+      "commit_url": "https://github.com/oscal-compass/compliance-trestle/commit/7d107b3ac53caca7bde97a6278b23cd739d94525",
+      "cve_id": "CVE-2026-46345",
+      "fixed_control": "Use the advisory's path-fixing reference: validate_local_path resolves output/root and requires relative_to(root) before directory creation or file open. The helper existed in the parent and is bound unchanged.",
+      "fixed_revision": "7d107b3ac53caca7bde97a6278b23cd739d94525",
+      "ghsa_id": "GHSA-4q5v-7g7x-j79w",
+      "id": "compliance-trestle-cve-2026-46345",
+      "license": {
+        "path": "LICENSE",
+        "sha256": "c98ecc8ef79e7a1a14a0767e3321b681dd25f9307625724f2b299f5e75e99520",
+        "spdx": "Apache-2.0"
+      },
+      "mechanism": "Jinja output names/control paths become output files and directories outside the trestle workspace.",
+      "ordinal": 28,
+      "project": "oscal-compass/compliance-trestle",
+      "published_at": "2026-05-28T17:44:03Z",
+      "qualification_method": "static_source_and_patch_review_no_third_party_execution",
+      "screened_aliases": [
+        "oscal-compass/compliance-trestle"
+      ],
+      "sources": [
+        {
+          "analysis_target": true,
+          "fixed_bytes": 13918,
+          "fixed_sha256": "3d1288d15e53b54649d1728215cb6eb01bcfa76a33621e3173632c675c16fb50",
+          "path": "trestle/core/commands/author/jinja.py",
+          "relevant_line_range": [
+            183,
+            301
+          ],
+          "vulnerable_bytes": 13951,
+          "vulnerable_sha256": "7ac3fbd728f33e554bd688a6fc14d2e716eff06b8fe9ba4405037964de42a63f"
+        },
+        {
+          "analysis_target": false,
+          "fixed_bytes": 19591,
+          "fixed_sha256": "36f2885a36f9f6fafb07c0be58d56f9aa712471d9b6b2e3e321df66c39b60f69",
+          "path": "trestle/core/remote/security.py",
+          "vulnerable_bytes": 19591,
+          "vulnerable_sha256": "36f2885a36f9f6fafb07c0be58d56f9aa712471d9b6b2e3e321df66c39b60f69"
+        }
+      ],
+      "status": "qualified_for_named_mechanism",
+      "upstream_test_changes": [
+        {
+          "changed_lines": 112,
+          "evidence_level": "patch_metadata_only_not_executed",
+          "patch_sha256": "1ec87c8903fc4158919d70f258f192b8e106621bfd6630bdd4a877d2fa3a1b1b",
+          "path": "tests/trestle/core/commands/author/jinja_cmd_test.py",
+          "status": "modified"
+        }
+      ],
+      "upstream_test_changes_present": true,
+      "upstream_tests_executed": false,
+      "vulnerable_revision": "5c65c5926fe7ca908b9c1d281f904e7d97ba8310"
+    }
+  ],
+  "qualification_dates": [
+    "2026-09-16",
+    "2026-09-17"
+  ],
+  "registered_detector_revision": "83c65692239a85435cb8f17c0eb9a8cc951a1d9b",
+  "schema_version": "belief.pair_qualification.v1",
+  "source_policy": "Original blobs remain in external object-only Git caches; this file pins both analysis inputs and qualification-only dependency context. Only cases.json targets are materialized for the detector.",
+  "third_party_code_executed": false
+}

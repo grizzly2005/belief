@@ -128,6 +128,12 @@ class StaticAnalysisOptions:
             or self.dedup_audit_cases
         )
 
+    @property
+    def native_security_enabled(self) -> bool:
+        """Keep experimental native detectors out of the historical default scan."""
+
+        return self.audit_mode or self.security_analysis_profile == "patch_review"
+
     def to_dict(self) -> dict[str, Any]:
         """Return every semantic option in canonical JSON-compatible form."""
 
@@ -330,6 +336,7 @@ def analyze_static_target(
 
     totals = {name: 0 for name in ("structural", "security", "taint", "temporal")}
     records: list[ScanRecord] = []
+    producer_dataflows: list[tuple[Finding, dict[str, Any]]] = []
     guarantees: list[Belief] = []
     dataflow_summaries: dict[str, Any] = {}
     diagnostics: list[StaticAnalysisDiagnostic] = [
@@ -356,9 +363,17 @@ def analyze_static_target(
 
         structural_beliefs = structural.extract(source, relative)
         security_beliefs = security.extract(source, relative)
+        native_security_records: list[ScanRecord] = []
+        if opts.native_security_enabled:
+            native_security_records, native_diagnostics = _native_security_records(
+                source,
+                relative,
+            )
+            diagnostics.extend(native_diagnostics)
         taint_beliefs = taint.analyze_to_beliefs(source, relative)
         diagnostics.extend(_analysis_diagnostics(taint.diagnostics, relative))
         temporal_beliefs = temporal.check(source, relative)
+        first_source_record = len(records)
         for category, beliefs in (
             ("structural", structural_beliefs),
             ("security", security_beliefs),
@@ -367,6 +382,24 @@ def analyze_static_target(
         ):
             totals[category] += len(beliefs)
             records.extend(_beliefs_to_records(category, beliefs))
+        totals["security"] += len(native_security_records)
+        records.extend(native_security_records)
+        # Preserve only producer evidence created from this source snapshot.
+        # Imported metadata cannot authorize restoration after enrichment.
+        for record in records[first_source_record:]:
+            finding = record.finding
+            payload = finding.metadata.get("dataflow")
+            if not isinstance(payload, dict):
+                continue
+            sink_line = payload.get("sink_line")
+            if (
+                finding.file == relative
+                and payload.get("file", relative) == relative
+                and type(sink_line) is int
+                and type(finding.line) is int
+                and 0 < finding.line <= sink_line <= (finding.end_line or finding.line)
+            ):
+                producer_dataflows.append((finding, {**payload, "file": relative}))
 
     cycle_metadata = None
     if opts.include_cycles:
@@ -414,6 +447,9 @@ def analyze_static_target(
             dataflow_summaries,
             show_dataflow=opts.show_dataflow,
         )
+        for finding, producer_payload in producer_dataflows:
+            if "dataflow" not in finding.metadata:
+                finding.metadata = {**finding.metadata, "dataflow": producer_payload}
 
     if opts.hypotheses_enabled:
         from .guarantee_index import build_guarantee_index
@@ -659,9 +695,107 @@ def _beliefs_to_records(category: str, beliefs: Iterable[Belief]) -> list[ScanRe
     ]
 
 
+def _native_security_records(
+    source: str,
+    file: str,
+) -> tuple[list[ScanRecord], list[StaticAnalysisDiagnostic]]:
+    """Run bounded stdlib-only AST detectors over the captured source bytes."""
+
+    from .bridges.download_destination_bridge import (
+        scan_source as scan_download_destination,
+    )
+    from .bridges.orm_identifier_bridge import scan_source as scan_orm_identifier
+    from .bridges.path_traversal_bridge import scan_source as scan_path_boundary
+
+    scanners = (
+        ("download_destination", scan_download_destination),
+        ("orm_identifier", scan_orm_identifier),
+        ("path_boundary", scan_path_boundary),
+    )
+    records: list[ScanRecord] = []
+    diagnostics: list[StaticAnalysisDiagnostic] = []
+    for detector, scanner in scanners:
+        try:
+            raw_findings = scanner(source, file)
+            if not isinstance(raw_findings, list):
+                raise TypeError(f"native detector {detector} must return a list")
+            detector_records: list[ScanRecord] = []
+            for raw in raw_findings:
+                if not isinstance(raw, dict):
+                    raise TypeError(f"native detector {detector} returned a non-object")
+                payload = dict(raw)
+                payload["source"] = detector
+                payload["metadata"] = _native_detector_metadata(
+                    payload,
+                    detector=detector,
+                    default_file=file,
+                )
+                detector_records.append(
+                    ScanRecord(
+                        "security",
+                        _with_category(Finding.from_dict(payload), "security"),
+                    )
+                )
+        except Exception as exc:  # detector isolation is an analysis boundary
+            diagnostics.append(
+                StaticAnalysisDiagnostic(
+                    code="native_detector_failed",
+                    message=f"Native security detector failed: {detector}",
+                    file=file,
+                    details={
+                        "detector": detector,
+                        "exception_type": type(exc).__name__,
+                    },
+                )
+            )
+            continue
+        records.extend(detector_records)
+    return dedupe_scan_records(sort_scan_records(records)), diagnostics
+
+
+def _native_detector_metadata(
+    payload: dict[str, Any],
+    *,
+    detector: str,
+    default_file: str,
+) -> dict[str, Any]:
+    raw_metadata = payload.get("metadata")
+    metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+    variables_raw = payload.get("variables")
+    variables = (
+        [str(value) for value in variables_raw if str(value)]
+        if isinstance(variables_raw, (list, tuple))
+        else []
+    )
+    source = ", ".join(variables) or f"{detector} input"
+    sink = str(payload.get("sink") or payload.get("rule_id") or detector)
+    details = {
+        key: payload[key]
+        for key in ("col", "sink", "source_line", "variables")
+        if key in payload
+    }
+    metadata.update({
+        "category": "security",
+        "native_details": details,
+        "native_static_detector": detector,
+        "dataflow": {
+            "file": str(payload.get("file") or default_file),
+            "guarantees": [],
+            "path": [source, sink],
+            "sanitizers": [],
+            "sink": sink,
+            "sink_column": payload.get("col"),
+            "sink_line": payload.get("line"),
+            "source": source,
+            "source_line": payload.get("source_line"),
+        },
+    })
+    return metadata
+
+
 def _with_category(finding: Finding, category: str) -> Finding:
     metadata = dict(getattr(finding, "metadata", {}) or {})
-    metadata.setdefault("category", category)
+    metadata["category"] = category
     finding.metadata = metadata
     return finding
 

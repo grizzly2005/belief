@@ -663,6 +663,108 @@ class ValidationProofLedger:
             publish_proof=True,
         )
 
+    def _finish_audit_case_attempt(
+        self,
+        attempt: AttemptHandle,
+        *,
+        expected_authority_sha256: str,
+        result: ValidationResult,
+        response: Any,
+        evidence: Sequence[EvidenceArtifact],
+    ) -> TerminalReceipt:
+        """Authorize proof only through the policy-pinned audit-case contract."""
+
+        from .audit_case_executor import (
+            AUDIT_CASE_REQUEST_MEDIA_TYPE,
+            AUDIT_CASE_RESPONSE_MEDIA_TYPE,
+            AuditCaseExecutionResponse,
+            AuditCaseProofError,
+            validate_audit_case_execution_material,
+        )
+
+        if not isinstance(response, AuditCaseExecutionResponse):
+            raise TypeError("audit-case proof requires an AuditCaseExecutionResponse")
+        context = ProofAuthorityContext(
+            engagement_id=attempt.engagement_id,
+            target_id=attempt.target_id,
+        )
+        authority_digest = _sha256(
+            expected_authority_sha256,
+            "expected_authority_sha256",
+        )
+        response_bytes = _canonical_json_bytes(response.to_dict())
+        with self._exclusive():
+            self._load_scope_manifest(
+                context,
+                expected_authority_sha256=authority_digest,
+            )
+            stored_attempt = self._load_attempt_path(
+                context,
+                self._attempt_path(context, attempt.attempt_id),
+            )
+            request_ref = ValidationEvidenceRef.from_dict(stored_attempt["request_ref"])
+            if request_ref.media_type != AUDIT_CASE_REQUEST_MEDIA_TYPE:
+                raise ValidationProofLedgerError(
+                    "audit-case durable request media type is invalid"
+                )
+            response_item = self._prepare_evidence(
+                EvidenceArtifact(
+                    kind="response",
+                    content=response_bytes,
+                    media_type=AUDIT_CASE_RESPONSE_MEDIA_TYPE,
+                    evidence_id=f"validation-response:{attempt.attempt_id}",
+                )
+            )
+            canonical_result, result_payload = _canonical_result(result)
+            result_item = self._prepare_evidence(
+                EvidenceArtifact(
+                    kind="artifact",
+                    content=_canonical_json_bytes(result_payload),
+                    media_type="application/vnd.belief.validation-result.v1+json",
+                    evidence_id=f"validation-result:{canonical_result.result_id}",
+                )
+            )
+            additional = tuple(self._prepare_evidence(item) for item in evidence)
+            refs = tuple(
+                sorted(
+                    (
+                        request_ref,
+                        response_item.reference,
+                        result_item.reference,
+                        *(item.reference for item in additional),
+                    ),
+                    key=lambda item: (item.evidence_id, item.kind, item.sha256),
+                )
+            )
+            try:
+                policy = validate_audit_case_execution_material(
+                    authority_context=context,
+                    expected_authority_sha256=authority_digest,
+                    attempt=stored_attempt,
+                    request_bytes=self._read_cas(request_ref.sha256),
+                    response_bytes=response_bytes,
+                    result=canonical_result,
+                    evidence_refs=refs,
+                    request_ref=request_ref,
+                    response_ref=response_item.reference,
+                )
+                if sum(len(item.content) for item in additional) > policy.max_total_evidence_bytes:
+                    raise AuditCaseProofError("audit-case evidence exceeds policy byte budget")
+            except (TypeError, ValueError, AuditCaseProofError) as exc:
+                raise ValidationProofLedgerError(
+                    "audit-case terminal is outside its authority policy"
+                ) from exc
+
+        return self._finish_attempt(
+            attempt,
+            terminal_status="completed",
+            result=result,
+            response_bytes=response_bytes,
+            response_media_type=AUDIT_CASE_RESPONSE_MEDIA_TYPE,
+            evidence=evidence,
+            publish_proof=True,
+        )
+
     def resume_attempt(
         self,
         context: ProofAuthorityContext,
@@ -928,11 +1030,22 @@ class ValidationProofLedger:
         if sum(len(item.content) for item in prepared) > self.max_total_evidence_bytes:
             raise ValidationProofLedgerError("terminal evidence exceeds total byte limit")
         if canonical_result is not None and publish_proof:
-            if attempt["subject_kind"] != "validation_contract_seed" or not str(
-                attempt["target_id"]
-            ).startswith("registered-fixture:"):
+            request_media_type = request_ref.media_type
+            fixture_authorized = (
+                attempt["subject_kind"] == "validation_contract_seed"
+                and str(attempt["target_id"]).startswith("registered-fixture:")
+                and request_media_type
+                == "application/vnd.belief.validation-execution-context.v1+json"
+            )
+            audit_case_authorized = (
+                attempt["subject_kind"] == "audit_case"
+                and not str(attempt["target_id"]).startswith("registered-fixture:")
+                and request_media_type
+                == "application/vnd.belief.audit-case-execution-request.v1+json"
+            )
+            if not fixture_authorized and not audit_case_authorized:
                 raise ValidationProofLedgerError(
-                    "only registered fixture seeds can publish durable proof"
+                    "proof publication is outside a bounded ledger policy"
                 )
             refs = tuple(item.reference for item in prepared)
             proof = ValidationProof(
@@ -1168,6 +1281,77 @@ class ValidationProofLedger:
             raise ValidationProofLedgerError(
                 "stored result is not derived from its registered fixture response"
             )
+
+    def _validate_stored_audit_case_proof(
+        self,
+        context: ProofAuthorityContext,
+        attempt: Mapping[str, Any],
+        *,
+        terminal_status: str,
+        result: ValidationResult,
+        refs: Sequence[ValidationEvidenceRef],
+        request_ref: ValidationEvidenceRef,
+        response_ref: ValidationEvidenceRef,
+    ) -> None:
+        """Re-derive a real-target policy and every binding during reconstruction."""
+
+        from .audit_case_executor import (
+            AUDIT_CASE_REQUEST_MEDIA_TYPE,
+            AUDIT_CASE_RESPONSE_MEDIA_TYPE,
+            AuditCaseExecutionRequest,
+            AuditCaseProofError,
+            validate_audit_case_execution_material,
+        )
+
+        if (
+            terminal_status != "completed"
+            or attempt["subject_kind"] != "audit_case"
+            or str(attempt["target_id"]).startswith("registered-fixture:")
+            or request_ref.media_type != AUDIT_CASE_REQUEST_MEDIA_TYPE
+            or response_ref.media_type != AUDIT_CASE_RESPONSE_MEDIA_TYPE
+        ):
+            raise ValidationProofLedgerError(
+                "stored proof is outside the audit-case authority policy"
+            )
+        request_bytes = self._read_cas(request_ref.sha256)
+        response_bytes = self._read_cas(response_ref.sha256)
+        try:
+            request_payload = strict_json_loads(request_bytes)
+            if not isinstance(request_payload, Mapping):
+                raise TypeError("request envelope must be an object")
+            request = AuditCaseExecutionRequest.from_dict(request_payload)
+            policy = request.policy
+            self._load_scope_manifest(
+                context,
+                expected_authority_sha256=policy.policy_sha256,
+            )
+            policy = validate_audit_case_execution_material(
+                authority_context=context,
+                expected_authority_sha256=policy.policy_sha256,
+                attempt=attempt,
+                request_bytes=request_bytes,
+                response_bytes=response_bytes,
+                result=result,
+                evidence_refs=refs,
+                request_ref=request_ref,
+                response_ref=response_ref,
+            )
+            envelope_ids = {
+                request_ref.evidence_id,
+                response_ref.evidence_id,
+                f"validation-result:{result.result_id}",
+            }
+            total = sum(
+                len(self._read_cas(item.sha256))
+                for item in refs
+                if item.evidence_id not in envelope_ids
+            )
+            if total > policy.max_total_evidence_bytes:
+                raise AuditCaseProofError("audit-case evidence exceeds policy byte budget")
+        except (StrictJSONError, TypeError, ValueError, AuditCaseProofError) as exc:
+            raise ValidationProofLedgerError(
+                "stored audit-case proof violates its authority policy"
+            ) from exc
 
     def _material_from_records(
         self,
@@ -1706,11 +1890,17 @@ class ValidationProofLedger:
                 )
             if record["proof"] is not None:
                 proof = ValidationProof.from_dict(record["proof"])
-                if attempt["subject_kind"] != "validation_contract_seed" or not str(
-                    attempt["target_id"]
-                ).startswith("registered-fixture:"):
+                fixture_proof = (
+                    attempt["subject_kind"] == "validation_contract_seed"
+                    and str(attempt["target_id"]).startswith("registered-fixture:")
+                )
+                audit_case_proof = (
+                    attempt["subject_kind"] == "audit_case"
+                    and not str(attempt["target_id"]).startswith("registered-fixture:")
+                )
+                if not fixture_proof and not audit_case_proof:
                     raise ValidationProofLedgerError(
-                        "terminal proof is outside the registered fixture policy"
+                        "terminal proof is outside a bounded ledger policy"
                     )
                 if proof.evidence_refs != refs:
                     raise ValidationProofLedgerError("terminal proof evidence set mismatch")
@@ -1748,12 +1938,23 @@ class ValidationProofLedger:
             ):
                 raise ValidationProofLedgerError("terminal result artifact binding mismatch")
             if record["proof"] is not None:
-                self._validate_stored_registered_fixture_proof(
-                    attempt,
-                    terminal_status=str(record["terminal_status"]),
-                    result=canonical,
-                    response_ref=response_refs[0],
-                )
+                if fixture_proof:
+                    self._validate_stored_registered_fixture_proof(
+                        attempt,
+                        terminal_status=str(record["terminal_status"]),
+                        result=canonical,
+                        response_ref=response_refs[0],
+                    )
+                else:
+                    self._validate_stored_audit_case_proof(
+                        context,
+                        attempt,
+                        terminal_status=str(record["terminal_status"]),
+                        result=canonical,
+                        refs=refs,
+                        request_ref=request_ref,
+                        response_ref=response_refs[0],
+                    )
         return record
 
     @staticmethod

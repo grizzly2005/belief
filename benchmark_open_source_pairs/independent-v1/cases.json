@@ -1,0 +1,697 @@
+{
+  "cases": [
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-p6gw-4frg-j7jw",
+      "case_type": "sql_injection_possible",
+      "checkout_dir": "mar10__wsgidav",
+      "cve_id": "CVE-2026-55509",
+      "cwe": "CWE-89",
+      "fixed_revision": "6f35776c9188f130ab044ce557015d51aaa83500",
+      "id": "wsgidav-cve-2026-55509",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "MIT"
+      },
+      "project": "mar10/wsgidav",
+      "repository_url": "https://github.com/mar10/wsgidav.git",
+      "targets": [
+        {
+          "fixed_sha256": "0b84e7aada63ec770360afdc25ff642951af5e491b1d6f0c53e4e703fbfbb511",
+          "path": "wsgidav/samples/mysql_dav_provider.py",
+          "relevant_line_range": [
+            372,
+            422
+          ],
+          "vulnerable_sha256": "12baad7339c35db2d46a2159c856ec48c5f6cf18a25063abf98689f70ae9eaac"
+        }
+      ],
+      "vulnerable_revision": "67abdbd7d622fcf29aefdfbd0c9910de9e0c8b3d"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-2wxc-x7rj-hg8f",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "ronf__asyncssh",
+      "cve_id": "CVE-2026-54591",
+      "cwe": "CWE-22",
+      "fixed_revision": "d730803b8e4e94c20c7580d90f94d1e05f9f58de",
+      "id": "asyncssh-cve-2026-54591",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "EPL-2.0"
+      },
+      "project": "ronf/asyncssh",
+      "repository_url": "https://github.com/ronf/asyncssh.git",
+      "targets": [
+        {
+          "fixed_sha256": "797665a6a840de3de5ff8d30485b099874eab9a00e7abc321ba3253f3e4ddab9",
+          "path": "asyncssh/scp.py",
+          "relevant_line_range": [
+            609,
+            735
+          ],
+          "vulnerable_sha256": "56997be2fe92fcdc56eac543c9639fc1c34e272854f60bbe8975a1632156a9f1"
+        }
+      ],
+      "vulnerable_revision": "3d515ba9ba0cd9990d248bdf62bcf05d51261a88"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-gxmw-5f7x-6g22",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "mervinpraison__praisonai",
+      "cve_id": "CVE-2026-55527",
+      "cwe": "CWE-22",
+      "fixed_revision": "2f9677abb2ea68eab864ee8b6a828fd0141612e1",
+      "id": "praisonai-cve-2026-55527",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "MIT"
+      },
+      "project": "mervinpraison/praisonai",
+      "repository_url": "https://github.com/mervinpraison/praisonai.git",
+      "targets": [
+        {
+          "fixed_sha256": "4e19213f043ca7b6123eba424ff53199424f583046e4edefa4ab8dc8e67b9470",
+          "path": "src/praisonai-agents/praisonaiagents/memory/file_memory.py",
+          "relevant_line_range": [
+            119,
+            182
+          ],
+          "vulnerable_sha256": "091043dc10687ec83209d297ea31eca908965001fb687c711beb2e59ae35a311"
+        }
+      ],
+      "vulnerable_revision": "9991e00f5245de182321288918e7ac1add390d0d"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-cv22-g7mw-8v73",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "nltk__nltk",
+      "cve_id": "CVE-2026-71514",
+      "cwe": "CWE-22",
+      "fixed_revision": "10d34b3f4fe3fec74b76527a409eb0acbac2e8ab",
+      "id": "nltk-cve-2026-71514",
+      "license": {
+        "path": "LICENSE.txt",
+        "spdx": "Apache-2.0"
+      },
+      "project": "nltk/nltk",
+      "repository_url": "https://github.com/nltk/nltk.git",
+      "targets": [
+        {
+          "fixed_sha256": "bce136837d352ff65873eae86f10b6d9a0ac20294d770d681f6129af72e5cf46",
+          "path": "nltk/corpus/reader/crubadan.py",
+          "relevant_line_range": [
+            83,
+            124
+          ],
+          "vulnerable_sha256": "bd4c7fe6127ea1e74f4f1cff7f7f1ebf2009eeefe58099449a025edc1f424af7"
+        }
+      ],
+      "vulnerable_revision": "006000117a9e3132a8074d16f2587e837f41b9b0"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-8j49-mmcx-4mp5",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "mobsf__mobile-security-framework-mobsf",
+      "cve_id": "CVE-2026-68922",
+      "cwe": "CWE-22",
+      "fixed_revision": "62563ca429a75b3e5d47a13b958e1d2e7d5e2bbf",
+      "id": "mobile-security-framework-mobsf-cve-2026-68922",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "LicenseRef-Upstream-GPL"
+      },
+      "project": "mobsf/mobile-security-framework-mobsf",
+      "repository_url": "https://github.com/mobsf/mobile-security-framework-mobsf.git",
+      "targets": [
+        {
+          "fixed_sha256": "b101f4f6612f3b28092ad109105110a856f959a11e24ac800954cf97a3fcb139",
+          "path": "mobsf/StaticAnalyzer/views/android/icon_analysis.py",
+          "relevant_line_range": [
+            75,
+            165
+          ],
+          "vulnerable_sha256": "464719df7ea2a685a84177732249e25e9f078b3150197c7e84c59d0004a6289e"
+        }
+      ],
+      "vulnerable_revision": "c098134845a9f537a4feb64090883865cea5383e"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-xrqw-3rrv-vx5w",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "huggingface__transformers",
+      "cve_id": "CVE-2026-9856",
+      "cwe": "CWE-22",
+      "fixed_revision": "eaaaf8494dd5386634ae37d1d122212fdc315be5",
+      "id": "transformers-cve-2026-9856",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "Apache-2.0"
+      },
+      "project": "huggingface/transformers",
+      "repository_url": "https://github.com/huggingface/transformers.git",
+      "targets": [
+        {
+          "fixed_sha256": "9fd0f642dbaed7727f25dcb5e9c86110a20b5dde7139fb0d14b465900ce1cbc5",
+          "path": "src/transformers/processing_utils.py",
+          "relevant_line_range": [
+            1120,
+            1154
+          ],
+          "vulnerable_sha256": "1c6c8eb28b5d730f76adca1d2d74204979dba3383cb115eaed4b85822c4676dc"
+        },
+        {
+          "fixed_sha256": "15a70e2ecca607fc0a948fc224bebaab515dbb83e93553b8b8d5a0e7ecf5affe",
+          "path": "src/transformers/tokenization_utils_base.py",
+          "relevant_line_range": [
+            3280,
+            3325
+          ],
+          "vulnerable_sha256": "c2cce6123f042052475867332cac670d245d0364a56f82a2724fa14adecbcc1d"
+        }
+      ],
+      "vulnerable_revision": "47949d3a0e1cf9248f2a3eb3cd0deb12ee37b9e9"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-m8wh-29wm-52mv",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "keras-team__keras",
+      "cve_id": "CVE-2026-9335",
+      "cwe": "CWE-22",
+      "fixed_revision": "d338a45204bdc787c8b3c4a9b82c1911cd52dedf",
+      "id": "keras-cve-2026-9335",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "Apache-2.0"
+      },
+      "project": "keras-team/keras",
+      "repository_url": "https://github.com/keras-team/keras.git",
+      "targets": [
+        {
+          "fixed_sha256": "08f332f11540a8900f6339a7bd3da3a04ad549593e3e985162b8f9de56feed92",
+          "path": "keras/src/saving/file_editor.py",
+          "relevant_line_range": [
+            455,
+            582
+          ],
+          "vulnerable_sha256": "06c28103df78f1ea08cef429eebdad0f37b19e6dda0afdd398f97d3c6d125b7d"
+        }
+      ],
+      "vulnerable_revision": "8f987f11bf7512f0df4774a8f1557bba07dc2b49"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-c5px-58j2-7fqp",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "elyin__gemini-bridge",
+      "cve_id": "CVE-2026-54785",
+      "cwe": "CWE-22",
+      "fixed_revision": "8f3b85afd02b692c4bc974b5176e12fb277ea801",
+      "id": "gemini-bridge-cve-2026-54785",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "MIT"
+      },
+      "project": "elyin/gemini-bridge",
+      "repository_url": "https://github.com/elyin/gemini-bridge.git",
+      "targets": [
+        {
+          "fixed_sha256": "a69317bb41a72ecc9d2ac34e7c6c016bda6f232ef81e4f6b6d81458203711430",
+          "path": "src/mcp_server.py",
+          "relevant_line_range": [
+            130,
+            241
+          ],
+          "vulnerable_sha256": "1896bde7c8cca3aba2a97603869920d3df662cd8042039151d66a3da564908d4"
+        }
+      ],
+      "vulnerable_revision": "bb3ad9e44dba04092abc2e2a8af83223f10402db"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-cj54-hpcc-gj6h",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "thumbor__thumbor",
+      "cve_id": "CVE-2026-53502",
+      "cwe": "CWE-22",
+      "fixed_revision": "3b986d13677b30fe6651c8c72ebb25957ac0a40d",
+      "id": "thumbor-cve-2026-53502",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "MIT"
+      },
+      "project": "thumbor/thumbor",
+      "repository_url": "https://github.com/thumbor/thumbor.git",
+      "targets": [
+        {
+          "fixed_sha256": "b37f2ac556959fde2b8198cbe789fc8350c6381d4740d5d4e8515ad8de9d9e8f",
+          "path": "thumbor/loaders/file_loader.py",
+          "relevant_line_range": [
+            15,
+            67
+          ],
+          "vulnerable_sha256": "d612a17cc6fcb8f7bbe8fcabdb37821eb47d3b4f3eabcc228e419f2549274d10"
+        }
+      ],
+      "vulnerable_revision": "471ef279700e9f79941d451acf88abe1601df875"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-2956-977x-2w3r",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "flytohub__flyto-core",
+      "cve_id": "CVE-2026-67429",
+      "cwe": "CWE-22",
+      "fixed_revision": "d5f89d71303e3c1e6418d347c5c55fcd173cc8cc",
+      "id": "flyto-core-cve-2026-67429",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "Apache-2.0"
+      },
+      "project": "flytohub/flyto-core",
+      "repository_url": "https://github.com/flytohub/flyto-core.git",
+      "targets": [
+        {
+          "fixed_sha256": "d397af17be670dc2ef165712af5626f8bd1ad5b636a64a5adb3198c9c3738e07",
+          "path": "src/core/modules/atomic/image/download.py",
+          "relevant_line_range": [
+            111,
+            177
+          ],
+          "vulnerable_sha256": "38e7d1440eab0dafe7f78e656262310ef9e94ec6017d400aeb9fc528c32ec513"
+        }
+      ],
+      "vulnerable_revision": "9103529c204cad3e698b726ed958b626bcfbc182"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-qwm4-qh6w-59xr",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "pypa__pip",
+      "cve_id": "CVE-2026-13346",
+      "cwe": "CWE-36",
+      "fixed_revision": "10dfb6b9005484578b386f64b9f36982e3dc6679",
+      "id": "pip-cve-2026-13346",
+      "license": {
+        "path": "LICENSE.txt",
+        "spdx": "MIT"
+      },
+      "project": "pypa/pip",
+      "repository_url": "https://github.com/pypa/pip.git",
+      "targets": [
+        {
+          "fixed_sha256": "4925ed14edd802b794618d91d0faad2976c07b5bd5f41aade6bfea3cddb5f331",
+          "path": "src/pip/_internal/models/link.py",
+          "relevant_line_range": [
+            424,
+            497
+          ],
+          "vulnerable_sha256": "e7246ae179fabb0e62029b22ff14310071d8795802e9a15a5d9a948a918523c1"
+        },
+        {
+          "fixed_sha256": "7e4cde465bbcc6b77845517fbb0a82c6a9137a6ee936cc510b381b1deceb4a8a",
+          "path": "src/pip/_internal/network/download.py",
+          "relevant_line_range": [
+            121,
+            213
+          ],
+          "vulnerable_sha256": "3fcbde9c07b366378ca9974c20c6a9c1669204c3be966b41e3efd55002a2f55d"
+        }
+      ],
+      "vulnerable_revision": "ba52753ecf1803e5b6b5dfb2782835266a71c470"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-f42x-p2mx-hm8r",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "brightio__penelope",
+      "cve_id": "CVE-2026-50558",
+      "cwe": "CWE-22",
+      "fixed_revision": "a040afb5db32c7e80b5e8a2f9b2164cf911cfa62",
+      "id": "penelope-cve-2026-50558",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "GPL-3.0-or-later"
+      },
+      "project": "brightio/penelope",
+      "repository_url": "https://github.com/brightio/penelope.git",
+      "targets": [
+        {
+          "fixed_sha256": "c84ff758f2fae7e65e9d51b50836e42b3ebc7f691906120d9c524ea00947a1d6",
+          "path": "penelope.py",
+          "relevant_line_range": [
+            3261,
+            5252
+          ],
+          "vulnerable_sha256": "957bdf3977e66cf21f13bbe87ff62ce79baf338d96ec6dae9ece4dbe901a04a8"
+        }
+      ],
+      "vulnerable_revision": "ef417fff6cfb2ab02f3303949fe60a4f163d0ed5"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-8359-h9fx-j6v9",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "datamodel-code-generator__datamodel-code-generator",
+      "cve_id": "CVE-2026-55389",
+      "cwe": "CWE-22",
+      "fixed_revision": "2ff4a72b4550a2b2069754c5b075b1655067e5fb",
+      "id": "datamodel-code-generator-cve-2026-55389",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "MIT"
+      },
+      "project": "datamodel-code-generator/datamodel-code-generator",
+      "repository_url": "https://github.com/datamodel-code-generator/datamodel-code-generator.git",
+      "targets": [
+        {
+          "fixed_sha256": "73e85aad1784ce66d355035e0559d0e95a4ee3a76f0f130dfa55d7482349e2e6",
+          "path": "src/datamodel_code_generator/parser/jsonschema.py",
+          "relevant_line_range": [
+            4812,
+            4930
+          ],
+          "vulnerable_sha256": "27c901e05071c494e1fcac98f2394b9415fc120a523105edad846ba908d779d4"
+        }
+      ],
+      "vulnerable_revision": "2dbe5b5794472a4cad8e9286c942dffda7359816"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-frvj-c5qp-xj4w",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "open-webui__open-webui",
+      "cve_id": "CVE-2026-59221",
+      "cwe": "CWE-22",
+      "fixed_revision": "05098d25a58d03738e01c4e85e8852c3b4ad849c",
+      "id": "open-webui-cve-2026-59221",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "LicenseRef-Open-WebUI"
+      },
+      "project": "open-webui/open-webui",
+      "repository_url": "https://github.com/open-webui/open-webui.git",
+      "targets": [
+        {
+          "fixed_sha256": "c400cfb70fac5e0ac817f924f5c5ce0037bed5c65f0ce1dfe75f66c612a4e609",
+          "path": "backend/open_webui/routers/terminals.py",
+          "relevant_line_range": [
+            31,
+            192
+          ],
+          "vulnerable_sha256": "71ffe2708f64c65996bd0038d7918629e86cbe3e216c8edd3326f76e540efce5"
+        }
+      ],
+      "vulnerable_revision": "3266a8c9eb6b8408a869a33378a0f4ad8a46809e"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-9xwg-3r6f-jcx2",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "facelessuser__pymdown-extensions",
+      "cve_id": "CVE-2026-61632",
+      "cwe": "CWE-22",
+      "fixed_revision": "edce35586d11a1ef78bb187bc60497fe6dbf3b64",
+      "id": "pymdown-extensions-cve-2026-61632",
+      "license": {
+        "path": "LICENSE.md",
+        "spdx": "MIT"
+      },
+      "project": "facelessuser/pymdown-extensions",
+      "repository_url": "https://github.com/facelessuser/pymdown-extensions.git",
+      "targets": [
+        {
+          "fixed_sha256": "de4441f821b615297e419c3c2db9f71542bea850b8a47771862b0a48a22bd440",
+          "path": "pymdownx/b64.py",
+          "relevant_line_range": [
+            68,
+            159
+          ],
+          "vulnerable_sha256": "f110e3336e863bd85676401f68d593d50e2ab6784f8d4737079d018074387894"
+        }
+      ],
+      "vulnerable_revision": "9fb9643c84c46386d77eef1a18929330620e3111"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-5jmr-gcrj-2c9q",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "berriai__litellm",
+      "cve_id": "CVE-2026-59820",
+      "cwe": "CWE-22",
+      "fixed_revision": "6a15adcd64137d37f73dee76dfe7481f8c2d9196",
+      "id": "litellm-cve-2026-59820",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "MIT"
+      },
+      "project": "berriai/litellm",
+      "repository_url": "https://github.com/berriai/litellm.git",
+      "targets": [
+        {
+          "fixed_sha256": "e8872fd0a8809597878c234aa82cb8dd2842f14a237167b87c80b8dd9ade865e",
+          "path": "litellm/llms/litellm_proxy/skills/prompt_injection.py",
+          "relevant_line_range": [
+            74,
+            124
+          ],
+          "vulnerable_sha256": "f6677c2db8b6529c83bba69b81b9a6efd0061b83e3471d9c555c6b977b7878f2"
+        },
+        {
+          "fixed_sha256": "4bc28e9aa815082235790875307afd26ff83febc38757196ba39e6ed0d9d1595",
+          "path": "litellm/llms/litellm_proxy/skills/sandbox_executor.py",
+          "relevant_line_range": [
+            45,
+            185
+          ],
+          "vulnerable_sha256": "4ecf9513a98a398d7143450b1799b34ae912affca5e332c160e1bb6fb4d026d2"
+        }
+      ],
+      "vulnerable_revision": "e828a91eeefbc2e6e5fe7a34ddd40a5201216b15"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-r4rv-85jg-w4mf",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "lepture__mistune",
+      "cve_id": "CVE-2026-59924",
+      "cwe": "CWE-22",
+      "fixed_revision": "1bef343ade163fc3bb95572b15be720084cdb993",
+      "id": "mistune-cve-2026-59924",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "BSD-3-Clause"
+      },
+      "project": "lepture/mistune",
+      "repository_url": "https://github.com/lepture/mistune.git",
+      "targets": [
+        {
+          "fixed_sha256": "8bde6d30761c5dd3e2966b16b6e53dab7043d650acead8dc16a4a29251629c14",
+          "path": "src/mistune/directives/include.py",
+          "relevant_line_range": [
+            14,
+            99
+          ],
+          "vulnerable_sha256": "b53d207b33841cb05fd58134b0ae4007674e5bcd3c45651e3675e2168c855d39"
+        }
+      ],
+      "vulnerable_revision": "c7101fcbb6e8790e8e39157c5ca2238fc6dd6cbc"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-9jj8-v89v-xjvw",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "dgtlmoon__changedetection.io",
+      "cve_id": "CVE-2026-25527",
+      "cwe": "CWE-22",
+      "fixed_revision": "9d38b4517364831889b5b0d7b3465fd060403fd4",
+      "id": "changedetection.io-cve-2026-25527",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "Apache-2.0"
+      },
+      "project": "dgtlmoon/changedetection.io",
+      "repository_url": "https://github.com/dgtlmoon/changedetection.io.git",
+      "targets": [
+        {
+          "fixed_sha256": "926de49ece909a5e2081e230eba47a33b4658311c625d354b3b86993d49e1ee5",
+          "path": "changedetectionio/flask_app.py",
+          "relevant_line_range": [
+            712,
+            822
+          ],
+          "vulnerable_sha256": "252dd6061fd7145cdbcf6a2981ce4e34e19c0f9ecbc15de6524af1bc6d3aca82"
+        }
+      ],
+      "vulnerable_revision": "3558e9ee10cfe19cfe9209e469e43e9327c26735"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-wxhm-2mq7-7697",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "microsoft__prompty",
+      "cve_id": "CVE-2026-53598",
+      "cwe": "CWE-22",
+      "fixed_revision": "88ac9948d7d37995edbb2f6d36913436626c39e1",
+      "id": "prompty-cve-2026-53598",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "MIT"
+      },
+      "project": "microsoft/prompty",
+      "repository_url": "https://github.com/microsoft/prompty.git",
+      "targets": [
+        {
+          "fixed_sha256": "8b1bef303e9299f2929d1c870a34af283ad3e06c0fd2f609f2d3bbab9555e926",
+          "path": "runtime/python/prompty/prompty/core/loader.py",
+          "relevant_line_range": [
+            112,
+            214
+          ],
+          "vulnerable_sha256": "ce88c2c1996e47dcbee5863b6e46ef3d1db263b2a846f57e69686cdfa8323272"
+        }
+      ],
+      "vulnerable_revision": "90171a7738f9ff5a186416381cbfad9077cdf637"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-8g6f-qw9x-4q6q",
+      "case_type": "sql_injection_possible",
+      "checkout_dir": "snowflakedb__snowflake-sqlalchemy",
+      "cve_id": "CVE-2026-15736",
+      "cwe": "CWE-73",
+      "fixed_revision": "35edf4dc5e76b9a9fdfa74c8e4f6fd14642110f1",
+      "id": "snowflake-sqlalchemy-cve-2026-15736",
+      "license": {
+        "path": "LICENSE.txt",
+        "spdx": "Apache-2.0"
+      },
+      "project": "snowflakedb/snowflake-sqlalchemy",
+      "repository_url": "https://github.com/snowflakedb/snowflake-sqlalchemy.git",
+      "targets": [
+        {
+          "fixed_sha256": "a39bc119bdbfe6289483c87f7625c337770d60513831ff077c7d2e842025cc66",
+          "path": "src/snowflake/sqlalchemy/sql/custom_schema/options/literal_option.py",
+          "relevant_line_range": [
+            31,
+            59
+          ],
+          "vulnerable_sha256": "440fa91c67106d56ae7fa7354903dd36ef897a726e93d7c2300cb76c26f8049d"
+        }
+      ],
+      "vulnerable_revision": "20ad218611bad394db55b1e1530e6d4853d2ab6d"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-g5r6-gv6m-f5jv",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "sooperset__mcp-atlassian",
+      "cve_id": "CVE-2026-73498",
+      "cwe": "CWE-22",
+      "fixed_revision": "b041733473f95119dd539542a43c280737a8e460",
+      "id": "mcp-atlassian-cve-2026-73498",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "MIT"
+      },
+      "project": "sooperset/mcp-atlassian",
+      "repository_url": "https://github.com/sooperset/mcp-atlassian.git",
+      "targets": [
+        {
+          "fixed_sha256": "0f32292c7cd19f7075420ee7c0bbe3b7af6c6d682aa70e63a6d936ce1138ae03",
+          "path": "src/mcp_atlassian/confluence/attachments.py",
+          "relevant_line_range": [
+            612,
+            648
+          ],
+          "vulnerable_sha256": "c3aa1c200e83f33c284c94c0bfc9e5eec3dd893f7b719e1a35d64d2a7961d08c"
+        }
+      ],
+      "vulnerable_revision": "4067d1db4097755cc6add87f95fe3f0746c98c0b"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-555p-6grf-mh7f",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "jelmer__dulwich",
+      "cve_id": "CVE-2026-47712",
+      "cwe": "CWE-22",
+      "fixed_revision": "c2446e51b49e5bc0ad1b623e47f4b0b961ecaa46",
+      "id": "dulwich-cve-2026-47712",
+      "license": {
+        "path": "COPYING",
+        "spdx": "Apache-2.0 OR GPL-2.0-or-later"
+      },
+      "project": "jelmer/dulwich",
+      "repository_url": "https://github.com/jelmer/dulwich.git",
+      "targets": [
+        {
+          "fixed_sha256": "ff5a75441e99f7d52d4822976b91c1035a9542652588b65ac5a99419bbc30c93",
+          "path": "dulwich/patch.py",
+          "relevant_line_range": [
+            174,
+            233
+          ],
+          "vulnerable_sha256": "d391268b24fe9f02a437ef07ffeb3990ba4f8396853330e36373adcd5032b9db"
+        }
+      ],
+      "vulnerable_revision": "951b008edd5034066da8294b1d4c3cd558f5d9a3"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-5j8p-5rrj-8wjg",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "hanxi__xiaomusic",
+      "cve_id": "CVE-2026-10108",
+      "cwe": "CWE-22",
+      "fixed_revision": "88404da7a283f2c0a796a4cd16bbb6e6aa1f4722",
+      "id": "xiaomusic-cve-2026-10108",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "MIT"
+      },
+      "project": "hanxi/xiaomusic",
+      "repository_url": "https://github.com/hanxi/xiaomusic.git",
+      "targets": [
+        {
+          "fixed_sha256": "979bc1bb4a1e33f11c302dbf8674c431c9c953760d4505b01b39b9dbc3bb76c8",
+          "path": "xiaomusic/api/routers/file.py",
+          "relevant_line_range": [
+            955,
+            1027
+          ],
+          "vulnerable_sha256": "3dc7a6811880c18a7a000f63d493adcb88c27106be8cd608d1c28c2ea1301884"
+        }
+      ],
+      "vulnerable_revision": "c6679a69e4295a7e508f5ec157b60c5ac5b8a041"
+    },
+    {
+      "advisory_url": "https://github.com/advisories/GHSA-4q5v-7g7x-j79w",
+      "case_type": "path_traversal_possible",
+      "checkout_dir": "oscal-compass__compliance-trestle",
+      "cve_id": "CVE-2026-46345",
+      "cwe": "CWE-22",
+      "fixed_revision": "7d107b3ac53caca7bde97a6278b23cd739d94525",
+      "id": "compliance-trestle-cve-2026-46345",
+      "license": {
+        "path": "LICENSE",
+        "spdx": "Apache-2.0"
+      },
+      "project": "oscal-compass/compliance-trestle",
+      "repository_url": "https://github.com/oscal-compass/compliance-trestle.git",
+      "targets": [
+        {
+          "fixed_sha256": "3d1288d15e53b54649d1728215cb6eb01bcfa76a33621e3173632c675c16fb50",
+          "path": "trestle/core/commands/author/jinja.py",
+          "relevant_line_range": [
+            183,
+            301
+          ],
+          "vulnerable_sha256": "7ac3fbd728f33e554bd688a6fc14d2e716eff06b8fe9ba4405037964de42a63f"
+        }
+      ],
+      "vulnerable_revision": "5c65c5926fe7ca908b9c1d281f904e7d97ba8310"
+    }
+  ],
+  "classification": {
+    "claim_boundary": "24 public projects excluded from local SusVibes/PatchEval/prior-cache populations, selected before detector output with static named-mechanism fixed controls. File/line/type-localized source-subset measurement; qualification-only dependencies are not all analyzer inputs. Not repository-wide precision, exploitability, SecPass, ecosystem-random sampling or proof of absence from pretraining. First measurement consumes this sample as development evidence.",
+    "dynamic_execution": false,
+    "evaluation_mode": "oracle_localized_changed_file_pairs_with_qualified_fixed_controls",
+    "negative_controls_present": true,
+    "project_disjoint_from_susvibes_v1": true,
+    "role": "public_project_disjoint_first_measurement",
+    "secpass_comparable": false
+  },
+  "corpus_id": "belief-public-project-disjoint-pairs-independent-v1",
+  "schema_version": "belief.open_source_pairs_corpus.v1",
+  "thresholds": {
+    "maximum_analysis_error_count": 0,
+    "maximum_fixed_warning_false_positive_rate": 0.2,
+    "minimum_deterministic_repetition_rate": 1.0,
+    "minimum_paired_discrimination_rate": 0.4,
+    "minimum_vulnerable_warning_recall": 0.5
+  }
+}

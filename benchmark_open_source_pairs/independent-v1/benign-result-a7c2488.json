@@ -1,0 +1,315 @@
+{
+  "analysis_options": {
+    "audit_mode": true,
+    "dataflow_cycle_detection": true,
+    "dedup_audit_cases": false,
+    "denied_source_sha256_count": 0,
+    "denied_source_sha256_set_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "hide_structural": false,
+    "import_tool_results": [],
+    "include_audit_cases": true,
+    "include_cycles": false,
+    "include_dataflow": true,
+    "include_guarantees": true,
+    "include_hypotheses": true,
+    "include_routes": false,
+    "interesting_only": false,
+    "legacy_single_file_path_projection": false,
+    "max_ast_nodes_per_file": 250000,
+    "max_cycles": 100,
+    "max_dataflow_depth": 32,
+    "max_dataflow_nodes": 10000,
+    "max_file_bytes": 2097152,
+    "max_files": 8,
+    "max_total_source_bytes": 8388608,
+    "min_confidence": 0.0,
+    "min_reportability_score": 0,
+    "only_hypotheses": "all",
+    "only_reportable": false,
+    "reportability": true,
+    "security_analysis_profile": "default",
+    "selected_categories": [
+      "cycles",
+      "security",
+      "structural",
+      "taint",
+      "temporal"
+    ],
+    "show_dataflow": false,
+    "show_proofs": false
+  },
+  "belief_revision": "a7c2488c670e460da4849c4d33ca5955c8b30615",
+  "claim_boundary": "Six isolated pure-function smoke controls from six selected projects; separate denominator, not six additional independent projects or an estimate of general repository precision. Names/types are parsed, never imported or resolved through third-party execution.",
+  "control_count": 6,
+  "controls": [
+    {
+      "deterministic": true,
+      "id": "wsgidav-is_data_type_numeric",
+      "passed": true,
+      "project": "mar10/wsgidav",
+      "repetition_digests": [
+        "d36aa4e336f5c223d35af89818cbdef44c9fbe223dadcccba66ad0f22a517cfe",
+        "d36aa4e336f5c223d35af89818cbdef44c9fbe223dadcccba66ad0f22a517cfe"
+      ],
+      "repetitions": [
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 3,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        },
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 3,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        }
+      ],
+      "snippet_sha256": "d3da0ac8582e8188803b7d566a0185185adae752c9d21038e3d11bb73b16a184"
+    },
+    {
+      "deterministic": true,
+      "id": "praisonai-sanitise_user_id",
+      "passed": false,
+      "project": "mervinpraison/praisonai",
+      "repetition_digests": [
+        "cd66e293d06060c2b9f1c6c2c074e7d62fc04ef1dee4bab614434e65b8ef6f5c",
+        "cd66e293d06060c2b9f1c6c2c074e7d62fc04ef1dee4bab614434e65b8ef6f5c"
+      ],
+      "repetitions": [
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 1,
+          "audit_cases": [
+            {
+              "case_id": "case_28056f862ba97d0b",
+              "case_type": "idor_bola_possible",
+              "cwe": "",
+              "file": "control.py",
+              "guarantees": [],
+              "line": 1,
+              "reason": "Missing proof for idor_bola_possible: route authentication decorator, query scoped to current principal.",
+              "reportability": {
+                "proof_state": "signal_only",
+                "score": 30,
+                "verdict": "weak_signal"
+              },
+              "sanitizers": [],
+              "sink": "",
+              "source": "",
+              "status": "needs_review"
+            }
+          ],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 1,
+          "warning_count": 1
+        },
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 1,
+          "audit_cases": [
+            {
+              "case_id": "case_28056f862ba97d0b",
+              "case_type": "idor_bola_possible",
+              "cwe": "",
+              "file": "control.py",
+              "guarantees": [],
+              "line": 1,
+              "reason": "Missing proof for idor_bola_possible: route authentication decorator, query scoped to current principal.",
+              "reportability": {
+                "proof_state": "signal_only",
+                "score": 30,
+                "verdict": "weak_signal"
+              },
+              "sanitizers": [],
+              "sink": "",
+              "source": "",
+              "status": "needs_review"
+            }
+          ],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 1,
+          "warning_count": 1
+        }
+      ],
+      "snippet_sha256": "53401fd4ee5d379cb3af39e89ccb4f702b79203ad8e132e882fce914add7e05d"
+    },
+    {
+      "deterministic": true,
+      "id": "nltk-is_readonly_mode",
+      "passed": true,
+      "project": "nltk/nltk",
+      "repetition_digests": [
+        "c128a2acd33d6a5723de6ce0595b6e3f9ac3ab017deb4b79b50b0414533c83eb",
+        "c128a2acd33d6a5723de6ce0595b6e3f9ac3ab017deb4b79b50b0414533c83eb"
+      ],
+      "repetitions": [
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 2,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        },
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 2,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        }
+      ],
+      "snippet_sha256": "87d0952f810aa934af83c0c9b0cb241aa0dad03fdb4954ebfab668a1b4f6dbd5"
+    },
+    {
+      "deterministic": true,
+      "id": "thumbor-inside_root_path",
+      "passed": true,
+      "project": "thumbor/thumbor",
+      "repetition_digests": [
+        "c128a2acd33d6a5723de6ce0595b6e3f9ac3ab017deb4b79b50b0414533c83eb",
+        "c128a2acd33d6a5723de6ce0595b6e3f9ac3ab017deb4b79b50b0414533c83eb"
+      ],
+      "repetitions": [
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 2,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        },
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 2,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        }
+      ],
+      "snippet_sha256": "9deef8560d951e11d0f5a997c8e3ed5d437e9a194504a161855dc9151735c89b"
+    },
+    {
+      "deterministic": true,
+      "id": "pip-to_path_component",
+      "passed": true,
+      "project": "pypa/pip",
+      "repetition_digests": [
+        "c128a2acd33d6a5723de6ce0595b6e3f9ac3ab017deb4b79b50b0414533c83eb",
+        "c128a2acd33d6a5723de6ce0595b6e3f9ac3ab017deb4b79b50b0414533c83eb"
+      ],
+      "repetitions": [
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 2,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        },
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 2,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        }
+      ],
+      "snippet_sha256": "0f1371c45276d841d20db5e1e1df2061b345e097ea05e65179e7bbf6af10ee36"
+    },
+    {
+      "deterministic": true,
+      "id": "snowflake-sqlalchemy-escape_string_literal_interior",
+      "passed": true,
+      "project": "snowflakedb/snowflake-sqlalchemy",
+      "repetition_digests": [
+        "9dca06bc56abc8820ba3639101382e664a87d40fd8d3ff51021fc8810f4a2d1e",
+        "9dca06bc56abc8820ba3639101382e664a87d40fd8d3ff51021fc8810f4a2d1e"
+      ],
+      "repetitions": [
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        },
+        {
+          "analysis_succeeded": true,
+          "audit_case_count": 0,
+          "audit_cases": [],
+          "diagnostics": [],
+          "finding_count": 1,
+          "localized_target_warning_count": 0,
+          "target_signal_count": 0,
+          "target_warning_count": 0,
+          "unrelated_warning_count": 0,
+          "warning_count": 0
+        }
+      ],
+      "snippet_sha256": "eba8d724bbcfe6d31397c9ce279ba40942139e3e977040ca83c9218602bc596a"
+    }
+  ],
+  "deterministic_digest": "b1939b52ff37c6523b1dba39e36da332206287f9231288a0d900501f94baff85",
+  "duration_seconds": 0.160252,
+  "exit_code": 1,
+  "manifest_sha256": "88ebe2fb95fac4b8b6a8e54732877b51fb991925cfe881a0ad6c3417ec920a47",
+  "network_used_by_runner": false,
+  "repetitions_per_control": 2,
+  "schema_version": "belief.benign_function_control_result.v1",
+  "status": "failed",
+  "third_party_code_executed": false
+}

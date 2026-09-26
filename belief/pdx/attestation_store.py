@@ -8,10 +8,10 @@ import os
 import threading
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 from belief.json_contracts import StrictJSONError, strict_json_dumps, strict_json_loads
 
@@ -31,6 +31,10 @@ from .attestation import (
 RECEIPT_SCHEMA_VERSION = "belief.pdx_attestation_receipt.v1"
 RECEIPT_CANONICALIZATION = "belief-pdx-attestation-receipt-json-v1"
 DEFAULT_MAX_INPUT_BYTES = 2 * 1024 * 1024
+DEFAULT_MAX_JOURNAL_BYTES = 32 * 1024 * 1024
+DEFAULT_MAX_RECEIPTS = 10_000
+SIGNAL_ONLY_PROOF_STATE = "signal_only_no_belief_attempt_result_evidence"
+ACCEPTED_OBSERVATIONS_SCHEMA_VERSION = "belief.pdx_accepted_observations.v1"
 
 
 class PDXEvidenceStoreError(ValueError):
@@ -44,6 +48,44 @@ class AttestationImportResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {"receipt": copy.deepcopy(self.receipt), "replayed": self.replayed}
+
+
+@dataclass(frozen=True)
+class AcceptedPDXObservation:
+    """One historical receipt/reference projection, never validation proof.
+
+    Repeated imports retain their receipt lineage. They are not independent
+    captures. The source HTTP bytes and BELIEF proof references are absent.
+    """
+
+    receipt_id: str
+    attestation_id: str
+    engagement_id: str
+    engagement_version: int
+    raw_sha256: str
+    received_at: str
+    capture_id: str
+    observation_hash: str
+    target_id: str
+    endpoint_id: str
+    caveats: tuple[str, ...] = ()
+    proof_state: str = field(default=SIGNAL_ONLY_PROOF_STATE, init=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "receipt_id": self.receipt_id,
+            "attestation_id": self.attestation_id,
+            "engagement_id": self.engagement_id,
+            "engagement_version": self.engagement_version,
+            "raw_sha256": self.raw_sha256,
+            "received_at": self.received_at,
+            "capture_id": self.capture_id,
+            "observation_hash": self.observation_hash,
+            "target_id": self.target_id,
+            "endpoint_id": self.endpoint_id,
+            "caveats": list(self.caveats),
+            "proof_state": self.proof_state,
+        }
 
 
 def _utc_now() -> str:
@@ -96,7 +138,7 @@ def _validate_receipt(value: Any) -> dict[str, Any]:
     if value["import_id"] != f"belief:pdx-import:sha256:{raw_hash}":
         raise PDXEvidenceStoreError("receipt import_id does not bind raw_sha256")
     parse_datetime(value["received_at"], "receipt.received_at")
-    if value["status"] not in {"ACCEPT", "QUARANTINE", "REJECT"}:
+    if not isinstance(value["status"], str) or value["status"] not in {"ACCEPT", "QUARANTINE", "REJECT"}:
         raise PDXEvidenceStoreError("receipt status is invalid")
     if (
         not isinstance(value["reason_codes"], list)
@@ -104,6 +146,8 @@ def _validate_receipt(value: Any) -> dict[str, Any]:
         or value["reason_codes"] != sorted(set(value["reason_codes"]))
     ):
         raise PDXEvidenceStoreError("receipt reason_codes are not canonical")
+    if (value["status"] == "ACCEPT") != (not value["reason_codes"]):
+        raise PDXEvidenceStoreError("receipt status contradicts its reason_codes")
     if (
         not isinstance(value["caveats"], list)
         or any(not isinstance(item, str) or not item for item in value["caveats"])
@@ -118,7 +162,7 @@ def _validate_receipt(value: Any) -> dict[str, Any]:
             "capture_id", "observation_hash", "target_id", "endpoint_id", "proof_state"
         }:
             raise PDXEvidenceStoreError("receipt observation reference is invalid")
-        if ref["proof_state"] != "signal_only_no_belief_attempt_result_evidence":
+        if ref["proof_state"] != SIGNAL_ONLY_PROOF_STATE:
             raise PDXEvidenceStoreError("receipt observation proof_state is invalid")
         if not isinstance(ref["capture_id"], str) or not CAPTURE_ID_RE.fullmatch(ref["capture_id"]):
             raise PDXEvidenceStoreError("receipt capture_id is invalid")
@@ -130,6 +174,8 @@ def _validate_receipt(value: Any) -> dict[str, Any]:
             raise PDXEvidenceStoreError("receipt endpoint_id is invalid")
     if refs != sorted(refs, key=lambda item: item["capture_id"]):
         raise PDXEvidenceStoreError("receipt observation_refs are not canonical")
+    if len({ref["capture_id"] for ref in refs}) != len(refs):
+        raise PDXEvidenceStoreError("receipt contains duplicate capture references")
     if value["status"] != "ACCEPT" and refs:
         raise PDXEvidenceStoreError("non-accepted receipts cannot expose observation references")
     if value["status"] == "REJECT":
@@ -166,15 +212,27 @@ class PDXEvidenceStore:
     persists the source attestation, HTTP bytes, headers, or PDX CAS paths.
     """
 
-    def __init__(self, root: str | Path = "belief_pdx_evidence", *, max_input_bytes: int = DEFAULT_MAX_INPUT_BYTES):
-        if max_input_bytes <= 0:
+    def __init__(
+        self,
+        root: str | Path = "belief_pdx_evidence",
+        *,
+        max_input_bytes: int = DEFAULT_MAX_INPUT_BYTES,
+        read_only: bool = False,
+    ):
+        if not isinstance(max_input_bytes, int) or isinstance(max_input_bytes, bool) or max_input_bytes <= 0:
             raise ValueError("max_input_bytes must be positive")
+        if not isinstance(read_only, bool):
+            raise ValueError("read_only must be a boolean")
         self.root = Path(root).expanduser().resolve()
         self.max_input_bytes = max_input_bytes
+        self.read_only = read_only
         self.engagements_dir = self.root / "engagements"
         self.receipts_dir = self.root / "receipts" / "sha256"
         self.lock_path = self.root / ".import.lock"
         self._lock = threading.RLock()
+        if read_only:
+            self._check_readable_layout()
+            return
         self.engagements_dir.mkdir(parents=True, exist_ok=True)
         self.receipts_dir.mkdir(parents=True, exist_ok=True)
         with self.lock_path.open("a+b") as handle:
@@ -186,6 +244,7 @@ class PDXEvidenceStore:
             self._cleanup_temporary_files()
 
     def register_engagement(self, value: Any, *, registered_at: str | None = None) -> dict[str, Any]:
+        self._ensure_writable()
         engagement = parse_engagement(value)
         if registered_at is not None:
             parse_datetime(registered_at, "registered_at")
@@ -217,6 +276,7 @@ class PDXEvidenceStore:
     def import_attestation_file(
         self, path: str | Path, *, received_at: str | None = None
     ) -> AttestationImportResult:
+        self._ensure_writable()
         source = Path(path)
         try:
             size = source.stat().st_size
@@ -234,6 +294,7 @@ class PDXEvidenceStore:
     def import_attestation_bytes(
         self, raw: bytes, *, received_at: str | None = None
     ) -> AttestationImportResult:
+        self._ensure_writable()
         if not isinstance(raw, bytes):
             raise TypeError("raw attestation must be bytes")
         if len(raw) > self.max_input_bytes:
@@ -314,7 +375,7 @@ class PDXEvidenceStore:
                         "observation_hash": observation["observation_hash"],
                         "target_id": observation["identity"]["target_id"],
                         "endpoint_id": observation["identity"]["endpoint_id"],
-                        "proof_state": "signal_only_no_belief_attempt_result_evidence",
+                        "proof_state": SIGNAL_ONLY_PROOF_STATE,
                     }
                     for observation in attestation["observations"]
                 ]
@@ -329,6 +390,109 @@ class PDXEvidenceStore:
             )
             self._write_receipt(receipt)
             return AttestationImportResult(receipt, replayed=False)
+
+    def iter_accepted_observations(
+        self,
+        *,
+        engagement_id: str | None = None,
+        target_id: str | None = None,
+        max_receipts: int = DEFAULT_MAX_RECEIPTS,
+        max_total_bytes: int = DEFAULT_MAX_JOURNAL_BYTES,
+    ) -> Iterator[AcceptedPDXObservation]:
+        """Validate a bounded journal snapshot before exposing any references.
+
+        Filters apply only after validation, so they cannot hide corruption.
+        This reads historical import decisions, not current authorization or
+        source bytes. An ACCEPT receipt cannot supply BELIEF execution proof.
+        Open with ``read_only=True`` to avoid initialization/cleanup writes.
+        """
+        for name, value, pattern in (
+            ("engagement_id", engagement_id, OPAQUE_REF_RE),
+            ("target_id", target_id, TARGET_ID_RE),
+        ):
+            if value is not None and (not isinstance(value, str) or not pattern.fullmatch(value)):
+                raise ValueError(f"invalid {name} filter")
+        for name, value in (("max_receipts", max_receipts), ("max_total_bytes", max_total_bytes)):
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+
+        self._check_readable_layout()
+        observations: list[AcceptedPDXObservation] = []
+        claims: dict[str, str] = {}
+        with self._exclusive():
+            paths = []
+            entries = 0
+
+            def unreadable_directory(error: OSError) -> None:
+                raise PDXEvidenceStoreError("cannot enumerate receipt journal") from error
+
+            for directory, subdirs, filenames in os.walk(
+                self.receipts_dir, followlinks=False, onerror=unreadable_directory,
+            ):
+                entries += len(subdirs) + len(filenames)
+                if entries > 2 * max_receipts + 512:
+                    raise PDXEvidenceStoreError("receipt journal exceeds the directory entry limit")
+                for name in subdirs:
+                    path = Path(directory) / name
+                    if path.resolve() != path:
+                        raise PDXEvidenceStoreError("receipt journal directory is redirected")
+                for name in filenames:
+                    if Path(name).suffix.lower() == ".json":
+                        paths.append(Path(directory) / name)
+                        if len(paths) > max_receipts:
+                            raise PDXEvidenceStoreError("receipt journal exceeds max_receipts")
+            remaining = max_total_bytes
+            receipt_limit = max(DEFAULT_MAX_INPUT_BYTES, self.max_input_bytes)
+            for path in sorted(paths):
+                self._check_receipt_path(path, path.stem)
+                raw = self._read_receipt_bytes(path, min(receipt_limit, remaining))
+                remaining -= len(raw)
+                receipt = self._decode_receipt(raw, path.stem)
+                if receipt["status"] != "ACCEPT":
+                    continue
+                for reference in receipt["observation_refs"]:
+                    capture_id = reference["capture_id"]
+                    prior = claims.get(capture_id)
+                    if prior is not None and prior != reference["observation_hash"]:
+                        raise PDXEvidenceStoreError("accepted receipt journal contains a capture hash conflict")
+                    claims[capture_id] = reference["observation_hash"]
+                    observations.append(AcceptedPDXObservation(
+                        receipt_id=receipt["receipt_id"],
+                        attestation_id=receipt["attestation_id"],
+                        engagement_id=receipt["engagement_id"],
+                        engagement_version=receipt["engagement_version"],
+                        raw_sha256=receipt["raw_sha256"],
+                        received_at=receipt["received_at"],
+                        capture_id=capture_id,
+                        observation_hash=reference["observation_hash"],
+                        target_id=reference["target_id"],
+                        endpoint_id=reference["endpoint_id"],
+                        caveats=tuple(receipt["caveats"]),
+                    ))
+        selected = (
+            item for item in observations
+            if (engagement_id is None or item.engagement_id == engagement_id)
+            and (target_id is None or item.target_id == target_id)
+        )
+        return iter(sorted(selected, key=lambda item: (
+            item.engagement_id, item.engagement_version, item.target_id,
+            item.capture_id, item.receipt_id,
+        )))
+
+    def _ensure_writable(self) -> None:
+        if self.read_only:
+            raise PDXEvidenceStoreError("PDX evidence store is read-only")
+
+    def _check_readable_layout(self) -> None:
+        for path in (self.engagements_dir, self.receipts_dir.parent, self.receipts_dir):
+            if not path.is_dir() or path.resolve() != path:
+                raise PDXEvidenceStoreError("PDX evidence store directory is missing or redirected")
+        if (
+            not self.lock_path.is_file()
+            or self.lock_path.resolve() != self.lock_path
+            or self.lock_path.stat().st_size < 1
+        ):
+            raise PDXEvidenceStoreError("PDX evidence store lock is missing or invalid")
 
     def _make_receipt(
         self,
@@ -413,10 +577,37 @@ class PDXEvidenceStore:
         self._atomic_write(destination, _canonical_json_bytes(receipt) + b"\n")
 
     def _load_receipt(self, path: Path, expected_raw_hash: str) -> dict[str, Any]:
+        self._check_receipt_path(path, expected_raw_hash)
+        # A small input limit can still produce a larger rejection receipt.
+        # Preserve replay of that receipt independently of source input size.
+        limit = max(DEFAULT_MAX_INPUT_BYTES, self.max_input_bytes)
+        return self._decode_receipt(self._read_receipt_bytes(path, limit), expected_raw_hash)
+
+    def _check_receipt_path(self, path: Path, expected_raw_hash: str) -> None:
+        if (
+            not SHA256_RE.fullmatch(expected_raw_hash)
+            or path != self._receipt_path(expected_raw_hash)
+            or path.resolve() != path
+        ):
+            raise PDXEvidenceStoreError("receipt path is noncanonical or redirected")
+
+    @staticmethod
+    def _read_receipt_bytes(path: Path, max_bytes: int) -> bytes:
         try:
-            value = strict_json_loads(path.read_bytes())
+            with path.open("rb") as handle:
+                raw = handle.read(max_bytes + 1)
+        except OSError as exc:
+            raise PDXEvidenceStoreError("cannot read persisted attestation receipt") from exc
+        if len(raw) > max_bytes:
+            raise PDXEvidenceStoreError("receipt journal exceeds the configured byte limit")
+        return raw
+
+    @staticmethod
+    def _decode_receipt(raw: bytes, expected_raw_hash: str) -> dict[str, Any]:
+        try:
+            value = strict_json_loads(raw)
             receipt = _validate_receipt(value)
-        except (OSError, StrictJSONError, PDXEvidenceStoreError, PDXAttestationError) as exc:
+        except (ValueError, TypeError, RecursionError) as exc:
             raise PDXEvidenceStoreError("persisted attestation receipt is corrupt") from exc
         if receipt["raw_sha256"] != expected_raw_hash:
             raise PDXEvidenceStoreError("receipt path does not match raw_sha256")
@@ -449,7 +640,7 @@ class PDXEvidenceStore:
         """Serialize journal decisions across threads and local processes."""
 
         with self._lock:
-            with self.lock_path.open("r+b") as handle:
+            with self.lock_path.open("rb" if self.read_only else "r+b") as handle:
                 if os.name == "nt":
                     import msvcrt
 
@@ -471,6 +662,8 @@ class PDXEvidenceStore:
 
 
 __all__ = [
+    "ACCEPTED_OBSERVATIONS_SCHEMA_VERSION",
+    "AcceptedPDXObservation",
     "AttestationImportResult",
     "PDXEvidenceStore",
     "PDXEvidenceStoreError",

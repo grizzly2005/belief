@@ -1,8 +1,8 @@
 # PDX / BELIEF Integration
 
 BELIEF supports a minimal JSON-only PDX adapter for passive, offline review
-workflows. PDX data is treated as upstream evidence, not as a runtime that
-BELIEF executes.
+workflows. PDX data supplies contextual signals with preserved provenance.
+BELIEF does not execute the PDX runtime through this adapter.
 
 ## Scope
 
@@ -12,6 +12,7 @@ Implemented in this pass:
 - strict `pdx.observation_attestation.v1` parsing;
 - immutable `belief.pdx_engagement.v1` authority registrations;
 - durable, integrity-checked attestation receipts with restart-safe replay;
+- read-only accepted-observation snapshots and an informational result adapter;
 - Generic `ValidationResult` under `belief.validation`.
 - PDX verdict adaptation under `belief.validation.pdx`.
 - PDX import/export CLI commands.
@@ -80,6 +81,70 @@ Partial/non-joinable identity and truncated observations may be accepted only
 with explicit caveats. Every accepted observation reference has proof state
 `signal_only_no_belief_attempt_result_evidence`.
 
+### Read accepted observations
+
+Read an existing journal without creating files or cleaning up interrupted
+writes:
+
+```powershell
+python -m belief pdx list-observations --store-dir .\belief_pdx_evidence
+python -m belief pdx list-observations --store-dir .\belief_pdx_evidence `
+  --engagement-id engagement-alpha
+```
+
+An optional `--target-id` selects one exact `pdx:target:sha256:...` identifier.
+The JSON envelope uses `belief.pdx_accepted_observations.v1`, with `count` and
+`observations`. An empty existing journal returns count zero and exit 0. A
+missing/incomplete journal, corrupt receipt or exceeded limit returns exit 2
+on stderr, without partial JSON on stdout.
+
+Every receipt is checked before any row is exposed, including receipts that
+do not match the filters. Checks cover strict JSON and schema, the canonical
+file path, receipt digest and id, raw-digest binding, status/reason consistency,
+reference shape and capture hash conflicts. Only `ACCEPT` references appear.
+`QUARANTINE` and `REJECT` receipts remain in the journal and contribute no rows.
+
+The Python API returns immutable projections from a snapshot made under the
+existing import lock. The lock is released before the iterator is returned:
+
+```python
+from belief.pdx import PDXEvidenceStore
+from belief.validation.pdx_observation import pdx_observation_to_validation_result
+
+store = PDXEvidenceStore("belief_pdx_evidence", read_only=True)
+observations = list(store.iter_accepted_observations(engagement_id="engagement-alpha"))
+signals = [pdx_observation_to_validation_result(item) for item in observations]
+```
+
+Default read limits are 10,000 receipts, 32 MiB of total receipt bytes and
+2 MiB per receipt. The API can adjust `max_receipts` and `max_total_bytes`;
+a larger store `max_input_bytes` also raises the per-receipt ceiling. Directory
+enumeration is bounded at `2 * max_receipts + 512` entries. Exceeding a limit
+fails the whole snapshot instead of returning a truncated result. Redirected
+store directories and receipt paths are rejected. Register/import operations
+on a `read_only=True` instance raise `PDXEvidenceStoreError`.
+
+Each row preserves the receipt, attestation, raw digest, engagement/version,
+capture, observation hash, target, endpoint, received time and receipt caveats.
+Two accepted imports of the same capture retain two receipt lineages. `count`
+counts references, **not independent observations or independent evidence**.
+Receipt caveats are not new per-observation assertions; a receipt may cover
+several captures.
+
+The adapter always emits `outcome="informational"`, `tested=false`,
+`human_validated=false`, confidence 0.5 and `positive_evidence=false`. Its
+generic `ValidationResult.result_id` is an identifier for this signal, not a
+durable execution result. Receipt identifiers in `evidence` are provenance
+strings; they are not BELIEF `ValidationEvidenceRef` objects. This route
+cannot create a verified proof or raise reportability by itself.
+
+This is a historical receipt reader. It does not re-import omitted source
+bytes, authenticate the producer, or recheck the engagement's current validity.
+The local journal is a trusted persistence boundary: hashes detect accidental
+or inconsistent edits, but a writer able to replace and rehash the whole store
+can fabricate metadata. Current execution authorization and positive proof
+still require the separate BELIEF policy/attempt/result/evidence contract.
+
 The cross-repository integration test keeps the two Python environments
 separate. Point `PDX_REPO` at the PDX checkout and, when BELIEF's interpreter
 does not also contain the PDX dependencies, point `PDX_PYTHON` at a
@@ -90,6 +155,9 @@ $env:PDX_REPO = '<path-to-hydra-pdx>'
 $env:PDX_PYTHON = '<path-to-pdx-python>'
 python -m pytest -q -p no:cacheprovider tests/test_pdx_cross_repo_contract.py
 ```
+
+The test covers PDX fixture persistence and attestation export, BELIEF import
+and replay, read-only listing, and conversion to an informational result.
 
 ## PDX JSON Bundle
 

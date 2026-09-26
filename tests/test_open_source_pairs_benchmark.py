@@ -203,3 +203,16 @@ def test_committed_open_source_pair_manifest_is_strictly_valid():
         "ormar-orm/ormar",
         "Mayuri-Chan/pyrofork",
     }
+
+
+def test_recovery_manifest_freezes_v1_cases_and_thresholds() -> None:
+    root = Path(__file__).resolve().parents[1] / "benchmark_open_source_pairs"
+    baseline = load_open_source_pairs_manifest(root / "cases.json")
+    recovery = load_open_source_pairs_manifest(root / "cases-recovery-v2.json")
+
+    assert recovery["cases"] == baseline["cases"]
+    assert recovery["thresholds"] == baseline["thresholds"]
+    assert recovery["corpus_id"] == "belief-open-source-pairs-public-recovery-v2"
+    assert recovery["classification"]["role"] == "public_development_recovery"
+    assert "post-development" in recovery["classification"]["claim_boundary"]
+    assert recovery["classification"] != baseline["classification"]

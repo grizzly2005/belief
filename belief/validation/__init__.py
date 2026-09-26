@@ -1,5 +1,22 @@
 """Validation evidence models, planning sidecars, and adapters."""
 
+from .audit_case_executor import (
+    AUDIT_CASE_EXECUTION_REQUEST_SCHEMA_VERSION,
+    AUDIT_CASE_EXECUTION_RESPONSE_SCHEMA_VERSION,
+    AUDIT_CASE_PROOF_POLICY_SCHEMA_VERSION,
+    AUDIT_CASE_REQUEST_MEDIA_TYPE,
+    AUDIT_CASE_RESPONSE_MEDIA_TYPE,
+    AuditCaseEvidence,
+    AuditCaseExecutionRequest,
+    AuditCaseExecutionResponse,
+    AuditCaseExecutorOutput,
+    AuditCaseProofError,
+    AuditCaseProofGrant,
+    AuditCaseProofPolicy,
+    BoundedAuditCaseExecutor,
+    run_audit_case_validation_with_ledger,
+)
+
 from .execution_models import (
     VALIDATION_EXECUTION_CONTEXT_SCHEMA_VERSION,
     VALIDATION_EXECUTION_SUMMARY_SCHEMA_VERSION,
@@ -88,6 +105,11 @@ from .worker import (
 )
 
 __all__ = [
+    "AUDIT_CASE_EXECUTION_REQUEST_SCHEMA_VERSION",
+    "AUDIT_CASE_EXECUTION_RESPONSE_SCHEMA_VERSION",
+    "AUDIT_CASE_PROOF_POLICY_SCHEMA_VERSION",
+    "AUDIT_CASE_REQUEST_MEDIA_TYPE",
+    "AUDIT_CASE_RESPONSE_MEDIA_TYPE",
     "VALIDATION_EXECUTION_CONTEXT_SCHEMA_VERSION",
     "VALIDATION_EXECUTION_SUMMARY_SCHEMA_VERSION",
     "VALIDATION_FIXTURE_BUNDLE_SCHEMA_VERSION",
@@ -110,6 +132,14 @@ __all__ = [
     "ISOLATED_WEB_WORKER_ADAPTER",
     "IsolatedWebValidationExecutor",
     "AttemptHandle",
+    "AuditCaseEvidence",
+    "AuditCaseExecutionRequest",
+    "AuditCaseExecutionResponse",
+    "AuditCaseExecutorOutput",
+    "AuditCaseProofError",
+    "AuditCaseProofGrant",
+    "AuditCaseProofPolicy",
+    "BoundedAuditCaseExecutor",
     "EvidenceArtifact",
     "LocalValidationExecutor",
     "PathTraversalValidationExecutor",
@@ -149,6 +179,7 @@ __all__ = [
     "run_validation_plan_bundle",
     "run_isolated_web_validation_plan",
     "run_registered_fixture_validation_with_ledger",
+    "run_audit_case_validation_with_ledger",
     "run_worker_request",
     "registered_fixture_ids",
     "registered_fixture_metadata",
