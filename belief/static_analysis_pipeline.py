@@ -336,6 +336,7 @@ def analyze_static_target(
 
     totals = {name: 0 for name in ("structural", "security", "taint", "temporal")}
     records: list[ScanRecord] = []
+    producer_dataflows: list[tuple[Finding, dict[str, Any]]] = []
     guarantees: list[Belief] = []
     dataflow_summaries: dict[str, Any] = {}
     diagnostics: list[StaticAnalysisDiagnostic] = [
@@ -372,6 +373,7 @@ def analyze_static_target(
         taint_beliefs = taint.analyze_to_beliefs(source, relative)
         diagnostics.extend(_analysis_diagnostics(taint.diagnostics, relative))
         temporal_beliefs = temporal.check(source, relative)
+        first_source_record = len(records)
         for category, beliefs in (
             ("structural", structural_beliefs),
             ("security", security_beliefs),
@@ -382,6 +384,22 @@ def analyze_static_target(
             records.extend(_beliefs_to_records(category, beliefs))
         totals["security"] += len(native_security_records)
         records.extend(native_security_records)
+        # Preserve only producer evidence created from this source snapshot.
+        # Imported metadata cannot authorize restoration after enrichment.
+        for record in records[first_source_record:]:
+            finding = record.finding
+            payload = finding.metadata.get("dataflow")
+            if not isinstance(payload, dict):
+                continue
+            sink_line = payload.get("sink_line")
+            if (
+                finding.file == relative
+                and payload.get("file", relative) == relative
+                and type(sink_line) is int
+                and type(finding.line) is int
+                and 0 < finding.line <= sink_line <= (finding.end_line or finding.line)
+            ):
+                producer_dataflows.append((finding, {**payload, "file": relative}))
 
     cycle_metadata = None
     if opts.include_cycles:
@@ -429,6 +447,9 @@ def analyze_static_target(
             dataflow_summaries,
             show_dataflow=opts.show_dataflow,
         )
+        for finding, producer_payload in producer_dataflows:
+            if "dataflow" not in finding.metadata:
+                finding.metadata = {**finding.metadata, "dataflow": producer_payload}
 
     if opts.hypotheses_enabled:
         from .guarantee_index import build_guarantee_index

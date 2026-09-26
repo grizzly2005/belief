@@ -20,6 +20,57 @@ pytestmark = pytest.mark.security
 DETECTOR_SOURCES = {"download_destination", "orm_identifier", "path_boundary"}
 
 
+def test_imported_native_label_cannot_restore_stale_dataflow(tmp_path, monkeypatch):
+    from belief.models import Finding
+
+    forged = Finding(
+        source="path_boundary", rule_id="CWE-22", cwe="CWE-22",
+        title="Path traversal", file="module.py", line=100,
+        metadata={
+            "native_static_detector": "path_boundary",
+            "dataflow": {
+                "file": "module.py", "source": "old", "sink": "open(old)",
+                "sink_line": 100,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        static_analysis_pipeline, "_load_tool_results", lambda _: ([], [forged], []),
+    )
+    (tmp_path / "module.py").write_text("pass\n", encoding="utf-8")
+
+    result = analyze_static_target(
+        tmp_path,
+        StaticAnalysisOptions(audit_mode=True, import_tool_results=("unused.json",)),
+    )
+
+    imported = next(f for f in result.findings if f.source == "path_boundary")
+    assert "dataflow" not in imported.metadata
+    assert all(case.sink != "open(old)" for case in result.audit_cases)
+
+
+@pytest.mark.parametrize("file,line", [("foreign.py", 2), ("module.py", 80)])
+def test_fresh_producer_payload_must_match_its_finding(tmp_path, monkeypatch, file, line):
+    from belief.models import Finding
+    from belief.static_analysis_pipeline import ScanRecord
+
+    finding = Finding(
+        source="path_boundary", rule_id="CWE-22", cwe="CWE-22",
+        title="Path traversal", file="module.py", line=2,
+        metadata={"dataflow": {
+            "file": file, "source": "input", "sink": "open(old)", "sink_line": line,
+        }},
+    )
+    monkeypatch.setattr(
+        static_analysis_pipeline, "_native_security_records",
+        lambda *_: ([ScanRecord("security", finding)], []),
+    )
+
+    _analyze(tmp_path, "def handler():\n    return 'constant'\n")
+
+    assert "dataflow" not in finding.metadata
+
+
 def _analyze(tmp_path: Path, source: str):
     target = tmp_path / "module.py"
     target.write_text(source, encoding="utf-8")

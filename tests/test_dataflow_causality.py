@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
+from belief.audit_case import audit_case_from_finding
 from belief.dataflow import (
     analyze_source_dataflow,
+    attach_dataflow_to_findings,
     dataflow_for_finding,
     dataflow_paths_for_finding,
 )
@@ -15,6 +20,183 @@ from belief.taint import TaintEngine, TaintSink, TaintSource
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _path_finding(**overrides) -> Finding:
+    values = {
+        "source": "test",
+        "rule_id": "CWE-22",
+        "title": "Path traversal candidate",
+        "description": "Review this path operation.",
+        "file": "app.py",
+        "line": 3,
+        "cwe": "CWE-22",
+        "severity": "high",
+        "confidence": 0.9,
+    }
+    values.update(overrides)
+    return Finding(**values)
+
+
+_PROVENANCE_SOURCE = (
+    "def store():\n"
+    "    folder = request.args.get('dir')\n"
+    "    open(folder)\n"
+)
+
+
+def test_missing_context_does_not_borrow_a_distant_path_or_audit_sink() -> None:
+    source = _PROVENANCE_SOURCE + "\n" * 40 + "def unrelated():\n    return 'safe'\n"
+    summary = analyze_source_dataflow(source, "app.py")
+    finding = _path_finding(line=len(source.splitlines()))
+
+    assert summary.paths  # A real path exists, but belongs to another operation.
+    assert dataflow_paths_for_finding(finding, [summary]) == []
+    assert dataflow_for_finding(finding, [summary]) is None
+    attach_dataflow_to_findings([finding], [summary])
+    case = audit_case_from_finding(finding)
+    assert case is not None
+    assert case.source == case.sink == ""
+    assert case.structured_dataflow == {}
+
+
+@pytest.mark.parametrize("function_name", ["handle", "Beta.handle"])
+def test_function_name_does_not_bind_a_sink_at_an_unrelated_location(function_name) -> None:
+    source = (
+        "class Beta:\n"
+        "    def handle(self):\n"
+        "        folder = request.args.get('dir')\n"
+        "        open(folder)\n"
+        "\n"
+        "def handle():\n"
+        "    return 'safe'\n"
+    )
+    summary = analyze_source_dataflow(source, "app.py")
+    finding = _path_finding(line=7, metadata={"function_name": function_name})
+
+    assert summary.paths
+    assert dataflow_paths_for_finding(finding, [summary]) == []
+
+
+@pytest.mark.parametrize(
+    ("finding_file", "summary_files"),
+    [
+        ("pkg/a/app.py", ["pkg/b/app.py"]),
+        ("pkg/a/app.py", ["pkg/b/app.py", "pkg/c/app.py"]),
+        ("app.py", ["pkg/a/app.py", "pkg/b/app.py"]),
+    ],
+)
+def test_file_provenance_rejects_unrelated_or_ambiguous_suffixes(
+    finding_file, summary_files,
+) -> None:
+    summaries = [analyze_source_dataflow(_PROVENANCE_SOURCE, name) for name in summary_files]
+    finding = _path_finding(file=finding_file)
+
+    assert all(summary.paths for summary in summaries)
+    assert dataflow_paths_for_finding(finding, summaries) == []
+
+
+@pytest.mark.parametrize(
+    ("finding_file", "summary_file"),
+    [
+        ("app.py", "pkg/app.py"),
+        ("pkg/app.py", "workspace/pkg/app.py"),
+        ("workspace/pkg/app.py", "pkg/app.py"),
+        ("pkg\\app.py", "pkg/app.py"),
+    ],
+)
+def test_unique_complete_path_suffix_keeps_exact_sink_provenance(
+    finding_file, summary_file,
+) -> None:
+    summary = analyze_source_dataflow(_PROVENANCE_SOURCE, summary_file)
+    paths = dataflow_paths_for_finding(_path_finding(file=finding_file), [summary])
+
+    assert len(paths) == 1
+    assert paths[0].file_path == summary_file
+    assert paths[0].sink_line == 3
+
+
+def test_exact_file_match_wins_over_other_files_with_the_same_basename() -> None:
+    summaries = [
+        analyze_source_dataflow(_PROVENANCE_SOURCE, name)
+        for name in ("app.py", "pkg/app.py")
+    ]
+    paths = dataflow_paths_for_finding(_path_finding(), summaries)
+
+    assert len(paths) == 1
+    assert paths[0].file_path == "app.py"
+
+
+def test_function_range_keeps_its_own_sink_without_treating_def_as_sink() -> None:
+    summary = analyze_source_dataflow(_PROVENANCE_SOURCE, "app.py")
+    finding = _path_finding(line=1, end_line=3, metadata={"function_name": "store"})
+    payload = dataflow_for_finding(finding, [summary])
+
+    assert payload is not None
+    assert payload["function"] == "store"
+    assert payload["sink_line"] == 3
+    assert finding.line == 1
+
+
+def test_function_range_does_not_override_an_explicit_sink_location() -> None:
+    summary = analyze_source_dataflow(_PROVENANCE_SOURCE, "app.py")
+    finding = _path_finding(
+        line=1, end_line=10,
+        metadata={"function_name": "store", "sink_line": 8},
+    )
+
+    assert dataflow_paths_for_finding(finding, [summary]) == []
+
+
+def test_previous_enrichment_cannot_supply_its_own_location_evidence() -> None:
+    summary = analyze_source_dataflow(_PROVENANCE_SOURCE, "app.py")
+    finding = _path_finding(line=40, metadata={"dataflow": {"sink_line": 3}})
+
+    assert dataflow_paths_for_finding(finding, [summary]) == []
+
+
+def test_summary_dictionary_key_cannot_disguise_a_different_file() -> None:
+    summary = analyze_source_dataflow(_PROVENANCE_SOURCE, "pkg/b/app.py")
+    finding = _path_finding(file="pkg/a/app.py")
+
+    assert dataflow_paths_for_finding(finding, {"pkg/a/app.py": summary}) == []
+
+
+def test_summary_cannot_supply_a_path_from_another_file() -> None:
+    summary = analyze_source_dataflow(_PROVENANCE_SOURCE, "app.py")
+    summary.paths = [replace(summary.paths[0], file_path="other.py")]
+
+    assert dataflow_paths_for_finding(_path_finding(), [summary]) == []
+
+
+@pytest.mark.parametrize("has_current_path", [False, True])
+def test_refresh_invalidates_stale_enrichment_and_derived_hypothesis(has_current_path) -> None:
+    summary = analyze_source_dataflow(_PROVENANCE_SOURCE, "app.py")
+    stale = {"source": "old", "sink": "open(old)", "sink_line": 3}
+    hypothesis = {"status": "strengthened", "dataflow": stale}
+    finding = _path_finding(
+        line=3 if has_current_path else 5132,
+        metadata={"dataflow": stale, "hypothesis": hypothesis, "producer": "keep"},
+    )
+
+    attach_dataflow_to_findings([finding], [summary])
+    case = audit_case_from_finding(finding)
+
+    assert case is not None
+    assert case.sink == ("open(folder)" if has_current_path else "")
+    assert "hypothesis" not in finding.metadata
+    assert finding.metadata["producer"] == "keep"
+    assert hypothesis["dataflow"] is stale  # No mutation of shared producer metadata.
+    if not has_current_path:
+        assert "dataflow" not in finding.metadata
+
+
+def test_refresh_preserves_hypothesis_without_dataflow_dependencies() -> None:
+    finding = _path_finding(metadata={"hypothesis": {"status": "unproven"}})
+
+    attach_dataflow_to_findings([finding], [])
+
+    assert finding.metadata["hypothesis"] == {"status": "unproven"}
 
 
 def test_source_after_sink_does_not_create_a_flow() -> None:
